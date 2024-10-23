@@ -26,7 +26,7 @@ const Page: FC = () => {
   // Step 2 --> Read your balance -- End
 
   // Step 3 --> Read from a contract -- Start
-  const contractAddress = "0x1c758616421a10f9df071a5d985c72e3907cf98d553204cf8dee354647c736";
+  const contractAddress = "0x02072db323bc380ab601bad94eea12ed249af69a35aa945deb99950455ee31f5";
   const { data: readData, refetch: dataRefetch, isError: readIsError, isLoading: readIsLoading, error: readError } = useReadContract({
     functionName: "get_balance",
     args: [],
