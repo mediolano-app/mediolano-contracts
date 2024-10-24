@@ -2,3 +2,5 @@ web/node_modules
 node_modules
 npm
 .npm
+web/.next
+.next
