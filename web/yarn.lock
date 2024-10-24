@@ -2646,6 +2646,14 @@ pinata-web3@^0.5.1:
     is-ipfs "^8.0.4"
     node-fetch "^3.3.1"
 
+pinata@^1.7.1:
+  version "1.7.1"
+  resolved "https://registry.npmjs.org/pinata/-/pinata-1.7.1.tgz"
+  integrity sha512-m8Gg+JtI9vfa3TD8hgULeE99jPEbGPBD4vKxf81s1EQaNJ+dVCqSgG+5H1DMv4Dq7qGXmx3/nGSodF495BwK4w==
+  dependencies:
+    is-ipfs "^8.0.4"
+    node-fetch "^3.3.1"
+
 pirates@^4.0.1:
   version "4.0.6"
   resolved "https://registry.npmjs.org/pirates/-/pirates-4.0.6.tgz"

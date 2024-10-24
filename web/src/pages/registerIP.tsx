@@ -2,36 +2,132 @@ import Layout from '../components/layout'
 import { useState } from 'react'
 import { FilePlus, Lock, FileText, Coins, Shield, Globe, BarChart, Book, Music, Film, FileCode, Palette, File, ScrollText, Clock, ArrowRightLeft, ShieldCheck, Banknote, Globe2 } from 'lucide-react'
 import Link from 'next/link'
-
+import { pinataClient } from '@/utils/pinataClient'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { useRouter } from 'next/navigation'
+import { useAccount } from '@starknet-react/core'
 
 export type IPType = "" | "patent" | "trademark" | "copyright" | "trade_secret";
 
 export interface IP{
   title: string,
   description: string,
-  authors: string[],
+  authors: string[] | string,
   ipType: IPType,
   uploadFile?: File,
 }
 
 
 export default function RegisterIP() {
+  // const {address: connectedAddress, isConnected, isConnecting} = useAccount();
 
+  const GATEWAY_URL = process.env.HOST;
+  console.log(GATEWAY_URL);
+
+  const gateway = "https://violet-rainy-shrimp-423.mypinata.cloud/ipfs/";
+  console.log(gateway);
+
+  const router = useRouter();  
+  const [status, setStatus] = useState("Mint NFT");
+  const [ipfsUrl, setipfsUrl] = useState("");
+
+  const baseIpfsUrl = "https://ipfs.io/ipfs/";
+
+  const [loading, setLoading] = useState(false);
+  const [ipData, setIpData] = useState<IP>({
+    title: '',
+    description: '',
+    authors: [],
+    ipType: '',
+    });
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const [file, setFile] = useState<File | null>(null);
+
+
+  const templates = [
+      { name: 'Art', icon: Palette, href: '/registerArt', description: 'Tokenize your Artwork' },
+      { name: 'Documents', icon: File, href: '/registerDocument', description: 'Safeguard Documents On-Chain' },  
+      { name: 'Films', icon: Film, href: '/registerFilm', description: 'Protect your cinematic creations' }, 
+      { name: 'Music', icon: Music, href: '/registerMusic', description: 'Copyright Compositions' },
+      { name: 'Patents', icon: ScrollText, href: '/registerPatent', description: 'Secure Inventions and Innovations' },
+      { name: 'Publications', icon: Book, href: '/registerPublication', description: 'Protect your Written Works' },
+      { name: 'RWA', icon: Globe2, href: '/registerRWA', description: 'Tokenize Real World Assets' },
+      { name: 'Software', icon: FileCode, href: '/registerSoftware', description: 'Safeguard your Code' },
+      { name: 'Custom', icon: Coins, href: '/registerIP', description: 'Edit Your Template' },
+    ];
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const {name, value} = e.target;
+    setIpData((prev) => ({...prev, [name]: value}));
+  };
+
+  const handleAuthorChange = (index: number, value: string) => {
+    const newAuthors = [...ipData.authors]
+    newAuthors[index] = value
+    setIpData(prev => ({ ...prev, authors: newAuthors }))
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files) {
+      setFile(e.target.files[0]);
+    }
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    console.log(ipData);
+    event.preventDefault();
     
+    setIsSubmitting (true);
+    setError(null);
 
-    const templates = [
-        { name: 'Art', icon: Palette, href: '/registerArt', description: 'Tokenize your Artwork' },
-        { name: 'Documents', icon: File, href: '/registerDocument', description: 'Safeguard Documents On-Chain' },  
-        { name: 'Films', icon: Film, href: '/registerFilm', description: 'Protect your cinematic creations' }, 
-        { name: 'Music', icon: Music, href: '/registerMusic', description: 'Copyright Compositions' },
-        { name: 'Patents', icon: ScrollText, href: '/registerPatent', description: 'Secure Inventions and Innovations' },
-        { name: 'Publications', icon: Book, href: '/registerPublication', description: 'Protect your Written Works' },
-        { name: 'RWA', icon: Globe2, href: '/registerRWA', description: 'Tokenize Real World Assets' },
-        { name: 'Software', icon: FileCode, href: '/registerSoftware', description: 'Safeguard your Code' },
-        { name: 'Custom', icon: Coins, href: '/registerIP', description: 'Edit Your Template' },
-      ]
+    const submitData = new FormData();
+    
+    submitData.append('title', ipData.title);
+    submitData.append('description', ipData.description);
+    if (Array.isArray(ipData.authors)) {
+        ipData.authors.forEach((author, index) => {
+          submitData.append(`authors[${index}]`, author)
+        })
+      } else {
+        submitData.append('authors', ipData.authors);
+      }
+      
+    submitData.append('ipType', ipData.ipType);
+    
+    if (file) {
+      submitData.set('uploadFile', file);
+    }
 
+    for (let pair of submitData.entries()) {
+      console.log(`${pair[0]}: ${pair[1]}`);
+    } //just for checking
+
+    try {
+      const response = await fetch('/api/forms-ipfs', {
+        method: 'POST',
+        body: submitData,
+      });
+      console.log("POST done, waiting for response");
+      if (!response.ok) {
+        throw new Error('Failed to submit IP')
+      }
+      console.log('IP submitted successfully');
+
+      
+      const data = await response.json();
+      const ipfsHash = data.uploadData.cid as string;
+
+      // router.push("/myIPs");
+      // handleSetTokenUri(data.url);
+
+    } catch (err) {
+        setError('Failed to submit IP. Please try again.');
+    } finally {
+        setIsSubmitting(false);
+    }
+  };
 
   
 
@@ -54,13 +150,15 @@ export default function RegisterIP() {
     </CardHeader>
     <CardContent>
  
-  <form className="space-y-6">
+  <form onSubmit={handleSubmit} className="space-y-6">
     <div>
       <label htmlFor="title" className="block mb-1 font-medium">Title</label>
       <input 
         type="text" 
         id="title" 
         name="title" 
+        value={ipData.title}
+        onChange={handleChange}
         className="w-full rounded block bordered" 
         required 
       />
@@ -70,6 +168,8 @@ export default function RegisterIP() {
       <textarea 
         id="description" 
         name="description" 
+        value={ipData.description}
+        onChange={handleChange}
         className="w-full rounded input input-bordered bg-base-300" 
         rows={4}
         required
@@ -80,7 +180,9 @@ export default function RegisterIP() {
       <input 
         type="text" 
         id="authors" 
-        name="authors" 
+        name="authors"
+        value={ipData.authors}
+        onChange={handleChange} 
         className="w-full rounded input input-bordered bg-base-300" 
         required 
       />
@@ -90,6 +192,11 @@ export default function RegisterIP() {
       <select 
         id="type" 
         name="type" 
+        value={ipData.ipType}
+        onChange={ (e:any) => {
+          setIpData((prev) => ({ ...prev, "ipType": e.target.value }));
+          console.log(e);
+        }}
         className="w-full input input-bordered rounded bg-base-300"
       >
         <option value="patent">Patent</option>
