@@ -3,6 +3,6 @@ node_modules
 npm
 .npm
 web/.next
-web/ .env.local
+web/.env.local
 .next
 .env
