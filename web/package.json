@@ -27,6 +27,7 @@
     "lodash": "^4.17.21",
     "lucide-react": "^0.447.0",
     "next": "^14.2.16",
+    "next-themes": "^0.3.0",
     "pinata": "^1.7.1",
     "pinata-web3": "^0.5.1",
     "react": "^18",
