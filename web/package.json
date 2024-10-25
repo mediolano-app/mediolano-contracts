@@ -27,11 +27,7 @@
     "lodash": "^4.17.21",
     "lucide-react": "^0.447.0",
     "next": "^14.2.16",
-<<<<<<< Updated upstream
     "pinata": "^1.7.1",
-=======
-    "next-themes": "^0.3.0",
->>>>>>> Stashed changes
     "pinata-web3": "^0.5.1",
     "react": "^18",
     "react-dom": "^18",
