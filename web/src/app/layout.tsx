@@ -4,10 +4,12 @@ import { Providers } from "@/components/Providers";
 import "./globals.css";
 import Header from '@/components/header'
 import Footer from "@/components/footer"
+import { ThemeProvider } from "@/components/theme-provider"
+
 
 const inter = Inter({ subsets: ["latin"] });
 
-export const metadata: Metadata = {
+const metadata: Metadata = {
   title: "Mediolano",
   description: "Intellectual Property Powered by Starknet",
 };
@@ -20,6 +22,12 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={inter.className}>
+      <ThemeProvider
+            attribute="class"
+            defaultTheme="system"
+            enableSystem
+            disableTransitionOnChange
+          >
         <div className="flex flex-col min-h-screen">
         <Header />
         <main className="flex-grow container mx-auto px-4 py-8">
@@ -27,6 +35,7 @@ export default function RootLayout({
         </main>
         <Footer />
         </div>
+        </ThemeProvider>
       </body>
     </html>
   );
