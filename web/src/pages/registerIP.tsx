@@ -141,7 +141,7 @@ export default function RegisterIP() {
 
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 
-    <div className="bg-card bg-white text-card-foreground rounded-lg shadow-lg">
+    <div className="bg-card bg-primary text-card-foreground rounded-lg shadow-lg">
 
     <Card>
     <CardHeader>
@@ -159,7 +159,7 @@ export default function RegisterIP() {
         name="title" 
         value={ipData.title}
         onChange={handleChange}
-        className="w-full rounded block bordered" 
+        className="w-full rounded block bordered border" 
         required 
       />
       </div>
@@ -170,7 +170,7 @@ export default function RegisterIP() {
         name="description" 
         value={ipData.description}
         onChange={handleChange}
-        className="w-full rounded input input-bordered bg-base-300" 
+        className="w-full rounded input input-bordered border" 
         rows={4}
         required
       ></textarea>
@@ -183,7 +183,7 @@ export default function RegisterIP() {
         name="authors"
         value={ipData.authors}
         onChange={handleChange} 
-        className="w-full rounded input input-bordered bg-base-300" 
+        className="w-full rounded input input-bordered border" 
         required 
       />
       </div>
@@ -197,7 +197,7 @@ export default function RegisterIP() {
           setIpData((prev) => ({ ...prev, "ipType": e.target.value }));
           console.log(e);
         }}
-        className="w-full input input-bordered rounded bg-base-300"
+        className="w-full input input-bordered rounded border bg-primary"
       >
         <option value="patent">Patent</option>
         <option value="trademark">Trademark</option>
@@ -238,7 +238,7 @@ export default function RegisterIP() {
           href={template.href}
           className="block group"
         >
-          <div className="relative rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow duration-300 bg-white p-6">
+          <div className="relative rounded-lg overflow-hidden shadow-md hover:shadow-xl transition-shadow duration-300 p-6">
             <div className="flex items-center mb-4">
               <template.icon className="h-8 w-8 text-secondary mr-3" />
               <h3 className="text-xl font-semibold">{template.name}</h3>

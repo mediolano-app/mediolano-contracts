@@ -242,7 +242,7 @@ export default function Header() {
               <SheetHeader>
                 <SheetTitle>Mediolano</SheetTitle>
                 <SheetDescription>
-                  Navigation Menu
+                  @ Starknet
                 </SheetDescription>
               </SheetHeader>
               <nav className="flex flex-col space-y-4 mt-4">
