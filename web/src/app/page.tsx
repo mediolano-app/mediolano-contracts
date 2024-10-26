@@ -3,7 +3,7 @@ import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { useAccount, useBalance, useBlockNumber, useContract, useReadContract, useSendTransaction, useTransactionReceipt } from '@starknet-react/core';
 import { BlockNumber, Contract, RpcProvider } from "starknet";
-import { ABI } from "../abis/abi";
+import { abi } from "../abis/abi";
 import { type Abi } from "starknet";
 import { formatAmount, shortenAddress } from '@/lib/utils';
 
@@ -30,7 +30,7 @@ const Page: FC = () => {
   const { data: readData, refetch: dataRefetch, isError: readIsError, isLoading: readIsLoading, error: readError } = useReadContract({
     functionName: "get_balance",
     args: [],
-    abi: ABI as Abi,
+    abi: abi as Abi,
     address: contractAddress,
     watch: true,
     refetchInterval: 1000
@@ -44,7 +44,7 @@ const Page: FC = () => {
     console.log("Form submitted with amount ", amount);
     writeAsync();
   };
-  const typedABI = ABI as Abi;
+  const typedABI = abi as Abi;
   const { contract } = useContract({
     abi: typedABI,
     address: contractAddress,

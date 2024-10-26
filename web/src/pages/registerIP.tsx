@@ -5,7 +5,9 @@ import Link from 'next/link'
 import { pinataClient } from '@/utils/pinataClient'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useRouter } from 'next/navigation'
-import { useAccount } from '@starknet-react/core'
+import { useAccount, useNetwork, useContract, useSendTransaction } from '@starknet-react/core'
+import { type Abi } from "starknet"
+import { abi } from '@/abis/abi'
 
 export type IPType = "" | "patent" | "trademark" | "copyright" | "trade_secret";
 
@@ -19,8 +21,14 @@ export interface IP{
 
 
 export default function RegisterIP() {
-  // const {address: connectedAddress, isConnected, isConnecting} = useAccount();
 
+  const { address } = useAccount();
+  const { chain } = useNetwork();
+  const { contract } = useContract({ 
+    abi: abi as Abi, 
+    address: address, 
+  }); 
+   
   const GATEWAY_URL = process.env.HOST;
   console.log(GATEWAY_URL);
 
@@ -75,6 +83,22 @@ export default function RegisterIP() {
     }
   };
 
+  const { send, error: mintError} = useSendTransaction({ 
+    calls: 
+      contract && address 
+        ? [contract.populate("mint_item", [address, ipfsUrl])] 
+        : undefined, 
+  }); 
+
+  const handleMintItem = async () => {
+    try {
+      send();
+    }
+    catch(error){
+      console.error("Mint error:", mintError); 
+    }    
+  };
+
   const handleSubmit = async (event: React.FormEvent) => {
     console.log(ipData);
     event.preventDefault();
@@ -118,12 +142,14 @@ export default function RegisterIP() {
       
       const data = await response.json();
       const ipfsHash = data.uploadData.cid as string;
-
+      setipfsUrl(gateway + ipfsHash);
       // router.push("/myIPs");
       // handleSetTokenUri(data.url);
 
+      handleMintItem();
+
     } catch (err) {
-        setError('Failed to submit IP. Please try again.');
+        setError('Failed submitting or minting IP. Please try again.');
     } finally {
         setIsSubmitting(false);
     }
