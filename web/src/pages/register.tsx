@@ -11,7 +11,6 @@ import { useAccount, useNetwork, useContract, useSendTransaction } from '@starkn
 import { type Abi } from "starknet"
 import { abi } from '@/abis/abi'
 
-
 import {
   toast
 } from "sonner"
@@ -47,10 +46,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import {
+  Textarea
+} from "@/components/ui/textarea"
+import {
+  format
+} from "date-fns"
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover"
+import {
+  Calendar
+} from "@/components/ui/calendar"
+import {
+  Calendar as CalendarIcon
+} from "lucide-react"
 
 const formSchema = z.object({
   title: z.string(),
-  type: z.string()
+  type: z.string(),
+  description: z.string(),
+  author: z.string(),
+  date: z.coerce.date().optional(),
+  mediaurl: z.string().optional(),
+  version: z.string().optional()
 });
 
 export default function IPRegister() {
@@ -73,6 +94,7 @@ export default function IPRegister() {
       toast.error("Failed to submit the form. Please try again.");
     }
   }
+
 
 
 
@@ -154,9 +176,126 @@ export default function IPRegister() {
             </FormItem>
           )}
         />
+        
+        <FormField
+          control={form.control}
+          name="description"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Description</FormLabel>
+              <FormControl>
+                <Textarea
+                  placeholder="The Content of Your Intellectual Property"
+                  className="resize-none"
+                  {...field}
+                />
+              </FormControl>
+              <FormDescription>Insert the content of your IP</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        
+        <FormField
+          control={form.control}
+          name="author"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Author</FormLabel>
+              <FormControl>
+                <Input 
+                placeholder="Author(s)"
+                
+                type=""
+                {...field} />
+              </FormControl>
+              <FormDescription>Your IP public display author(s).</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        
+      <FormField
+      control={form.control}
+      name="date"
+      render={({ field }) => (
+        <FormItem className="flex flex-col">
+          <FormLabel>Creation</FormLabel>
+          <Popover>
+            <PopoverTrigger asChild>
+              <FormControl>
+                <Button
+                  variant={"outline"}
+                  className={cn(
+                    "w-[240px] pl-3 text-left font-normal",
+                    !field.value && "text-muted-foreground"
+                  )}
+                >
+                  {field.value ? (
+                    format(field.value, "PPP")
+                  ) : (
+                    <span>Pick a date</span>
+                  )}
+                  <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                </Button>
+              </FormControl>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="start">
+              <Calendar
+                mode="single"
+                selected={field.value}
+                onSelect={field.onChange}
+                initialFocus
+              />
+            </PopoverContent>
+          </Popover>
+       <FormDescription>Public date of birth</FormDescription>
+          <FormMessage />
+        </FormItem>
+      )}
+    />
+        
+        <FormField
+          control={form.control}
+          name="mediaurl"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Media URL</FormLabel>
+              <FormControl>
+                <Input 
+                placeholder="https://"
+                
+                type=""
+                {...field} />
+              </FormControl>
+              <FormDescription>IP Media Thumbnail</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
+        
+        <FormField
+          control={form.control}
+          name="version"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel>Version</FormLabel>
+              <FormControl>
+                <Input 
+                placeholder=""
+                
+                type=""
+                {...field} />
+              </FormControl>
+              <FormDescription>IP Version (optional)</FormDescription>
+              <FormMessage />
+            </FormItem>
+          )}
+        />
         <Button type="submit">Submit</Button>
       </form>
     </Form>
+
 
     </CardContent>
     <CardFooter className="flex justify-between">
