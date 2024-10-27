@@ -27,13 +27,15 @@ export default function RootLayout({
             enableSystem
             disableTransitionOnChange
           >
+      <Providers>
         <div className="flex flex-col min-h-screen">
         <Header />
         <main className="flex-grow container mx-auto px-4 py-8">
-        <Providers>{children}</Providers>
+        {children}
         </main>
         <Footer />
         </div>
+        </Providers>
         </ThemeProvider>
       </body>
     </html>
