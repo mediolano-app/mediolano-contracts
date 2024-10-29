@@ -1,0 +1,14 @@
+[sncast.myprofile]
+account = "myprofile"
+accounts-file = "~/.starkli-wallets/deployer/account.json"
+url = "https://free-rpc.nethermind.io/sepolia-juno/"
+
+[sncast.deploy_dev]
+account = "deploy_dev"
+accounts-file = "/home/pedrorosalba/.starknet_accounts/starknet_open_zeppelin_accounts.json"
+url = "https://free-rpc.nethermind.io/sepolia-juno/"
+
+[sncast.test]
+account = "test"
+accounts-file = "/home/pedrorosalba/.starknet_accounts/starknet_open_zeppelin_accounts.json"
+url = "https://starknet-sepolia.public.blastapi.io/rpc/v0_7"
