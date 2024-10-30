@@ -1,4 +1,3 @@
-import Layout from '../components/layout'
 import { useState } from 'react'
 import { Search, FileText, DollarSign, Calendar, Info } from 'lucide-react'
 
@@ -44,7 +43,6 @@ export default function License() {
   }
 
   return (
-    <Layout>
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">License Intellectual Property</h1>
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
@@ -165,6 +163,5 @@ export default function License() {
           </div>
         </div>
       </div>
-    </Layout>
   )
 }

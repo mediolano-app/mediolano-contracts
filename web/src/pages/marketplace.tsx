@@ -1,4 +1,3 @@
-import Layout from '../components/layout'
 import { useState } from 'react'
 import { Search, Filter, Tag, DollarSign, Clock, User, MessageSquare, Info } from 'lucide-react'
 
@@ -39,7 +38,6 @@ export default function Marketplace() {
   }
 
   return (
-    <Layout>
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">IP Marketplace</h1>
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
@@ -149,6 +147,5 @@ export default function Marketplace() {
           </div>
         </div>
       )}
-    </Layout>
   )
 }

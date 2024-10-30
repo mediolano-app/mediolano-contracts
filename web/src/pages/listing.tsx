@@ -1,4 +1,3 @@
-import Layout from '../components/layout'
 import { useState } from 'react'
 import { Upload, DollarSign, Info } from 'lucide-react'
 
@@ -30,7 +29,6 @@ export default function Listing() {
   }
 
   return (
-    <Layout>
       <div className="max-w-2xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">List Your Intellectual Property</h1>
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
@@ -135,6 +133,5 @@ export default function Listing() {
           </button>
         </form>
       </div>
-    </Layout>
   )
 }

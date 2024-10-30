@@ -6,7 +6,6 @@ import { BlockNumber, Contract, RpcProvider } from "starknet";
 import { ABI } from "../abis/abi";
 import { type Abi } from "starknet";
 import { formatAmount, shortenAddress } from '@/lib/utils';
-import Layout from '../components/layout'
 import Link from "next/link"
 import Image from "next/image";
 
@@ -20,7 +19,6 @@ const Page: FC = () => {
 
 
   return (
-    <Layout>
    <div className="flex flex-col min-h-screen">
       
       <main className="flex-1">
@@ -153,7 +151,6 @@ const Page: FC = () => {
       </main>
       
     </div>
-    </Layout>
   );
 };
 

@@ -3,8 +3,7 @@ import { infuraProvider, useReadContract } from "@starknet-react/core";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "../components/ui/card"
 import {abi} from "../../src/abis/abi";
 import {type Abi} from "starknet";
-const apiKey = process.env.INFURA_API_KEY;
-const provider = infuraProvider({ apiKey });
+
 // const abi = [{
 //   type: "interface",
 //   name: "openzeppelin::token::erc721::interface::IERC721MetadataCamelOnly",

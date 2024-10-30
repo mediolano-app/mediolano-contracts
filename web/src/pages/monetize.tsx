@@ -1,4 +1,3 @@
-import Layout from '../components/layout'
 import { useState } from 'react'
 import { DollarSign, BarChart, Zap, Shield, Info } from 'lucide-react'
 
@@ -23,7 +22,6 @@ export default function Monetize() {
   const totalLicensees = ipItems.reduce((sum, item) => sum + item.licensees, 0)
 
   return (
-    <Layout>
       <div className="max-w-4xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">Monetize Your Intellectual Property</h1>
         <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
@@ -113,6 +111,5 @@ export default function Monetize() {
           </div>
         )}
       </div>
-    </Layout>
   )
 }

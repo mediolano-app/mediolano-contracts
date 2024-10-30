@@ -1,6 +1,5 @@
 "use client"
 
-import Layout from '../components/layout'
 import { useState } from 'react'
 import { FilePlus, Lock, FileText, Coins, Shield, Globe, BarChart, Book, Music, Film, FileCode, Palette, File, ScrollText, Clock, ArrowRightLeft, ShieldCheck, Banknote, Globe2 } from 'lucide-react'
 import Link from 'next/link'
@@ -116,7 +115,6 @@ export default function IPRegister() {
 
     <>
     
-    <Layout>
       <div className="container mx-auto px-4 py-8">
         <h1 className="text-4xl font-bold text-center mb-8">Intellectual Property Registration</h1>
 
@@ -447,7 +445,6 @@ export default function IPRegister() {
 
           </div>
 
-  </Layout>
     
     </>
 
