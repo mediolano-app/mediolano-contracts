@@ -16,7 +16,7 @@ export default function App({ Component, pageProps }: AppProps) {
               disableTransitionOnChange
             >
           <Providers>
-            <div className="flex flex-col min-h-screen gradient-background dark:gradient-background-night">
+            <div className="flex flex-col min-h-screen gradient-background">
               <Header />
                 <main className="flex-grow container mx-auto px-4 py-8">
                 <Component {...pageProps} />
