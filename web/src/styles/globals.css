@@ -4,6 +4,8 @@
 
   
   @layer base {
+    
+
     :root {
       --base-1: 209.99999999999977 100% 99.2156862745098%;
       --base-2: 207.27272727272737 100% 97.84313725490196%;
@@ -111,5 +113,46 @@
       --sidebar-accent-foreground: 240 4.8% 95.9%;
       --sidebar-border: 240 3.7% 15.9%;
       --sidebar-ring: 217.2 91.2% 59.8%;
+    }
+  }
+
+
+  .bg-modal {
+    backdrop-filter: blur(7.449999809265137px);
+  }
+
+  .gradient-background {
+    background: linear-gradient(300deg,rgb(199, 225, 255),rgb(208, 208, 255),#bfcbf0);
+    background-size: 180% 180%;
+    animation: gradient-animation 18s ease infinite;
+
+    @keyframes gradient-animation {
+      0% {
+        background-position: 0% 50%;
+      }
+      50% {
+        background-position: 100% 50%;
+      }
+      100% {
+        background-position: 0% 50%;
+      }
+    }
+  }
+
+  .gradient-background-night {
+    background: linear-gradient(300deg,rgb(26, 3, 129),rgb(0, 0, 117),#002fbc);
+    background-size: 180% 180%;
+    animation: gradient-animation-night 18s ease infinite;
+  }
+  
+  @keyframes gradient-animation-night {
+    0% {
+      background-position: 0% 50%;
+    }
+    50% {
+      background-position: 100% 50%;
+    }
+    100% {
+      background-position: 0% 50%;
     }
   }

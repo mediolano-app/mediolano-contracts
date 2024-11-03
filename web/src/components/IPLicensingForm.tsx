@@ -126,7 +126,8 @@ export default function IPLicensingForm() {
 
   return (
     <Form {...form}>
-      <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-8 max-w-3xl mx-auto py-10">
+      <form onSubmit={form.handleSubmit(onSubmit)} className="max-w-3xl mx-auto">
+      <div className="">
         <FormField
           control={form.control}
           name="IPID"
@@ -234,10 +235,9 @@ export default function IPLicensingForm() {
           )}
         />
 
-        <hr></hr>
+        <hr className="mt-5 mb-5"></hr>
         
-        <h4>Licensing options</h4>
-
+        <h4 className="mb-5">Licensing options</h4>
 
         <FormField
           control={form.control}
@@ -335,9 +335,11 @@ export default function IPLicensingForm() {
         />
 
 
-        <hr></hr>
+        <hr className="mt-5 mb-5"></hr>
+        
+        <h4 className="mb-5">Financial Terms</h4>
 
-        <h4>Financial Terms</h4>
+
         
         <FormField
           control={form.control}
@@ -510,7 +512,10 @@ export default function IPLicensingForm() {
             </FormItem>
           )}
         />
-        <Button type="submit">License Your IP</Button>
+        <Button className="mt-5" type="submit">License Your IP</Button>
+
+        </div>
+
       </form>
     </Form>
   )

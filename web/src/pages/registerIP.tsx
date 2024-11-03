@@ -165,7 +165,7 @@ export default function RegisterIP() {
 
     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
 
-    <div className="bg-card bg-primary text-card-foreground rounded-lg shadow-lg">
+    <div className="bg-card text-card-foreground rounded-lg shadow-lg">
 
     <Card>
     <CardHeader>
@@ -257,6 +257,7 @@ export default function RegisterIP() {
     
     <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3 mb-16">
       {templates.map((template) => (
+        <Card>
         <Link
           key={template.name}
           href={template.href}
@@ -276,6 +277,7 @@ export default function RegisterIP() {
             </div>
           </div>
         </Link>
+        </Card>
       ))}
     </div>
 
@@ -287,8 +289,11 @@ export default function RegisterIP() {
 
 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 mt-10">
 
+<Card>
   <div className="text-card-foreground rounded-lg p-6">
 
+
+  
     <div className="py-2">
       <h2 className="text-2xl font-semibold mb-2">Blockchain IP Registration Features</h2>
       <p className="text-muted-foreground mb-4">Secure, transparent, and efficient</p>
@@ -339,7 +344,7 @@ export default function RegisterIP() {
         </li>
       </ul>
     </div>
-
+    </Card>
 
     <div className="space-y-6">
       <Card>

@@ -38,15 +38,15 @@ export default function License() {
   
 
   return (
-      <div className="max-w-4xl mx-auto">
+      <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">License Intellectual Property</h1>
-        <div className="bg-blue-50 border-l-4 border-blue-400 p-4 mb-6">
+        <div className="bg-blue-200 dark:bg-blue-900 border-l-4 border-blue-400 p-4 mb-6">
           <div className="flex">
             <div className="flex-shrink-0">
-              <Info className="h-5 w-5 text-blue-400" />
+              <Info className="h-5 w-5" />
             </div>
             <div className="ml-3">
-              <p className="text-sm text-blue-700">
+              <p className="text-sm">
                 Our blockchain-based licensing system ensures transparent and immutable record-keeping. Smart contracts can be used to automate royalty payments and enforce license terms.
               </p>
             </div>
@@ -64,15 +64,15 @@ export default function License() {
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
-                <Search className="absolute left-3 top-2.5 text-gray-400" />
+                <Search className="absolute left-3 top-2.5" />
               </div>
             </div>
             <div className="space-y-4">
               {filteredItems.map(item => (
                 <div
                   key={item.id}
-                  className={`p-4 border rounded-md cursor-pointer transition-colors duration-300 ${
-                    selectedIP?.id === item.id ? 'bg-primary text-white' : 'bg-white hover:bg-gray-50'
+                  className={`p-4 shadow bg-secondary rounded-md cursor-pointer transition-colors duration-300 ${
+                    selectedIP?.id === item.id ? 'text-primary' : 'hover:bg-secondary'
                   }`}
                   onClick={() => setSelectedIP(item)}
                 >
@@ -82,7 +82,7 @@ export default function License() {
               ))}
             </div>
           </div>
-          <div>
+          <div className='bg-med shadow rounded p-5 bg-white dark:bg-black'>
             <h2 className="text-xl font-semibold mb-4">License Details</h2>
             
 
