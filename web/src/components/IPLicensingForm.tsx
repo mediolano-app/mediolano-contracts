@@ -78,6 +78,8 @@ const formSchema = z.object({
 });
 
 export default function IPLicensingForm() {
+  
+  
   const languages = [{
       label: "English",
       value: "en"
@@ -86,36 +88,23 @@ export default function IPLicensingForm() {
       label: "French",
       value: "fr"
     },
-    {
-      label: "German",
-      value: "de"
-    },
-    {
-      label: "Spanish",
-      value: "es"
-    },
-    {
-      label: "Portuguese",
-      value: "pt"
-    },
-    {
-      label: "Russian",
-      value: "ru"
-    },
-    {
-      label: "Japanese",
-      value: "ja"
-    },
-    {
-      label: "Korean",
-      value: "ko"
-    },
-    {
-      label: "Chinese",
-      value: "zh"
-    },
-  ] as
-  const;
+  ] as const;
+
+
+
+  const listIPs = [{
+    label: "IP I",
+    value: "IP I"
+  },
+  {
+    label: "IP II",
+    value: "IP II"
+  },
+] as const;
+
+
+
+
   const form = useForm < z.infer < typeof formSchema >> ({
     resolver: zodResolver(formSchema),
 
@@ -157,37 +146,37 @@ export default function IPLicensingForm() {
                       
                     >
                       {field.value
-                        ? languages.find(
-                            (language) => language.value === field.value
+                        ? listIPs.find(
+                            (listIP) => listIP.value === field.value
                           )?.label
-                        : "Select language"}
+                        : "Select IP"}
                       <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                     </Button>
                   </FormControl>
                 </PopoverTrigger>
                 <PopoverContent className="w-[200px] p-0">
                   <Command>
-                    <CommandInput placeholder="Search language..." />
+                    <CommandInput placeholder="Search IP..." />
                     <CommandList>
-                      <CommandEmpty>No language found.</CommandEmpty>
+                      <CommandEmpty>No IP found.</CommandEmpty>
                       <CommandGroup>
-                        {languages.map((language) => (
+                        {listIPs.map((listIP) => (
                           <CommandItem
-                            value={language.label}
-                            key={language.value}
+                            value={listIP.label}
+                            key={listIP.value}
                             onSelect={() => {
-                              form.setValue("IPID", language.value);
+                              form.setValue("IPID", listIP.value);
                             }}
                           >
                             <Check
                               className={cn(
                                 "mr-2 h-4 w-4",
-                                language.value === field.value
+                                listIP.value === field.value
                                   ? "opacity-100"
                                   : "opacity-0"
                               )}
                             />
-                            {language.label}
+                            {listIP.label}
                           </CommandItem>
                         ))}
                       </CommandGroup>
@@ -214,9 +203,10 @@ export default function IPLicensingForm() {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="m@example.com">m@example.com</SelectItem>
-                  <SelectItem value="m@google.com">m@google.com</SelectItem>
-                  <SelectItem value="m@support.com">m@support.com</SelectItem>
+                  <SelectItem value="Sale">Sale</SelectItem>
+                  <SelectItem value="Royalties">Royalties</SelectItem>
+                  <SelectItem value="Auction">Auction</SelectItem>
+                  <SelectItem value="Other">Other</SelectItem>
                 </SelectContent>
               </Select>
                 <FormDescription>Choose the type of licensing</FormDescription>
@@ -243,7 +233,12 @@ export default function IPLicensingForm() {
             </FormItem>
           )}
         />
+
+        <hr></hr>
         
+        <h4>Licensing options</h4>
+
+
         <FormField
           control={form.control}
           name="field"
@@ -338,13 +333,18 @@ export default function IPLicensingForm() {
             </FormItem>
           )}
         />
+
+
+        <hr></hr>
+
+        <h4>Financial Terms</h4>
         
         <FormField
           control={form.control}
           name="financialTerms"
           render={({ field }) => (
             <FormItem>
-              <FormLabel>Financial Terms</FormLabel>
+              <FormLabel>Terms</FormLabel>
               <Select onValueChange={field.onChange} defaultValue={field.value}>
                 <FormControl>
                   <SelectTrigger>
@@ -352,9 +352,12 @@ export default function IPLicensingForm() {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="m@example.com">m@example.com</SelectItem>
-                  <SelectItem value="m@google.com">m@google.com</SelectItem>
-                  <SelectItem value="m@support.com">m@support.com</SelectItem>
+                  <SelectItem value="Sale">Sale</SelectItem>
+                  <SelectItem value="Auction">Auction</SelectItem>
+                  <SelectItem value="Royalties">Royalties</SelectItem>
+                  <SelectItem value="Crowdfunding">Crowdfunding</SelectItem>
+                  <SelectItem value="Installment">Installment</SelectItem>
+                  <SelectItem value="Advanced">Advanced</SelectItem>
                 </SelectContent>
               </Select>
                 <FormDescription>Choose the financial compensation model</FormDescription>
@@ -395,9 +398,10 @@ export default function IPLicensingForm() {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="m@example.com">m@example.com</SelectItem>
-                  <SelectItem value="m@google.com">m@google.com</SelectItem>
-                  <SelectItem value="m@support.com">m@support.com</SelectItem>
+                  <SelectItem value="ETH">ETH</SelectItem>
+                  <SelectItem value="STRK">STRK</SelectItem>
+                  <SelectItem value="USDC">USDC</SelectItem>
+                  <SelectItem value="JOIN">JOIN</SelectItem>
                 </SelectContent>
               </Select>
                 <FormDescription>Select which cryptocurrency you want to use in the transaction.</FormDescription>
@@ -457,9 +461,10 @@ export default function IPLicensingForm() {
                   </SelectTrigger>
                 </FormControl>
                 <SelectContent>
-                  <SelectItem value="m@example.com">m@example.com</SelectItem>
-                  <SelectItem value="m@google.com">m@google.com</SelectItem>
-                  <SelectItem value="m@support.com">m@support.com</SelectItem>
+                  <SelectItem value="Weekly">Weekly</SelectItem>
+                  <SelectItem value="Monthly">Monthly</SelectItem>
+                  <SelectItem value="Quarterly">Quarterly</SelectItem>
+                  <SelectItem value="Annual">Annual</SelectItem>
                 </SelectContent>
               </Select>
                 <FormDescription>Set the frequency of the recurring payment.</FormDescription>
@@ -505,7 +510,7 @@ export default function IPLicensingForm() {
             </FormItem>
           )}
         />
-        <Button type="submit">Submit</Button>
+        <Button type="submit">License Your IP</Button>
       </form>
     </Form>
   )

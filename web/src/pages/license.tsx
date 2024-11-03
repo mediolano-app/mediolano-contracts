@@ -3,11 +3,6 @@ import { Search, FileText, DollarSign, Calendar, Info } from 'lucide-react'
 
 import IPLicensingForm from '@/components/IPLicensingForm'
 
-const type = [
-                    { label: "Article", value: "Article" },
-                    { label: "Music", value: "Music" },
-                    { label: "Software", value: "software" },
-]
 
 type IPItem = {
   id: string;
