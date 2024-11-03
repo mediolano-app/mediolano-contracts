@@ -221,7 +221,7 @@ export default function RegisterIP() {
           setIpData((prev) => ({ ...prev, "ipType": e.target.value }));
           console.log(e);
         }}
-        className="w-full input input-bordered rounded border bg-primary"
+        className="w-full input-bordered rounded border"
       >
         <option value="patent">Patent</option>
         <option value="trademark">Trademark</option>

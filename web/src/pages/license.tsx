@@ -1,6 +1,14 @@
 import { useState } from 'react'
 import { Search, FileText, DollarSign, Calendar, Info } from 'lucide-react'
 
+import IPLicensingForm from '@/components/IPLicensingForm'
+
+const type = [
+                    { label: "Article", value: "Article" },
+                    { label: "Music", value: "Music" },
+                    { label: "Software", value: "software" },
+]
+
 type IPItem = {
   id: string;
   title: string;
@@ -15,6 +23,8 @@ const ipItems: IPItem[] = [
 ]
 
 export default function License() {
+
+  
   const [selectedIP, setSelectedIP] = useState<IPItem | null>(null)
   const [searchTerm, setSearchTerm] = useState('')
   const [formData, setFormData] = useState({
@@ -30,17 +40,7 @@ export default function License() {
     item.owner.toLowerCase().includes(searchTerm.toLowerCase())
   )
 
-  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
-    const { name, value } = e.target
-    setFormData(prevData => ({ ...prevData, [name]: value }))
-  }
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault()
-    // Here you would typically send the data to your backend
-    console.log('License form submitted:', { ...formData, selectedIP })
-    // Reset form or show success message
-  }
+  
 
   return (
       <div className="max-w-4xl mx-auto">
@@ -89,77 +89,11 @@ export default function License() {
           </div>
           <div>
             <h2 className="text-xl font-semibold mb-4">License Details</h2>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div>
-                <label htmlFor="licenseeCompany" className="block text-sm font-medium text-gray-700 mb-1">Licensee Company</label>
-                <input
-                  type="text"
-                  id="licenseeCompany"
-                  name="licenseeCompany"
-                  value={formData.licenseeCompany}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="licenseeEmail" className="block text-sm font-medium text-gray-700 mb-1">Licensee Email</label>
-                <input
-                  type="email"
-                  id="licenseeEmail"
-                  name="licenseeEmail"
-                  value={formData.licenseeEmail}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="licenseType" className="block text-sm font-medium text-gray-700 mb-1">License Type</label>
-                <select
-                  id="licenseType"
-                  name="licenseType"
-                  value={formData.licenseType}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  required
-                >
-                  <option value="exclusive">Exclusive</option>
-                  <option value="non-exclusive">Non-Exclusive</option>
-                  <option value="sole">Sole</option>
-                </select>
-              </div>
-              <div>
-                <label htmlFor="duration" className="block text-sm font-medium text-gray-700 mb-1">Duration (in months)</label>
-                <input
-                  type="number"
-                  id="duration"
-                  name="duration"
-                  value={formData.duration}
-                  onChange={handleChange}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="terms" className="block text-sm font-medium text-gray-700 mb-1">Additional Terms</label>
-                <textarea
-                  id="terms"
-                  name="terms"
-                  value={formData.terms}
-                  onChange={handleChange}
-                  rows={4}
-                  className="w-full px-3 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
-                ></textarea>
-              </div>
-              <button
-                type="submit"
-                disabled={!selectedIP}
-                className="w-full bg-primary text-white px-4 py-2 rounded-md hover:bg-primary-dark transition-colors duration-300 disabled:opacity-50"
-              >
-                Submit License Request
-              </button>
-            </form>
+            
+
+            <IPLicensingForm/>
+
+
           </div>
         </div>
       </div>
