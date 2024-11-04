@@ -109,7 +109,6 @@ export default function Header() {
          </div>
          
           <span className="hidden font-bold sm:inline-block">
-            
           </span>
         </Link>
 
