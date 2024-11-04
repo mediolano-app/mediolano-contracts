@@ -88,10 +88,28 @@ export default function Header() {
   return (
      <header className="sticky top-0 z-50 w-full bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/30">
       <div className="container flex h-20 items-center ml-4">
-        <Link href="/" className="mr-6 flex items-center space-x-2">
-          <img src='./mediolano.webp' alt='Mediolano.app' width='35'/>
+        
+        <Link href="/" className="mr-6 flex mt-4 items-center space-x-2">
+
+        <div>
+        <Image
+          className="hidden dark:block"
+          src="/mediolano-logo-dark.png"
+          alt="dark-mode-image"
+          width={140}
+          height={33}
+        />
+        <Image
+          className="mb-4 block dark:hidden"
+          src="/mediolano-logo-light.svg"
+          alt="light-mode-image"
+          width={140}
+          height={33}
+        />
+         </div>
+         
           <span className="hidden font-bold sm:inline-block">
-            Mediolano
+            
           </span>
         </Link>
 
