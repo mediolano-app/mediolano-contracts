@@ -1,7 +1,16 @@
 'use client';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useAccount, useBalance, useBlockNumber, useContract, useReadContract, useSendTransaction, useTransactionReceipt } from '@starknet-react/core';
+import { BlockNumber, Contract, RpcProvider } from "starknet";
+import { mockedAbi } from "@/abis/mockedAbi";
+import { type Abi } from "starknet";
+import { formatAmount, shortenAddress } from '@/lib/utils';
+
+const WalletBar = dynamic(() => import('@/components/WalletBar'), { ssr: false })
 
 import Link from 'next/link';
-import { FC, useState } from 'react';
+
 import { ModeToggle } from '@/components/theme-switch';
 import Image from "next/image";
 
@@ -34,6 +43,9 @@ import {
   SheetTitle,
   SheetTrigger,
 } from '@/components/ui/sheet'
+
+
+
 
 const navItems = [
   { href: '/start', label: 'Start' },
@@ -170,41 +182,9 @@ export default function Header() {
 
         <div className="flex flex-1 items-center justify-end space-x-4">
 
-
-        <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Wallet className="mr-2 h-4 w-4" />
-                {isWalletConnected ? 'Connected' : 'Connect Wallet'}
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {isWalletConnected ? (
-                <>
-                  <DropdownMenuLabel>Wallet Connected</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={handleWalletDisconnect}>
-                    Disconnect
-                  </DropdownMenuItem>
-                </>
-              ) : (
-                <>
-                  <DropdownMenuLabel>Select your chain</DropdownMenuLabel>
-                  <DropdownMenuItem onClick={handleWalletConnect}>
-                    Starknet
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleWalletConnect}>
-                    Ethereum
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onClick={handleWalletConnect}>
-                    Solana
-                  </DropdownMenuItem>
-                </>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-
-
-
+        <WalletBar />
+       
+       
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" size="icon">

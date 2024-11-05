@@ -40,7 +40,7 @@ export default function License() {
   return (
       <div className="max-w-6xl mx-auto">
         <h1 className="text-3xl font-bold mb-6">License Intellectual Property</h1>
-        <div className="bg-blue-200 dark:bg-blue-900 border-l-4 border-blue-400 p-4 mb-6">
+        <div className="bg-blue-100 dark:bg-blue-900 border-l-4 border-blue-400 p-4 mb-6">
           <div className="flex">
             <div className="flex-shrink-0">
               <Info className="h-5 w-5" />
