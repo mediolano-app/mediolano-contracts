@@ -9,12 +9,9 @@ import {
   useInjectedConnectors,
   jsonRpcProvider,
   voyager,
-  infuraProvider,
 } from "@starknet-react/core";
 
 export function Providers({ children }: { children: ReactNode }) {
-  const apiKey = process.env.INFURA_API_KEY as string;
-  const provider = infuraProvider({apiKey});
   const { connectors } = useInjectedConnectors({
     // Show these connectors if the user has no connector installed.
     recommended: [argent(), braavos()],
@@ -26,9 +23,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <StarknetConfig
       chains={[sepolia]}
-      provider={ 
-        provider
-      }
+      provider={jsonRpcProvider({ rpc: (chain) => ({ nodeUrl: process.env.NEXT_PUBLIC_RPC_URL }) })}
       connectors={connectors}
       explorer={voyager}
     >
