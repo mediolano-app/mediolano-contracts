@@ -54,13 +54,13 @@ export default function License() {
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
           <div>
-            <h2 className="text-xl font-semibold mb-4">Select Intellectual Property</h2>
+            <h4 className="text-xl font-semibold mb-4">Select Intellectual Property</h4>
             <div className="mb-4">
               <div className="relative">
                 <input
                   type="text"
                   placeholder="Search IP..."
-                  className="w-full pl-10 pr-4 py-2 border rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
+                  className="w-full pl-10 pr-4 py-2 rounded-md focus:outline-none focus:ring-2 focus:ring-primary"
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                 />
@@ -71,7 +71,7 @@ export default function License() {
               {filteredItems.map(item => (
                 <div
                   key={item.id}
-                  className={`p-4 shadow bg-secondary rounded-md cursor-pointer transition-colors duration-300 ${
+                  className={`p-4 shadow bg-white dark:bg-black rounded-md cursor-pointer transition-colors duration-300 ${
                     selectedIP?.id === item.id ? 'text-primary' : 'hover:bg-secondary'
                   }`}
                   onClick={() => setSelectedIP(item)}
