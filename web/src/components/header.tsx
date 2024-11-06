@@ -7,6 +7,8 @@ import { mockedAbi } from "@/abis/mockedAbi";
 import { type Abi } from "starknet";
 import { formatAmount, shortenAddress } from '@/lib/utils';
 
+
+const WalletPanel = dynamic(() => import('@/components/WalletPanel'), { ssr: false })
 const WalletBar = dynamic(() => import('@/components/WalletBar'), { ssr: false })
 
 import Link from 'next/link';

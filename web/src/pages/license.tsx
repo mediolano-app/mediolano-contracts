@@ -1,4 +1,11 @@
-import { useState } from 'react'
+'use client';
+import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
+import { useAccount, useBalance, useBlockNumber, useContract, useReadContract, useSendTransaction, useTransactionReceipt } from '@starknet-react/core';
+import { BlockNumber, Contract, RpcProvider } from "starknet";
+import { mockedAbi } from "../abis/mockedAbi";
+import { type Abi } from "starknet";
+import { formatAmount, shortenAddress } from '@/lib/utils';
 import { Search, FileText, DollarSign, Calendar, Info } from 'lucide-react'
 
 import IPLicensingForm from '@/components/IPLicensingForm'
@@ -18,6 +25,21 @@ const ipItems: IPItem[] = [
 ]
 
 export default function License() {
+
+  // Step 1 --> Read the latest block -- Start
+  const { data: blockNumberData, isLoading: blockNumberIsLoading, isError: blockNumberIsError } = useBlockNumber({
+    blockIdentifier: 'latest' as BlockNumber
+  });
+  const workshopEnds = 580000;
+  // Step 1 --> Read the latest block -- End
+
+  // Step 2 --> Read your balance -- Start
+  const { address: userAddress } = useAccount();
+  const { isLoading: balanceIsLoading, isError: balanceIsError, error: balanceError, data: balanceData } = useBalance({
+    address: userAddress,
+    watch: true
+  });
+  // Step 2 --> Read your balance -- End
 
   
   const [selectedIP, setSelectedIP] = useState<IPItem | null>(null)
@@ -49,6 +71,8 @@ export default function License() {
               <p className="text-sm">
                 Our blockchain-based licensing system ensures transparent and immutable record-keeping. Smart contracts can be used to automate royalty payments and enforce license terms.
               </p>
+
+
             </div>
           </div>
         </div>
