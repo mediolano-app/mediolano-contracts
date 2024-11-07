@@ -4,5 +4,6 @@ npm
 .npm
 web/.next
 web/.env.local
-.next
+.env.local
 .env
+.next

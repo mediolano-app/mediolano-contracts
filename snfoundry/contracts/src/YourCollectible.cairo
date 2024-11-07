@@ -3,6 +3,8 @@ use starknet::ContractAddress;
 #[starknet::interface]
 pub trait IYourCollectible<T> {
     fn test_contract(ref self: T);
+    fn write_test(ref self: T, test_word: felt252);
+    fn retrieve_test_word(self: @T) -> felt252;
     fn mint_item(ref self: T, recipient: ContractAddress, uri: ByteArray) -> u256;
 }
 
@@ -61,6 +63,7 @@ mod YourCollectible {
         enumerable: ERC721EnumerableComponent::Storage,
         // ERC721URIStorage variables
         // Mapping for token URIs
+        test_word: felt252,
         token_uris: Map<u256, ByteArray>,
     }
 
@@ -92,6 +95,15 @@ mod YourCollectible {
         fn test_contract(ref self: ContractState) {
             println!("Just testing");
         }
+
+        fn write_test(ref self: ContractState, test_word: felt252){
+            self.test_word.write(test_word)
+        }
+
+        fn retrieve_test_word(self: @ContractState) -> felt252 {
+            self.test_word.read()
+        }
+
         fn mint_item(ref self: ContractState, recipient: ContractAddress, uri: ByteArray) -> u256 {
             self.token_id_counter.increment();
             let token_id = self.token_id_counter.current();
