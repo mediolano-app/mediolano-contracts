@@ -27,18 +27,19 @@ import {type Abi} from "starknet";
 //   ],
 // }]; 
 interface MyIPCardProps {
+  key: number,
   contractAddress: string;
-  index: number;
+  tokenId: BigInt;
 }
-const MyIPCard: React.FC<MyIPCardProps> = ({ contractAddress, index }) => {
+const MyIPCard: React.FC<MyIPCardProps> = ({ key, contractAddress, tokenId }) => {
   const [tokenURI, setTokenURI] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { data, isLoading: isContractLoading, error: contractError } = useReadContract({
-    address: contractAddress as string,
     abi: abi as Abi,
     functionName: 'tokenURI',
-    args: [index],
+    address: contractAddress as `0x${string}`,
+    args: [tokenId],
     watch: false,
   });
   
@@ -64,7 +65,7 @@ const MyIPCard: React.FC<MyIPCardProps> = ({ contractAddress, index }) => {
   return (
     <Card>
       <CardHeader>
-        <CardTitle>IP Token #{index}</CardTitle>
+        <CardTitle>IP Token #{tokenId.toString()}</CardTitle>
       </CardHeader>
       <CardContent>
         <p>Token URI: {tokenURI}</p>

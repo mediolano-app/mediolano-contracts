@@ -1,7 +1,6 @@
 import { useState } from 'react'
 import { FilePlus, Lock, FileText, Coins, Shield, Globe, BarChart, Book, Music, Film, FileCode, Palette, File, ScrollText, Clock, ArrowRightLeft, ShieldCheck, Banknote, Globe2 } from 'lucide-react'
 import Link from 'next/link'
-import { pinataClient } from '@/utils/pinataClient'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { useRouter } from 'next/navigation'
 import { useAccount, useNetwork, useContract, useSendTransaction } from '@starknet-react/core'
@@ -25,7 +24,7 @@ export default function RegisterIP() {
   const { chain } = useNetwork();
   const { contract } = useContract({ 
     abi: abi as Abi, 
-    address: address, 
+    address: "0x07e39e39ddee958c8a9221d82f639aa9112d6789259ccf09f2a7eb8e021c051c", 
   }); 
    
   const GATEWAY_URL = process.env.HOST;
@@ -37,6 +36,7 @@ export default function RegisterIP() {
   const router = useRouter();  
   const [status, setStatus] = useState("Mint NFT");
   const [ipfsUrl, setipfsUrl] = useState("");
+  const [ipfsHash, setIpfsHash] = useState("");
 
   const baseIpfsUrl = "https://ipfs.io/ipfs/";
 
@@ -85,7 +85,7 @@ export default function RegisterIP() {
   const { send, error: mintError} = useSendTransaction({ 
     calls: 
       contract && address 
-        ? [contract.populate("mint_item", [address, ipfsUrl])] 
+        ? [contract.populate("mint_item", [address, ipfsHash])] 
         : undefined, 
   }); 
 
@@ -140,8 +140,13 @@ export default function RegisterIP() {
 
       
       const data = await response.json();
-      const ipfsHash = data.uploadData.cid as string;
-      setipfsUrl(gateway + ipfsHash);
+      const ipfs = data.uploadData.cid as string;
+      setIpfsHash(ipfs);
+
+      const Url = gateway + ipfs;
+      setipfsUrl(Url);
+      console.log(ipfsUrl);
+
       // router.push("/myIPs");
       // handleSetTokenUri(data.url);
 
