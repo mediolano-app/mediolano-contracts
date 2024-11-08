@@ -12,11 +12,11 @@ import Image from "next/image"
 
 // Mock data for user's NFTs
 const userNFTs = [
-  { id: 1, title: "Dune 2 Movie Critic", category: "Copyright", price: 2.5, image: "/background.jpg", status: "Article" },
-  { id: 2, title: "Blockchain Security Trademark", category: "Trademark", price: 1.8, image: "/background.jpg", status: "Not Listed" },
-  { id: 3, title: "Quantum Encryption Method", category: "Patent", price: 3.2, image: "/background.jpg", status: "Licensed" },
-  { id: 4, title: "Sustainable Energy Logo", category: "Trademark", price: 1.5, image: "/background.jpg", status: "Listed" },
-  { id: 5, title: "Novel Drug Formulation", category: "Patent", price: 4.0, image: "/background.jpg", status: "Not Listed" },
+  { id: 1, title: "Dune 2 Movie Critic", category: "Copyright", price: 2.5, image: "/background.jpg", status: "Movie Critic" },
+  { id: 2, title: "Blockchain Trademark", category: "Trademark", price: 1.8, image: "/background.jpg", status: "Not Listed" },
+  { id: 3, title: "Ainda Estou Aqui trata da angustiante incerteza", category: "Copyright", price: 0.02, image: "/background.jpg", status: "Movie Critic" },
+  { id: 4, title: "Sustainable Energy Logo", category: "Trademark", price: 1.5, image: "/background.jpg", status: "Graphic Design" },
+  { id: 5, title: "Music for Gaming", category: "Creative Commons", price: 0.0, image: "/background.jpg", status: "Not Listed" },
   { id: 6, title: "AI-Powered Trading Algorithm", category: "Copyright", price: 2.7, image: "/background.jpg", status: "Listed" },
 ]
 

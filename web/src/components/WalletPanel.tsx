@@ -17,9 +17,9 @@ import { ScrollArea } from "@/components/ui/scroll-area"
 import { Wallet, LogOut, Copy, ExternalLink, ArrowUpRight, ArrowDownLeft, Plus, ShieldCheck } from 'lucide-react'
 
 const mockTokens = [
-  { symbol: 'ETH', name: 'Ethereum', balance: '1.5', value: '$2,250.00', icon: '₿' },
-  { symbol: 'STRK', name: 'Strike', balance: '1000', value: '$100.00', icon: '⚡' },
-  { symbol: 'USDC', name: 'USD Coin', balance: '500', value: '$500.00', icon: '$' },
+  { symbol: 'ETH', name: 'Ethereum', profile: '1.5', value: '$3,250.00', icon: '₿' },
+  { symbol: 'STRK', name: 'Stark', profile: '1000', value: '$500.00', icon: '⚡' },
+  { symbol: 'USDC', name: 'USD Coin', profile: '500', value: '$500.00', icon: '$' },
 ]
 
 const mockActivities = [
@@ -50,28 +50,30 @@ export default function Component() {
       <Dialog open={isOpen} onOpenChange={setIsOpen}>
         <DialogTrigger asChild>
           <Button variant="outline" className="hover:bg-blue-500">
-            <Wallet className="mr-2 h-4 w-4" /> {isConnected ? 'Open Wallet' : 'Connect Wallet'}
+            <Wallet className="mr-2 h-4 w-4" /> {isConnected ? '0x...' : 'Connect'}
           </Button>
         </DialogTrigger>
         <DialogContent className="sm:max-w-[425px] bg-white dark:bg-black backdrop-blur ">
           <DialogHeader>
-            <DialogTitle>{isConnected ? 'Your Wallet' : 'Connect Your Wallet'}</DialogTitle>
+            <DialogTitle>{isConnected ? 'Your Account' : 'Connect to Mediolano'}</DialogTitle>
             <DialogDescription>
-              {isConnected ? 'Manage your assets and account' : 'Choose a method to connect your wallet and start your Web3 journey'}
+              {isConnected ? 'Manage your intellectual property with blockchain' : 'Connect your wallet and start your Web3 journey'}
             </DialogDescription>
           </DialogHeader>
           {isConnected ? (
-            <Tabs defaultValue="balance" className="w-full">
+            <Tabs defaultValue="profile" className="w-full">
+              
               <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="balance">Balance</TabsTrigger>
-                <TabsTrigger value="activities">Activities</TabsTrigger>
                 <TabsTrigger value="account">Account</TabsTrigger>
+                <TabsTrigger value="profile">Profile</TabsTrigger>
+                <TabsTrigger value="activities">Activities</TabsTrigger>
+                
               </TabsList>
-              <TabsContent value="balance">
+              <TabsContent value="profile">
                 <Card>
                   <CardHeader>
                     <CardTitle>Your Assets</CardTitle>
-                    <CardDescription>Current balance of your tokens</CardDescription>
+                    <CardDescription>Current profile of your tokens</CardDescription>
                   </CardHeader>
                   <CardContent>
                     <ScrollArea className="h-[200px] w-full rounded-md border p-4">
@@ -88,7 +90,7 @@ export default function Component() {
                             </div>
                           </div>
                           <div className="text-right">
-                            <p className="font-medium">{token.balance}</p>
+                            <p className="font-medium">{token.profile}</p>
                             <p className="text-sm text-gray-500">{token.value}</p>
                           </div>
                         </div>
@@ -158,9 +160,11 @@ export default function Component() {
           ) : (
             <div className="flex flex-col items-center gap-6 py-6">
               <div className="text-center">
-                <ShieldCheck className="mx-auto h-12 w-12 text-blue-500 mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Safe and Secure</h3>
-                <p className="text-sm text-gray-600">Your assets are protected by industry-leading security protocols.</p>
+              
+                <img src='/mediolano.webp' className='mx-auto mb-6' alt='Mediolano' width={"128"} height={"128"}/>
+
+                <h3 className="text-lg font-semibold mb-2">Safe, Secure & Self Custody</h3>
+                <p className="text-sm text-gray-600">Your assets are protected by industry-leading security technology .</p>
               </div>
               <div className="grid w-full gap-4">
                 <Button onClick={connectWallet} className="w-full bg-blue-500 hover:bg-blue-600 text-white">
