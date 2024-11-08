@@ -1,15 +1,11 @@
 'use client';
 import { FC, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
-import { useAccount, useBalance, useBlockNumber, useContract, useReadContract, useSendTransaction, useTransactionReceipt } from '@starknet-react/core';
+import { useConnect, useDisconnect, useAccount, useBalance, useBlockNumber, useContract, useReadContract, useSendTransaction, useTransactionReceipt } from '@starknet-react/core';
 import { BlockNumber, Contract, RpcProvider } from "starknet";
 import { mockedAbi } from "@/abis/mockedAbi";
 import { type Abi } from "starknet";
 import { formatAmount, shortenAddress } from '@/lib/utils';
-
-
-const WalletPanel = dynamic(() => import('@/components/WalletPanel'), { ssr: false })
-const WalletBar = dynamic(() => import('@/components/WalletBar'), { ssr: false })
 
 import Link from 'next/link';
 
@@ -47,7 +43,8 @@ import {
 } from '@/components/ui/sheet'
 
 
-
+const WalletPanel = dynamic(() => import('@/components/WalletPanel'), { ssr: false })
+const WalletBar = dynamic(() => import('@/components/WalletBar'), { ssr: false })
 
 const navItems = [
   { href: '/start', label: 'Start' },
