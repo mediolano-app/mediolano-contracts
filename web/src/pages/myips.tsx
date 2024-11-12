@@ -32,6 +32,16 @@ const MyIPs: NextPage = () => {
   };
   getBalance();
 
+  async function getTokenId(tokenIndex: number){
+    try{
+      const tokenId = await contract.token_of_owner_by_index(accountAddress, tokenIndex);
+      return parseInt(tokenId.toString()); //acho que eh isso mas tem que testar
+    }
+    catch(e) {
+      console.log(e);
+    }
+  }
+
   const { data: myTotalBalance, error: balanceError } = useReadContract({
     abi: abi as Abi,
     functionName: 'balance_of',
@@ -39,7 +49,6 @@ const MyIPs: NextPage = () => {
     args: [connectedAddress],
     watch: false,   
   });
-
   console.log(myTotalBalance);
 
   const { data: tokenUris, error: ownedError } = useCall({
@@ -62,37 +71,15 @@ const MyIPs: NextPage = () => {
 
   const totalBalance = myTotalBalance ? parseInt(myTotalBalance.toString()) : 0;
 
-  // for(let tokenIndex=0; tokenIndex < totalBalance; tokenIndex++){
-  //   try {
-  //     const tokenId = useReadContract({
-  //       abi: abi as Abi,
-  //       functionName: 'token_of_owner_by_index',
-  //       address: contractAddress as `0x${string}`,
-  //       args: [connectedAddress, BigInt(tokenIndex)],
-  //       watch: false,
-  //     });
-
-  //   }
-  //   catch (e){
-  //     console.log(e);
-  //   }
-  // }
-
   useEffect(() => {
     if (totalBalance > 0) {
       // const fetchTokenIds = async () => {
         let fetchedTokenIds: BigInt[] = [];
         for (let tokenIndex = 0; tokenIndex < totalBalance; tokenIndex++) {
           try {
-            const { data: tokenId } = useReadContract({
-              abi: abi as Abi,
-              functionName: 'token_of_owner_by_index',
-              address: contractAddress as `0x${string}`,
-              args: [connectedAddress, BigInt(tokenIndex)],
-              watch: false,
-            });
+            const tokenId = getTokenId(tokenIndex);
             if (tokenId) {
-              fetchedTokenIds.push(tokenId);  // store tokenId in the array
+              fetchedTokenIds.push(tokenId);  // ta dando problema porque eh promise, resolver dps
               console.log(tokenId);
             }
           } catch (e) {
