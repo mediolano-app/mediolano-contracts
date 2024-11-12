@@ -27,11 +27,11 @@ export default function RegisterIP() {
     address: "0x07e39e39ddee958c8a9221d82f639aa9112d6789259ccf09f2a7eb8e021c051c", 
   }); 
    
-  const GATEWAY_URL = process.env.HOST;
-  console.log(GATEWAY_URL);
+  // const GATEWAY_URL = process.env.HOST;
+  // console.log(GATEWAY_URL);
 
   const gateway = "https://violet-rainy-shrimp-423.mypinata.cloud/ipfs/";
-  console.log(gateway);
+  // console.log(gateway);
 
   const router = useRouter();  
   const [status, setStatus] = useState("Mint NFT");
@@ -141,11 +141,12 @@ export default function RegisterIP() {
       
       const data = await response.json();
       const ipfs = data.uploadData.cid as string;
+      console.log(ipfs);
       setIpfsHash(ipfs);
 
       const Url = gateway + ipfs;
-      setipfsUrl(Url);
-      console.log(ipfsUrl);
+      console.log(Url);
+      setipfsUrl(Url); //essa Url é que tem que ser passado como metadata
 
       // router.push("/myIPs");
       // handleSetTokenUri(data.url);
