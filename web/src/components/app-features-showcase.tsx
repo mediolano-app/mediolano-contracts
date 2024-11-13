@@ -1,4 +1,4 @@
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "~~/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Shield, Zap, DollarSign, Users, Globe, Lock } from "lucide-react"
 
 export function AppFeaturesShowcase() {
