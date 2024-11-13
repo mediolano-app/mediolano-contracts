@@ -26,19 +26,12 @@ export default function RegisterIP() {
     abi: abi as Abi, 
     address: "0x07e39e39ddee958c8a9221d82f639aa9112d6789259ccf09f2a7eb8e021c051c", 
   }); 
-   
-  // const GATEWAY_URL = process.env.HOST;
-  // console.log(GATEWAY_URL);
 
   const gateway = "https://violet-rainy-shrimp-423.mypinata.cloud/ipfs/";
-  // console.log(gateway);
 
   const router = useRouter();  
   const [status, setStatus] = useState("Mint NFT");
-  const [ipfsUrl, setipfsUrl] = useState("");
   const [ipfsHash, setIpfsHash] = useState("");
-
-  const baseIpfsUrl = "https://ipfs.io/ipfs/";
 
   const [loading, setLoading] = useState(false);
   const [ipData, setIpData] = useState<IP>({
@@ -139,22 +132,9 @@ export default function RegisterIP() {
       console.log('IP submitted successfully');
       
       const data = await response.json();
-      const ipfs = data.uploadData.cid as string;
-      setIpfsHash(ipfs);
-
-      const Url = gateway + ipfs;
-      setipfsUrl(Url); //essa Url é que tem que ser passado como metadata
-      // console.log(ipfsUrl)
-      // // router.push("/myIPs");
-      // handleSetTokenUri(data.url);
+      console.log(data);
+      setIpfsHash(data.IpfsHash);
       
-      // useEffect(() => {
-      //   if (ipfsUrl) console.log("Updated IPFS URL:", ipfsUrl);
-      //   if (ipfsHash) console.log("Updated IPFS Hash:", ipfsHash);
-      // }, [ipfsUrl, ipfsHash]);
-
-      // handleMintItem();
-
     } catch (err) {
         setError('Failed submitting or minting IP. Please try again.');
     } finally {
