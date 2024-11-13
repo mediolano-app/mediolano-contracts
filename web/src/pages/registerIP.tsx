@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { FilePlus, Lock, FileText, Coins, Shield, Globe, BarChart, Book, Music, Film, FileCode, Palette, File, ScrollText, Clock, ArrowRightLeft, ShieldCheck, Banknote, Globe2 } from 'lucide-react'
 import Link from 'next/link'
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
@@ -137,21 +137,23 @@ export default function RegisterIP() {
         throw new Error('Failed to submit IP')
       }
       console.log('IP submitted successfully');
-
       
       const data = await response.json();
       const ipfs = data.uploadData.cid as string;
-      console.log(ipfs);
       setIpfsHash(ipfs);
 
       const Url = gateway + ipfs;
-      console.log(Url);
       setipfsUrl(Url); //essa Url é que tem que ser passado como metadata
-
-      // router.push("/myIPs");
+      // console.log(ipfsUrl)
+      // // router.push("/myIPs");
       // handleSetTokenUri(data.url);
+      
+      // useEffect(() => {
+      //   if (ipfsUrl) console.log("Updated IPFS URL:", ipfsUrl);
+      //   if (ipfsHash) console.log("Updated IPFS Hash:", ipfsHash);
+      // }, [ipfsUrl, ipfsHash]);
 
-      handleMintItem();
+      // handleMintItem();
 
     } catch (err) {
         setError('Failed submitting or minting IP. Please try again.');
@@ -159,7 +161,12 @@ export default function RegisterIP() {
         setIsSubmitting(false);
     }
   };
-
+  
+  useEffect(()=> {
+    console.log('to no use effect');
+    console.log(ipfsHash);
+    handleMintItem();
+  }, [ipfsHash]);
   
 
   return (

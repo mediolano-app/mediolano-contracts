@@ -21,21 +21,23 @@ const MyIPs: NextPage = () => {
     address: contractAddress, 
   }); 
 
-  async function getBalance(){
-    try {
-      const testBalance = await contract.balance_of(accountAddress);
-      console.log(testBalance);
-    }
-    catch(e) {
-      console.log(e);
-    }
-  };
-  getBalance();
+  // async function getBalance(){
+  //   try {
+  //     const testBalance = await contract.balance_of(accountAddress);
+  //     console.log(testBalance);
+  //   }
+  //   catch(e) {
+  //     console.log(e);
+  //   }
+  // };
+  // getBalance();
 
   async function getTokenId(tokenIndex: number){
     try{
       const tokenId = await contract.token_of_owner_by_index(accountAddress, tokenIndex);
-      return parseInt(tokenId.toString()); //acho que eh isso mas tem que testar
+      console.log(tokenId);
+      console.log(typeof tokenId);
+      return tokenId; //acho que eh isso mas tem que testar
     }
     catch(e) {
       console.log(e);
@@ -51,15 +53,6 @@ const MyIPs: NextPage = () => {
   });
   console.log(myTotalBalance);
 
-  const { data: tokenUris, error: ownedError } = useCall({
-    abi: abi as Abi,
-    functionName: 'token_uris',
-    address: contractAddress as `0x${string}`,
-    watch: false,
-  });
-
-  console.log(tokenUris);
-
   const { data: test, error: testError } = useReadContract({
     abi: abi as Abi, 
     functionName: 'token_of_owner_by_index',
@@ -69,29 +62,81 @@ const MyIPs: NextPage = () => {
   });
   console.log(test);
 
-  const totalBalance = myTotalBalance ? parseInt(myTotalBalance.toString()) : 0;
+  // const { data: uri, isLoading: isUriLoading, error: UriError } = useReadContract({
+  //   abi: abi as Abi,
+  //   functionName: 'tokenURI',
+  //   address: contractAddress as `0x${string}`,
+  //   args: [8],
+  //   watch: false,
+  // });
+  // console.log(uri); //ta puxando a uri, problema tá no tokenId que ta sendo passado
+  // //no return da page
 
+  // const { data: uri2, isLoading: isUri2Loading, error: Uri2Error } = useReadContract({
+  //   abi: abi as Abi,
+  //   functionName: 'tokenURI',
+  //   address: contractAddress as `0x${string}`,
+  //   args: [9],
+  //   watch: false,
+  // });
+  // console.log(uri2); //ta puxando certo
+
+  const totalBalance = myTotalBalance ? parseInt(myTotalBalance.toString()) : 0;
   useEffect(() => {
     if (totalBalance > 0) {
-      // const fetchTokenIds = async () => {
-        let fetchedTokenIds: BigInt[] = [];
-        for (let tokenIndex = 0; tokenIndex < totalBalance; tokenIndex++) {
-          try {
-            const tokenId = getTokenId(tokenIndex);
-            if (tokenId) {
-              fetchedTokenIds.push(tokenId);  // ta dando problema porque eh promise, resolver dps
-              console.log(tokenId);
+      const fetchTokenIds = async () => {
+        const fetchedTokenIds: number[] = [];  // Changed type from BigInt[] to number[]
+  
+        // Use Promise.all to resolve all token ID promises concurrently
+        const tokenIdPromises = Array.from({ length: totalBalance }, (_, tokenIndex) => 
+          getTokenId(tokenIndex)  // Ensure getTokenId returns a promise resolving to a number
+        );
+  
+        try {
+          const resolvedTokenIds = await Promise.all(tokenIdPromises);
+          
+          resolvedTokenIds.forEach((tokenId) => {
+            if (typeof tokenId === "bigint") {
+              fetchedTokenIds.push(tokenId);  // only push if tokenId is a valid number
+            } else {
+              console.warn("Unexpected tokenId type:", typeof tokenId);
             }
-          } catch (e) {
-            console.error("Error fetching tokenId:", e);
-          }
+          });
+  
+          setTokenIds(fetchedTokenIds);  // update state with the fetched token IDs
+        } catch (e) {
+          console.error("Error fetching token IDs:", e);
         }
-        setTokenIds(fetchedTokenIds);  // update state with the fetched tokenIds
-      // };
-
-      // fetchTokenIds();
+      };
+  
+      fetchTokenIds(); // Execute the async function
     }
   }, [totalBalance, connectedAddress]);
+  
+  // useEffect(() => {
+  //   if (totalBalance > 0) {
+  //     // const fetchTokenIds = async () => {
+  //       let fetchedTokenIds = [];
+  //       for (let tokenIndex = 0; tokenIndex < totalBalance; tokenIndex++) {
+  //         try {
+  //           const tokenId = getTokenId(tokenIndex);
+  //           console.log('ACARALHOOO');
+  //             // console.log('this is the token Id', tokenId);
+  //           console.log("this is the token index:", tokenIndex);
+  //           if (tokenId) {
+  //             fetchedTokenIds.push(tokenId);  // ta dando problema porque eh promise, resolver dps
+  //             console.log(tokenId);
+  //           }
+  //         } catch (e) {
+  //           console.error("Error fetching tokenId:", e);
+  //         }
+  //       }
+  //       setTokenIds(fetchedTokenIds);  // update state with the fetched tokenIds
+  //     // };
+
+  //     // fetchTokenIds();
+  //   }
+  // }, [totalBalance, connectedAddress]);
 
   // contract address 0x07d4dc2bf13ede97b9e458dc401d4ff6dd386a02049de879ebe637af8299f91d
   // https://starkscan.co/nft-contract/0x07d4dc2bf13ede97b9e458dc401d4ff6dd386a02049de879ebe637af8299f91d#overview

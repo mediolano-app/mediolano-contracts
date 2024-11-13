@@ -32,14 +32,16 @@ interface MyIPCardProps {
   tokenId: BigInt;
 }
 const MyIPCard: React.FC<MyIPCardProps> = ({ key, contractAddress, tokenId }) => {
+  const contract = '0x07e39e39ddee958c8a9221d82f639aa9112d6789259ccf09f2a7eb8e021c051c';
+
   const [tokenURI, setTokenURI] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const { data, isLoading: isContractLoading, error: contractError } = useReadContract({
     abi: abi as Abi,
     functionName: 'tokenURI',
-    address: contractAddress as `0x${string}`,
-    args: [tokenId],
+    address: contract as `0x${string}`,
+    args: [Number(tokenId)],
     watch: false,
   });
   
