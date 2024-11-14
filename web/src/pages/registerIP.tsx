@@ -19,7 +19,6 @@ export interface IP{
 
 
 export default function RegisterIP() {
-  const accountAddress = '0x04d9e99204dbfe644fc5ed7529d983ed809b7a356bf0c84daade57bcbb9c0c77';
 
   const { address } = useAccount();
   const { chain } = useNetwork();
@@ -27,12 +26,15 @@ export default function RegisterIP() {
     abi: abi as Abi, 
     address: "0x07e39e39ddee958c8a9221d82f639aa9112d6789259ccf09f2a7eb8e021c051c", 
   }); 
+   
 
   const gateway = "https://violet-rainy-shrimp-423.mypinata.cloud/ipfs/";
-
+  
   const router = useRouter();  
   const [status, setStatus] = useState("Mint NFT");
   const [ipfsHash, setIpfsHash] = useState("");
+
+  const baseIpfsUrl = "https://ipfs.io/ipfs/";
 
   const [loading, setLoading] = useState(false);
   const [ipData, setIpData] = useState<IP>({
@@ -76,7 +78,6 @@ export default function RegisterIP() {
     }
   };
 
-  
   const { send, error: mintError} = useSendTransaction({ 
     calls: 
       contract && address 
@@ -85,22 +86,12 @@ export default function RegisterIP() {
   }); 
 
   const handleMintItem = async () => {
-    
     try {
       send();
     }
     catch(error){
       console.error("Mint error:", mintError); 
-    }
-
-    // try {
-    //   const alguma_coisa = await contract.mint_item(accountAddress, ipfsHash);
-    //   console.log(alguma_coisa);
-    // }
-    // catch(error){
-    //   console.error("algum erro", error);
-    // }
-
+    }    
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -130,7 +121,7 @@ export default function RegisterIP() {
 
     for (let pair of submitData.entries()) {
       console.log(`${pair[0]}: ${pair[1]}`);
-    }
+    } //just for checking
 
     try {
       const response = await fetch('/api/forms-ipfs', {
@@ -142,24 +133,22 @@ export default function RegisterIP() {
         throw new Error('Failed to submit IP')
       }
       console.log('IP submitted successfully');
+
       
       const data = await response.json();
-      console.log(data);
-      setIpfsHash(data.IpfsHash);
-
+      const ipfs = data.uploadData.IpfsHash as string;
+      setIpfsHash(ipfs);
+      
     } catch (err) {
         setError('Failed submitting or minting IP. Please try again.');
     } finally {
         setIsSubmitting(false);
     }
   };
-  
+
   useEffect(()=> {
-    console.log('to no use effect');
-    console.log(ipfsHash);
     handleMintItem();
   }, [ipfsHash]);
-  
 
   return (
       <div className="container mx-auto px-4 py-8">

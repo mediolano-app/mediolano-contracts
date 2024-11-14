@@ -33,7 +33,7 @@ const NFTCard: React.FC<NFTCardProps> = ({key, tokenId, status}) => {
       functionName: 'tokenURI',
       address: contract as `0x${string}`,
       args: [Number(tokenId)],
-      watch: false,
+      watch: false, 
     });
 
     console.log('AAAAAA', {data});
@@ -53,7 +53,7 @@ const NFTCard: React.FC<NFTCardProps> = ({key, tokenId, status}) => {
     useEffect(() => {
         const fetchMetadata = async () => {
           if (tokenURI) {
-            console.log(tokenURI)
+          console.log("caralhinho de asa", tokenURI)
             try {
                 const response = await pinataClient.gateways.get(tokenURI);
 
@@ -79,7 +79,17 @@ const NFTCard: React.FC<NFTCardProps> = ({key, tokenId, status}) => {
     useEffect(() => {
         console.log(metadata)
     }, [metadata]);
+    if (isLoading) {
+      return <p>Loading...</p>;
+    }
 
+    if (error) {
+        return <p>{error}</p>;
+    }
+
+    if (!metadata) {
+        return null; // or a placeholder if you prefer
+    }
     return (
         <Card className="overflow-hidden">
         <CardHeader className="p-0">

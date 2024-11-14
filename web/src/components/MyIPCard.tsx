@@ -45,7 +45,7 @@ const MyIPCard: React.FC<MyIPCardProps> = ({ key, contractAddress, tokenId }) =>
     watch: false,
   });
   
-  console.log('AAAAAA', {contractError, data});
+  // console.log('AAAAAA', {contractError, data});
   useEffect(() => {
     if (isContractLoading) {
       setIsLoading(true);
