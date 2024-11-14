@@ -146,10 +146,9 @@ const MyIPs: NextPage = () => {
   
   return (
     <div>
-      aaaaaaaa
-      {tokenIds.map((tokenId, index) => ( 
+      {/* {tokenIds.map((tokenId, index) => ( 
         <MyIPCard key={index} contractAddress={contractAddress} tokenId={tokenId} />
-      ))}
+      ))} */}
       <NFTCard key = {1} tokenId = {16n} status={"teste"} />
     </div>
   );
