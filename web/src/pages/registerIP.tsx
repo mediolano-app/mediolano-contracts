@@ -19,6 +19,7 @@ export interface IP{
 
 
 export default function RegisterIP() {
+  const accountAddress = '0x04d9e99204dbfe644fc5ed7529d983ed809b7a356bf0c84daade57bcbb9c0c77';
 
   const { address } = useAccount();
   const { chain } = useNetwork();
@@ -75,6 +76,7 @@ export default function RegisterIP() {
     }
   };
 
+  
   const { send, error: mintError} = useSendTransaction({ 
     calls: 
       contract && address 
@@ -83,12 +85,22 @@ export default function RegisterIP() {
   }); 
 
   const handleMintItem = async () => {
+    
     try {
       send();
     }
     catch(error){
       console.error("Mint error:", mintError); 
-    }    
+    }
+
+    // try {
+    //   const alguma_coisa = await contract.mint_item(accountAddress, ipfsHash);
+    //   console.log(alguma_coisa);
+    // }
+    // catch(error){
+    //   console.error("algum erro", error);
+    // }
+
   };
 
   const handleSubmit = async (event: React.FormEvent) => {
@@ -118,7 +130,7 @@ export default function RegisterIP() {
 
     for (let pair of submitData.entries()) {
       console.log(`${pair[0]}: ${pair[1]}`);
-    } //just for checking
+    }
 
     try {
       const response = await fetch('/api/forms-ipfs', {
@@ -134,7 +146,7 @@ export default function RegisterIP() {
       const data = await response.json();
       console.log(data);
       setIpfsHash(data.IpfsHash);
-      
+
     } catch (err) {
         setError('Failed submitting or minting IP. Please try again.');
     } finally {

@@ -7,6 +7,7 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { type Abi } from "starknet";
 import { abi } from '@/abis/abi';
 import MyIPCard from '../components/MyIPCard';
+import NFTCard from "@/components/NFTCard";
 import { useEffect } from "react";
 
 const MyIPs: NextPage = () => {
@@ -146,9 +147,10 @@ const MyIPs: NextPage = () => {
   return (
     <div>
       aaaaaaaa
-      {tokenIds.map((tokenId, index) => ( 
+      {/* {tokenIds.map((tokenId, index) => ( 
         <MyIPCard key={index} contractAddress={contractAddress} tokenId={tokenId} />
-      ))}
+      ))} */}
+      <NFTCard key = {1} tokenId = {8n} status={"teste"} />
     </div>
   );
 };

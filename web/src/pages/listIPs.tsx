@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -9,6 +9,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel,
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Eye, DollarSign, Send, MoreHorizontal, Search, Grid, List, FileText, Zap } from "lucide-react"
 import Image from "next/image"
+import { useReadContract, useContract, useAccount, useCall } from "@starknet-react/core"
+import { abi } from '@/abis/abi'
+import { type Abi } from 'starknet'
 
 // Mock data for user's NFTs
 const userNFTs = [
@@ -28,6 +31,69 @@ export default function MyIPsList() {
     nft.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
     nft.category.toLowerCase().includes(searchTerm.toLowerCase())
   )
+
+  const { address: connectedAddress, isConnected, isConnecting } = useAccount();
+  const contractAddress = '0x07e39e39ddee958c8a9221d82f639aa9112d6789259ccf09f2a7eb8e021c051c';
+  const accountAddress = '0x04d9e99204dbfe644fc5ed7529d983ed809b7a356bf0c84daade57bcbb9c0c77';
+
+  const [tokenIds, setTokenIds] = useState<BigInt[]>([]);
+
+  const { contract } = useContract({
+    abi: abi as Abi,
+    address: contractAddress,
+  });
+
+  const { data: myTotalBalance, error: balanceError } = useReadContract({
+    abi: abi as Abi,
+    functionName: 'balance_of',
+    address: contractAddress as `0x${string}`,
+    args: [connectedAddress],
+    watch: false,   
+  });
+  console.log(myTotalBalance);
+  const totalBalance = myTotalBalance ? parseInt(myTotalBalance.toString()) : 0;
+
+  async function getTokenId(tokenIndex: number){
+    try{
+      const tokenId = await contract.token_of_owner_by_index(accountAddress, tokenIndex);
+      console.log(tokenId);
+      console.log(typeof tokenId);
+      return tokenId; //acho que eh isso mas tem que testar
+    }
+    catch(e) {
+      console.log(e);
+    }
+  };
+  
+  useEffect(() => {
+    if (totalBalance > 0) {
+      const fetchTokenIds = async () => {
+        const fetchedTokenIds: number[] = []; 
+  
+        const tokenIdPromises = Array.from({ length: totalBalance }, (_, tokenIndex) => 
+          getTokenId(tokenIndex)
+        );
+  
+        try {
+          const resolvedTokenIds = await Promise.all(tokenIdPromises);
+          
+          resolvedTokenIds.forEach((tokenId) => {
+            if (typeof tokenId === "bigint") {
+              fetchedTokenIds.push(tokenId);  
+            } else {
+              console.warn("Unexpected tokenId type:", typeof tokenId);
+            }
+          });
+  
+          setTokenIds(fetchedTokenIds);  
+        } catch (e) {
+          console.error("Error fetching token IDs:", e);
+        }
+      };
+  
+      fetchTokenIds(); 
+    }
+  }, [totalBalance, connectedAddress]);
 
   const NFTCard = ({ nft }: { nft: typeof userNFTs[0] }) => (
     <Card className="overflow-hidden">
