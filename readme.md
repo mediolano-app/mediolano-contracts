@@ -1,3 +1,5 @@
+![Mediolano.app](https://mediolano.app/wp-content/uploads/2024/09/mediolano-logo-dark-1.svg)
+
 # Mediolano.app Cairo Contracts
 
 Cairo smart contracts development repository for Mediolano.app, a dapp designed to be the web3 intellectual property provider service, built on Starknet.
@@ -15,16 +17,15 @@ Mediolano offers an innovative platform that empowers content creators, from aut
 
 Mediolano leverages blockchain technology to create an immutable and transparent ledger for all your Intellectual Property. Each entry is securely encrypted, ensuring that your assets are protected.
 
+> [!IMPORTANT]
+> Mediolano dapp is in constant development and the current version runs on Starknet's Sepolia devnet. Use for testing purposes only. 
 
-## Prerequisites
+## Getting Started
 
 Before you begin, ensure you have met the following requirements:
 
-* Node.js (version 14 or later) and npm installed. Download them [here](https://nodejs.org/en/download/).
-* Basic understanding of Starknet Foundry (if you want to deploy your own contract instance).
-* Familiarity with TypeScript and React.
-
-## Getting Started
+* Node.js (version 18 or later) and npm installed. Download them [here](https://nodejs.org/en/download/).
+* Basic understanding of Starknet Foundry to deploy your own contract instance.
 
 ### Starknet Foundry
 
