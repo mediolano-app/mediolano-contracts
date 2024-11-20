@@ -26,7 +26,7 @@ export default function RegisterIP() {
   const { chain } = useNetwork();
   const { contract } = useContract({ 
     abi: abi as Abi, 
-    address: "0x07e39e39ddee958c8a9221d82f639aa9112d6789259ccf09f2a7eb8e021c051c", 
+    address: "0x03afbbb4d6530b36e65a1dd2e7a26d21834ab3eb013c998a2eac18235f6b18e8", 
   }); 
    
 

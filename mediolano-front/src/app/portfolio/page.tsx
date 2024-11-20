@@ -10,7 +10,7 @@ import { useEffect } from "react";
 
 const MyIPs: NextPage = () => {
   const { address: connectedAddress, isConnected, isConnecting } = useAccount();
-  const contractAddress = '0x07e39e39ddee958c8a9221d82f639aa9112d6789259ccf09f2a7eb8e021c051c';
+  const contractAddress = '0x03afbbb4d6530b36e65a1dd2e7a26d21834ab3eb013c998a2eac18235f6b18e8';
   const accountAddress = '0x04d9e99204dbfe644fc5ed7529d983ed809b7a356bf0c84daade57bcbb9c0c77';
 
   const [tokenIds, setTokenIds] = useState<BigInt[]>([]);

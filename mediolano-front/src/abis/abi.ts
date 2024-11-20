@@ -1,8 +1,8 @@
 export const abi = [
     {
         "type": "impl",
-        "name": "YourCollectibleImpl",
-        "interface_name": "contracts::YourCollectible::IYourCollectible"
+        "name": "MediolanoImpl",
+        "interface_name": "contracts::Mediolano::IMediolano"
     },
     {
         "type": "struct",
@@ -38,38 +38,8 @@ export const abi = [
     },
     {
         "type": "interface",
-        "name": "contracts::YourCollectible::IYourCollectible",
+        "name": "contracts::Mediolano::IMediolano",
         "items": [
-            {
-                "type": "function",
-                "name": "test_contract",
-                "inputs": [],
-                "outputs": [],
-                "state_mutability": "external"
-            },
-            {
-                "type": "function",
-                "name": "write_test",
-                "inputs": [
-                    {
-                        "name": "test_word",
-                        "type": "core::felt252"
-                    }
-                ],
-                "outputs": [],
-                "state_mutability": "external"
-            },
-            {
-                "type": "function",
-                "name": "retrieve_test_word",
-                "inputs": [],
-                "outputs": [
-                    {
-                        "type": "core::felt252"
-                    }
-                ],
-                "state_mutability": "view"
-            },
             {
                 "type": "function",
                 "name": "mint_item",
@@ -817,7 +787,7 @@ export const abi = [
     },
     {
         "type": "event",
-        "name": "contracts::YourCollectible::YourCollectible::Event",
+        "name": "contracts::Mediolano::Mediolano::Event",
         "kind": "enum",
         "variants": [
             {
