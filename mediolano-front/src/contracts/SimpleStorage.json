@@ -1,0 +1,91 @@
+{
+  "abi": [
+    {
+      "type": "impl",
+      "name": "SimpleStorage",
+      "interface_name": "simple_storage::ISimpleStorage"
+    },
+    {
+      "type": "interface",
+      "name": "simple_storage::ISimpleStorage",
+      "items": [
+        {
+          "type": "function",
+          "name": "set",
+          "inputs": [
+            {
+              "name": "x",
+              "type": "core::integer::u128"
+            }
+          ],
+          "outputs": [],
+          "state_mutability": "external"
+        },
+        {
+          "type": "function",
+          "name": "get",
+          "inputs": [],
+          "outputs": [
+            {
+              "type": "core::integer::u128"
+            }
+          ],
+          "state_mutability": "view"
+        }
+      ]
+    },
+    {
+      "type": "constructor",
+      "name": "constructor",
+      "inputs": []
+    },
+    {
+      "type": "event",
+      "name": "simple_storage::SimpleStorage::ValueChanged",
+      "kind": "struct",
+      "members": [
+        {
+          "name": "caller",
+          "type": "core::starknet::contract_address::ContractAddress",
+          "kind": "key"
+        },
+        {
+          "name": "oldValue",
+          "type": "core::integer::u128",
+          "kind": "data"
+        },
+        {
+          "name": "newValue",
+          "type": "core::integer::u128",
+          "kind": "data"
+        }
+      ]
+    },
+    {
+      "type": "event",
+      "name": "simple_storage::SimpleStorage::Event",
+      "kind": "enum",
+      "variants": [
+        {
+          "name": "ValueChanged",
+          "type": "simple_storage::SimpleStorage::ValueChanged",
+          "kind": "nested"
+        }
+      ]
+    }
+  ],
+  "networks": {
+    "0": {
+      "network": "localhost",
+      "address": "0xc9dc48d3be4c70cdd37197b57d35af381fab073d813a0eeef2ca6da2b51069",
+      "transactionHash": "0x3f65d3f616d683639f930f9473f7caec56df285b5e62ed262f480f52a6bbdbe",
+      "blockNumber": ""
+    },
+    "0x534e5f5345504f4c4941": {
+      "network": "sepolia",
+      "address": "0x5ec96379c03670f4e6fe021a67155aa3389866e337622ce85fa1bc43eedab1c",
+      "transactionHash": "0x4dabceaa8c18fc07ffa6be9a4a1d6deee54d7cbe42e5906152c7ece899d5a69",
+      "blockNumber": ""
+    }
+  }
+}
