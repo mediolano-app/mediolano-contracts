@@ -5,8 +5,9 @@
 Cairo smart contracts development repository for Mediolano.app, a dapp designed to be the web3 intellectual property provider service, built on Starknet.
 
 <h4 align="center">
-  <a href="https://mediolano.app">Website</a> | 
-  <a href="https://github.com/mediolano-app/mediolano-app">Dapp Github</a>
+  <a href="https://ip.mediolano.app">Open Dapp</a> | 
+  <a href="https://github.com/mediolano-app/mediolano-app">Dapp Repo</a> | 
+  <a href="https://mediolano.app">Learn More</a>
 </h4>
 
 In today’s ever-evolving digital world, protecting and managing intellectual property (IP) has become a critical challenge. From journalists to art collectors, new technologies are making it safer and more efficient to tokenize IP, enabling licensing, trading, distributing royalties, and more.
