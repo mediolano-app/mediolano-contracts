@@ -27,6 +27,20 @@ Before you begin, ensure you have met the following requirements:
 * Node.js (version 18 or later) and npm installed. Download them [here](https://nodejs.org/en/download/).
 * Basic understanding of Starknet Foundry to deploy your own contract instance.
 
+Requirements:
+
+- Npm + Git
+- ASDF + Scarb
+- Starknet >= 2.2
+- Starknet Foundry 
+- macOS, Windows (including WSL), and Linux are supported.
+
+Clone the repository to your local machine:
+
+```bash
+git clone https://github.com/mediolano-app/mediolano-contracts.git
+```
+
 ### Starknet Foundry
 
 This project includes a Starknet Foundry repository with smart contracts used in the frontend web app.
