@@ -1,4 +1,5 @@
-mod Mediolano;
+mod MIP;
+mod MIPL;
 mod components {
     pub mod Counter;
     pub mod ERC721Enumerable;
