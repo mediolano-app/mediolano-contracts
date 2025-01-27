@@ -1,2 +1,2 @@
-// pub mod interfaces;
-// pub mod IPLicensingNFT;
+pub mod interfaces;
+pub mod IPLicensingNFT;
