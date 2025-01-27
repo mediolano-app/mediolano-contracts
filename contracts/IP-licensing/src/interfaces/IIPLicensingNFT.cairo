@@ -18,7 +18,7 @@ pub trait IIPLicensingNFT<TContractState> {
         sublicensing: bool,
         exclusivity: u8,
         metadata_cid: ByteArray
-    );
+    )->u256;
 
 
 }

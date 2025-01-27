@@ -106,7 +106,7 @@ pub mod IPLicensingNFT {
             sublicensing: bool,
             exclusivity: u8,
             metadata_cid: ByteArray,
-        ) {
+        )-> u256 {
             let caller = get_caller_address();
             // Get the owner of the original NFT
             let nft_owner = self.erc721.owner_of(original_nft_id);
@@ -153,6 +153,7 @@ pub mod IPLicensingNFT {
             self.mint_timestamp.write(new_nft_id, get_block_timestamp());
             // Update the last minted ID
             self.last_minted_id.write(new_nft_id);
+            new_nft_id
         }
     }
 }
