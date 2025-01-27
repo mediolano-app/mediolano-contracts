@@ -1,4 +1,3 @@
-
 use starknet::ContractAddress;
 
 #[starknet::interface]
@@ -6,14 +5,14 @@ trait IEncryptedPreferencesRegistry<TContractState> {
     fn store_encrypted_preferences(
         ref self: TContractState,
         key: felt252,
-        encrypted_data: Array<felt252>,
+        encrypted_data: Span<felt252>,
         encryption_nonce: felt252
     );
     fn get_encrypted_preferences(
         self: @TContractState,
         user: ContractAddress,
         key: felt252
-    ) -> (Array<felt252>, felt252);
+    ) -> (felt252, felt252);
     fn update_encryption_key(
         ref self: TContractState,
         new_encryption_nonce: felt252
@@ -23,14 +22,19 @@ trait IEncryptedPreferencesRegistry<TContractState> {
 
 #[starknet::contract]
 mod EncryptedPreferencesRegistry {
-    use core::array::ArrayTrait;
     use starknet::{ContractAddress, get_caller_address};
+    use core::{array::ArrayTrait, array::SpanTrait};
+
+    #[derive(Drop, Serde, starknet::Store)]
+    struct EncryptedData {
+        data: felt252,  // Store single felt252 for encrypted data
+        nonce: felt252
+    }
 
     #[storage]
     struct Storage {
-        encrypted_preferences: LegacyMap<(ContractAddress, felt252), Array<felt252>>,
-        encryption_nonces: LegacyMap<ContractAddress, felt252>,
-        authorized_apps: LegacyMap<ContractAddress, bool>,
+        preferences: LegacyMap::<(ContractAddress, felt252), EncryptedData>,
+        authorized_apps: LegacyMap::<ContractAddress, bool>,
         owner: ContractAddress,
         mediolano_app: ContractAddress
     }
@@ -75,19 +79,24 @@ mod EncryptedPreferencesRegistry {
         self.authorized_apps.write(mediolano_app, true);
     }
 
-    #[external(v0)]
+    #[abi(embed_v0)]
     impl EncryptedPreferencesRegistryImpl of super::IEncryptedPreferencesRegistry<ContractState> {
         fn store_encrypted_preferences(
             ref self: ContractState,
             key: felt252,
-            encrypted_data: Array<felt252>,
+            encrypted_data: Span<felt252>,
             encryption_nonce: felt252
         ) {
             let caller = get_caller_address();
             assert(self.authorized_apps.read(caller), 'Unauthorized app');
             
-            self.encrypted_preferences.write((caller, key), encrypted_data);
-            self.encryption_nonces.write(caller, encryption_nonce);
+            // For simplicity, store the first element of encrypted data
+            // In a real implementation, you might want to handle multiple felt252s differently
+            let data = EncryptedData { 
+                data: *encrypted_data.at(0), 
+                nonce: encryption_nonce 
+            };
+            self.preferences.write((caller, key), data);
             
             self.emit(Event::PreferencesUpdated(
                 PreferencesUpdated { user: caller, key }
@@ -98,10 +107,9 @@ mod EncryptedPreferencesRegistry {
             self: @ContractState,
             user: ContractAddress,
             key: felt252
-        ) -> (Array<felt252>, felt252) {
-            let data = self.encrypted_preferences.read((user, key));
-            let nonce = self.encryption_nonces.read(user);
-            (data, nonce)
+        ) -> (felt252, felt252) {
+            let stored_data = self.preferences.read((user, key));
+            (stored_data.data, stored_data.nonce)
         }
 
         fn update_encryption_key(
@@ -109,7 +117,9 @@ mod EncryptedPreferencesRegistry {
             new_encryption_nonce: felt252
         ) {
             let caller = get_caller_address();
-            self.encryption_nonces.write(caller, new_encryption_nonce);
+            let key = 'encryption_key';
+            let data = EncryptedData { data: 0, nonce: new_encryption_nonce };
+            self.preferences.write((caller, key), data);
             
             self.emit(Event::EncryptionKeyUpdated(
                 EncryptionKeyUpdated { user: caller, nonce: new_encryption_nonce }
@@ -120,8 +130,8 @@ mod EncryptedPreferencesRegistry {
             let caller = get_caller_address();
             assert(self.authorized_apps.read(caller), 'Unauthorized app');
             
-            let empty_array = ArrayTrait::new();
-            self.encrypted_preferences.write((caller, key), empty_array);
+            let data = EncryptedData { data: 0, nonce: 0 };
+            self.preferences.write((caller, key), data);
             
             self.emit(Event::PreferencesRemoved(
                 PreferencesRemoved { user: caller, key }
