@@ -65,11 +65,9 @@ pub mod IPLicensingNFT {
         ERC721Event: ERC721Component::Event,
         #[flat]
         SRC5Event: SRC5Component::Event,
-        
     }
 
-    
-  
+
     #[derive(Drop, Serde, Debug, PartialEq, starknet::Store)]
     pub struct IPLicenseData {
         derivefrom: u256, //perent_nft_id
@@ -96,11 +94,11 @@ pub mod IPLicensingNFT {
         // *************************************************************************
         //                            EXTERNAL FUNCTIONS
         // *************************************************************************
-         
+
         fn mint_license_nft(
             ref self: ContractState,
             original_nft_id: u256,
-            license_type: u8,    
+            license_type: u8,
             duration: u32,
             royalty_rate: u8,
             upfront_fee: u256,
@@ -108,24 +106,23 @@ pub mod IPLicensingNFT {
             exclusivity: u8,
             metadata_cid: felt252,
         ) -> u256 {
-   
-            let license_data = self.prepare_license_data(
-           
-                original_nft_id,
-                license_type,
-                duration,
-                royalty_rate,
-                upfront_fee,
-                sublicensing,
-                exclusivity,
-                metadata_cid,
-            );
+            let license_data = self
+                .prepare_license_data(
+                    original_nft_id,
+                    license_type,
+                    duration,
+                    royalty_rate,
+                    upfront_fee,
+                    sublicensing,
+                    exclusivity,
+                    metadata_cid,
+                );
             self.mint_and_store_license(license_data, original_nft_id)
         }
 
-        
+
         fn prepare_license_data(
-            ref self: ContractState,   
+            ref self: ContractState,
             original_nft_id: u256,
             license_type: u8,
             duration: u32,
@@ -157,9 +154,7 @@ pub mod IPLicensingNFT {
         }
 
         fn mint_and_store_license(
-            ref self: ContractState,
-            license_data: IPLicenseData,
-            original_nft_id: u256,
+            ref self: ContractState, license_data: IPLicenseData, original_nft_id: u256,
         ) -> u256 {
             let caller = get_caller_address();
 
@@ -188,6 +183,6 @@ pub mod IPLicensingNFT {
         fn get_licensing_data(ref self: ContractState, nft_id: u256) -> IPLicenseData {
             // Retrieve the licensing data of a child NFT
             self.licensing_data.read(nft_id)
-        }     
+        }
     }
 }
