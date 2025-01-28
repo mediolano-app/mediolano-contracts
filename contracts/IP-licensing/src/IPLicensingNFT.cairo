@@ -45,11 +45,11 @@ pub mod IPLicensingNFT {
         admin: ContractAddress,
         last_minted_id: u256,
         // user_derived_nft_ids is maping of owner_of_perentNFT  and  List< child_nft_ids >
-        user_derived_nft_ids: Map<ContractAddress, List<u256>>,
+        user_derived_tokens: Map<ContractAddress, List<u256>>,
         // mint_timestamp  is mapping of child_nft_id and  timestamp when NFT minted
         mint_timestamp: Map<u256, u64>,
         // derivedNFT_id is map of perent_nft_id and List<child_nft_ids>
-        derivedNFT_ids: Map<u256, List<u256>>,
+        NFT_derived_tokens: Map<u256, List<u256>>,
         //licensing_data  is mapping of child_nft_id and  IPLiceseData
         licensing_data: Map<u256, IPLicenseData>,
     }
@@ -65,9 +65,11 @@ pub mod IPLicensingNFT {
         ERC721Event: ERC721Component::Event,
         #[flat]
         SRC5Event: SRC5Component::Event,
+        
     }
 
-
+    
+  
     #[derive(Drop, Serde, Debug, PartialEq, starknet::Store)]
     pub struct IPLicenseData {
         derivefrom: u256, //perent_nft_id
@@ -77,7 +79,7 @@ pub mod IPLicensingNFT {
         upfront_fee: u256,
         sublicensing: bool,
         exclusivity: u8,
-        metadata_cid: ByteArray // IPFS cid of child NFT 
+        metadata_cid: felt252 // IPFS cid of child NFT 
     }
 
     // *************************************************************************
@@ -94,10 +96,36 @@ pub mod IPLicensingNFT {
         // *************************************************************************
         //                            EXTERNAL FUNCTIONS
         // *************************************************************************
-
-        // mint new digital assets derived from existing NFTs and programmed license
+         
         fn mint_license_nft(
             ref self: ContractState,
+            original_nft_id: u256,
+            license_type: u8,    
+            duration: u32,
+            royalty_rate: u8,
+            upfront_fee: u256,
+            sublicensing: bool,
+            exclusivity: u8,
+            metadata_cid: felt252,
+        ) -> u256 {
+   
+            let license_data = self.prepare_license_data(
+           
+                original_nft_id,
+                license_type,
+                duration,
+                royalty_rate,
+                upfront_fee,
+                sublicensing,
+                exclusivity,
+                metadata_cid,
+            );
+            self.mint_and_store_license(license_data, original_nft_id)
+        }
+
+        
+        fn prepare_license_data(
+            ref self: ContractState,   
             original_nft_id: u256,
             license_type: u8,
             duration: u32,
@@ -105,26 +133,18 @@ pub mod IPLicensingNFT {
             upfront_fee: u256,
             sublicensing: bool,
             exclusivity: u8,
-            metadata_cid: ByteArray,
-        )-> u256 {
-            let caller = get_caller_address();
-            // Get the owner of the original NFT
+            metadata_cid: felt252,
+        ) -> IPLicenseData {
             let nft_owner = self.erc721.owner_of(original_nft_id);
-            assert(caller == nft_owner, 'Caller_not_owner_of_org_NFT');
+            assert(get_caller_address() == nft_owner, 'Caller_not_owner_of_org_NFT');
             assert(license_type >= 0 && license_type < 3, 'Invalid_license_type');
             assert(duration > 0, 'Duration_must_be_positive');
             assert(royalty_rate <= 100, 'Royalty_rate_exceeds_100');
             assert(upfront_fee >= 0, 'Upfront_fee_cannot_be_negative');
             assert(exclusivity >= 0 && exclusivity < 3, 'Invalid_exclusivity_value');
-            assert(metadata_cid.len() > 0, 'Metadata_CID_cannot_be_empty');
+            assert(metadata_cid.is_non_zero(), 'Metadata_CID_cannot_be_empty');
 
-            // Generate a new NFT ID (incremental from the last minted ID)
-            let new_nft_id = self.last_minted_id.read() + 1;
-            // Mint the new derived NFT for the owner
-            self.erc721.mint(nft_owner, new_nft_id);
-
-            // Create the licensing details for the derived NFT
-            let license_details = IPLicenseData {
+            IPLicenseData {
                 derivefrom: original_nft_id,
                 license_type,
                 duration,
@@ -133,27 +153,41 @@ pub mod IPLicensingNFT {
                 sublicensing,
                 exclusivity,
                 metadata_cid,
-            };
+            }
+        }
 
-            // Write the licensing data to storage
-            self.licensing_data.write(new_nft_id, license_details);
+        fn mint_and_store_license(
+            ref self: ContractState,
+            license_data: IPLicenseData,
+            original_nft_id: u256,
+        ) -> u256 {
+            let caller = get_caller_address();
 
-            // Get list of derived NFTs for the original NFT and append the new derived NFT ID
-            let mut nft_id_list = self.derivedNFT_ids.read(original_nft_id);
-            nft_id_list.append(new_nft_id);
-            self.derivedNFT_ids.write(original_nft_id, nft_id_list);
+            let nft_owner = self.erc721.owner_of(original_nft_id);
+            assert(caller == nft_owner, 'Caller_not_owner_of_org_NFT');
 
-            // Get list of derived NFTs for the user (owner of the original NFT) and append the new
-            // derived NFT ID
-            let mut user_nft = self.user_derived_nft_ids.read(nft_owner);
-            user_nft.append(new_nft_id);
-            self.user_derived_nft_ids.write(nft_owner, user_nft);
+            let new_nft_id = self.last_minted_id.read() + 1;
 
-            // Record the timestamp when the derived NFT was minted
+            self.erc721.mint(caller, new_nft_id);
+            self.licensing_data.write(new_nft_id, license_data);
+
+            let mut nft_id_list = self.NFT_derived_tokens.read(original_nft_id);
+            assert(nft_id_list.append(new_nft_id).is_ok(), 'Failed_to_append_derived_tokens');
+            self.NFT_derived_tokens.write(original_nft_id, nft_id_list);
+
+            let mut user_nft = self.user_derived_tokens.read(caller);
+            assert(user_nft.append(new_nft_id).is_ok(), 'Fail_append_user_derived_tokens');
+            self.user_derived_tokens.write(caller, user_nft);
+
             self.mint_timestamp.write(new_nft_id, get_block_timestamp());
-            // Update the last minted ID
             self.last_minted_id.write(new_nft_id);
+
             new_nft_id
         }
+
+        fn get_licensing_data(ref self: ContractState, nft_id: u256) -> IPLicenseData {
+            // Retrieve the licensing data of a child NFT
+            self.licensing_data.read(nft_id)
+        }     
     }
 }
