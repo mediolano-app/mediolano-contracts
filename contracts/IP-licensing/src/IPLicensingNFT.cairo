@@ -67,16 +67,34 @@ pub mod IPLicensingNFT {
         SRC5Event: SRC5Component::Event,
     }
 
+    // Define LicenseType enum
+    #[derive(Drop, Serde, Debug, PartialEq, starknet::Store)]
+    pub enum LicenseType {
+        #[default]
+        Exclusive,
+        NonExclusive,
+        Sale,
+    }
+
+    // Define Exclusivity enum
+    #[derive(Drop, Serde, Debug, PartialEq, starknet::Store)]
+    pub enum Exclusivity {
+        #[default]
+        FullExclusive,
+        PartialExclusive,
+        NonExclusive,
+    }
+
 
     #[derive(Drop, Serde, Debug, PartialEq, starknet::Store)]
     pub struct IPLicenseData {
         derivefrom: u256, //perent_nft_id
-        license_type: u8, // Licesnse Type 
+        license_type: LicenseType, // Licesnse Type 
         duration: u32,
         royalty_rate: u8,
         upfront_fee: u256,
         sublicensing: bool,
-        exclusivity: u8,
+        exclusivity: Exclusivity,
         metadata_cid: felt252 // IPFS cid of child NFT 
     }
 
@@ -95,6 +113,7 @@ pub mod IPLicensingNFT {
         //                            EXTERNAL FUNCTIONS
         // *************************************************************************
 
+        // Mint a licensing NFT from derived from a NFT
         fn mint_license_nft(
             ref self: ContractState,
             original_nft_id: u256,
@@ -120,7 +139,7 @@ pub mod IPLicensingNFT {
             self.mint_and_store_license(license_data, original_nft_id)
         }
 
-
+        // Prepare and check licensing data  for  storing into storage
         fn prepare_license_data(
             ref self: ContractState,
             original_nft_id: u256,
@@ -133,6 +152,8 @@ pub mod IPLicensingNFT {
             metadata_cid: felt252,
         ) -> IPLicenseData {
             let nft_owner = self.erc721.owner_of(original_nft_id);
+
+            // validating  data
             assert(get_caller_address() == nft_owner, 'Caller_not_owner_of_org_NFT');
             assert(license_type >= 0 && license_type < 3, 'Invalid_license_type');
             assert(duration > 0, 'Duration_must_be_positive');
@@ -140,6 +161,21 @@ pub mod IPLicensingNFT {
             assert(upfront_fee >= 0, 'Upfront_fee_cannot_be_negative');
             assert(exclusivity >= 0 && exclusivity < 3, 'Invalid_exclusivity_value');
             assert(metadata_cid.is_non_zero(), 'Metadata_CID_cannot_be_empty');
+
+            // Convert numeric values to enums
+            let license_type = match license_type {
+                0 => LicenseType::Exclusive,
+                1 => LicenseType::NonExclusive,
+                2 => LicenseType::Sale,
+                _ => panic!("License type mismatch"),
+            };
+
+            let exclusivity = match exclusivity {
+                0 => Exclusivity::FullExclusive,
+                1 => Exclusivity::PartialExclusive,
+                2 => Exclusivity::NonExclusive,
+                _ => panic!("exclusive type mismatch"),
+            };
 
             IPLicenseData {
                 derivefrom: original_nft_id,
@@ -153,6 +189,7 @@ pub mod IPLicensingNFT {
             }
         }
 
+        // Mint and store licensing NFT data on blockcahin storage
         fn mint_and_store_license(
             ref self: ContractState, license_data: IPLicenseData, original_nft_id: u256,
         ) -> u256 {
@@ -163,9 +200,11 @@ pub mod IPLicensingNFT {
 
             let new_nft_id = self.last_minted_id.read() + 1;
 
+            // Mint new NFT that derived from given NFT
             self.erc721.mint(caller, new_nft_id);
             self.licensing_data.write(new_nft_id, license_data);
 
+            // Update derived tokens mappings
             let mut nft_id_list = self.NFT_derived_tokens.read(original_nft_id);
             assert(nft_id_list.append(new_nft_id).is_ok(), 'Failed_to_append_derived_tokens');
             self.NFT_derived_tokens.write(original_nft_id, nft_id_list);
@@ -180,6 +219,7 @@ pub mod IPLicensingNFT {
             new_nft_id
         }
 
+        // Retrieve licensing data from storage
         fn get_licensing_data(ref self: ContractState, nft_id: u256) -> IPLicenseData {
             // Retrieve the licensing data of a child NFT
             self.licensing_data.read(nft_id)
