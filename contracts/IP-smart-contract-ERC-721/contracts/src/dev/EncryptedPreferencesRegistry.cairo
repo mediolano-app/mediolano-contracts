@@ -1,6 +1,8 @@
-
 use starknet::ContractAddress;
 
+// Structure for storing encrypted user settings
+// Each setting contains the encrypted data, nonce for encryption,
+// associated public key, timestamp of last update, and version number
 #[derive(Drop, Serde, starknet::Store)]
 struct EncryptedSetting {
     data: felt252,
@@ -10,6 +12,8 @@ struct EncryptedSetting {
     version: felt252
 }
 
+// Structure for storing wallet-specific encryption data
+// Tracks the current public key, version, and last update time
 #[derive(Drop, Serde, starknet::Store)]
 struct WalletData {
     pub_key: felt252,
@@ -49,13 +53,13 @@ mod EncryptedPreferencesRegistry {
 
     #[storage]
     struct Storage {
-        settings: LegacyMap::<(ContractAddress, felt252), EncryptedSetting>,
-        authorized_apps: LegacyMap::<ContractAddress, bool>,
-        wallet_data: LegacyMap::<ContractAddress, WalletData>,
-        encryption_versions: LegacyMap::<ContractAddress, felt252>,
+        settings: starknet::storage::Map::<(ContractAddress, felt252), EncryptedSetting>,
+        authorized_apps: starknet::storage::Map::<ContractAddress, bool>,
+        wallet_data: starknet::storage::Map::<ContractAddress, WalletData>,
+        encryption_versions: starknet::storage::Map::<ContractAddress, felt252>,
         owner: ContractAddress,
         mediolano_app: ContractAddress,
-        total_settings: LegacyMap::<ContractAddress, u64>
+        total_settings: starknet::storage::Map::<ContractAddress, u64>
     }
 
     #[event]
