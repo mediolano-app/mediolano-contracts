@@ -2,10 +2,9 @@ use starknet::ContractAddress;
 
 #[starknet::interface]
 trait IIPCollection<ContractState> {
-    fn mint(ref self: ContractState, recipient: ContractAddress, token_id: u256) -> u256;
+    fn mint(ref self: ContractState, recipient: ContractAddress) -> u256;
     fn burn(ref self: ContractState, token_id: u256);
     fn list_user_tokens(self: @ContractState, owner: ContractAddress) -> Array<u256>;
-    fn view_token_detail(self: @ContractState, token_id: u256) -> felt252;
     fn transfer_token(
         ref self: ContractState, from: ContractAddress, to: ContractAddress, token_id: u256,
     );
@@ -13,12 +12,16 @@ trait IIPCollection<ContractState> {
 
 #[starknet::contract]
 mod IPCollection {
-    use openzeppelin::token::erc721::interface::ERC721ABI;
-    use starknet::{
-        ClassHash, get_caller_address, ContractAddress,
-        storage::{StoragePointerReadAccess, StoragePointerWriteAccess, StoragePathEntry, Map},
-    };
     use core::num::traits::Zero;
+    use openzeppelin::token::erc721::ERC721Component::InternalTrait;
+    use alexandria_storage::ListTrait;
+    use starknet::{
+        ClassHash, get_caller_address, ContractAddress, get_contract_address,
+        storage::{
+            StoragePointerReadAccess, StoragePointerWriteAccess, StorageMapReadAccess,
+            StorageMapWriteAccess, Map,
+        },
+    };
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc721::ERC721Component;
@@ -45,21 +48,17 @@ mod IPCollection {
     impl ERC721EnumerableImpl =
         ERC721EnumerableComponent::ERC721EnumerableImpl<ContractState>;
 
-    // Internal
     impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
     impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
     impl ERC721EnumerableInternalImpl = ERC721EnumerableComponent::InternalImpl<ContractState>;
     impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
 
-    // Storage variables
     #[storage]
     struct Storage {
-        name: felt252,
-        symbol: felt252,
         owners: Map<u256, ContractAddress>,
         balances: Map<ContractAddress, u256>,
         token_uri: Map<u256, felt252>,
-        total_supply: u256,
+        token_id_count: u256,
         user_tokens: Map<ContractAddress, List<u256>>,
         #[substorage(v0)]
         erc721: ERC721Component::Storage,
@@ -73,7 +72,6 @@ mod IPCollection {
         upgradeable: UpgradeableComponent::Storage,
     }
 
-    // Events
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
@@ -89,12 +87,18 @@ mod IPCollection {
         UpgradeableEvent: UpgradeableComponent::Event,
     }
 
-    // Constructor
     #[constructor]
-    fn constructor(ref self: ContractState, owner: ContractAddress) {
-        self.erc721.initializer("ERC721IPCollection", "IPC", "");
+    fn constructor(
+        ref self: ContractState,
+        name: ByteArray,
+        symbol: ByteArray,
+        base_uri: ByteArray,
+        owner: ContractAddress,
+    ) {
+        self.erc721.initializer(name, symbol, base_uri);
         self.ownable.initializer(owner);
         self.erc721_enumerable.initializer();
+        self.token_id_count.write(0);
     }
 
     impl ERC721HooksImpl of ERC721Component::ERC721HooksTrait<ContractState> {
@@ -119,13 +123,13 @@ mod IPCollection {
 
     #[abi(embed_v0)]
     impl IPCollection of IIPCollection<ContractState> {
-        fn mint(ref self: ContractState, recipient: ContractAddress, token_id: u256) -> u256 {
+        fn mint(ref self: ContractState, recipient: ContractAddress) -> u256 {
             self.ownable.assert_only_owner();
 
             let caller = get_caller_address();
             assert(caller != Zero::zero(), 'Caller is zero address');
 
-            let total_supply = self.total_supply.read() + 1;
+            let token_id = self.token_id_count.read() + 1;
 
             self.erc721.mint(recipient, token_id);
 
@@ -142,20 +146,37 @@ mod IPCollection {
         }
 
         fn list_user_tokens(self: @ContractState, owner: ContractAddress) -> Array<u256> {
-            let user_tokens: Array<u256> = array![];
+            let mut user_tokens = self.user_tokens.read(owner);
 
-            user_tokens
-        }
+            let mut token_ids: Array<u256> = array![];
+            let mut i: u32 = 0;
 
-        fn view_token_detail(self: @ContractState, token_id: u256) -> felt252 {
-            let token_details: felt252 = 0;
+            loop {
+                if (i > user_tokens.len()) {
+                    break;
+                }
 
-            token_details
+                let token = user_tokens[i];
+                token_ids.append(token);
+
+                i += 1;
+            };
+
+            token_ids
         }
 
         fn transfer_token(
             ref self: ContractState, from: ContractAddress, to: ContractAddress, token_id: u256,
-        ) {}
+        ) {
+            let caller = get_caller_address();
+            assert(caller != Zero::zero(), 'Caller is zero address');
+
+            let approved = self.erc721.get_approved(token_id);
+
+            assert(approved == get_contract_address(), 'Contract not approved');
+
+            self.erc721.transfer(from, to, token_id);
+        }
     }
 }
 
