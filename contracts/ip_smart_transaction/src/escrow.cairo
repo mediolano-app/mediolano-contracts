@@ -12,14 +12,8 @@ mod ERC721EscrowComponent {
     use ip_smart_transaction::interface::ERC721Escrow;
 
     #[storage]
-    pub struct Storage {
+    struct Storage {
         escrows: Map<ContractAddress, felt252>
-    }
-
-    #[event]
-    #[derive(Drop, PartialEq, starknet::Event)]
-    pub enum Event {
-        
     }
 
     #[embeddable_as(ERC721EscrowImpl)]
@@ -29,24 +23,14 @@ mod ERC721EscrowComponent {
         impl ERC721: ERC721Component::HasComponent<TContractState>,
         +ERC721Component::ERC721HooksTrait<TContractState>
     > of ERC721Escrow<ComponentState<TContractState>> {
-        fn create_escrow(ref self: ComponentState<TContractState>, amount: u256, recipient: ContractAddress) -> felt252 {
+        fn create_escrow(ref self: TState, amount: u256, recipient: ContractAddress) -> felt252;
 
-        }
+        fn update_escrow(ref self: TState, id: felt252, fulfilled: bool);
 
-        fn update_escrow(ref self: ComponentState<TContractState>, id: felt252, fulfilled: bool) {
+        fn check_escrow_and_transfer(ref self: TState, id: felt252);
 
-        }
+        fn cancel_escrow(ref self: TState, id: felt252);
 
-        fn check_escrow_and_transfer(ref self: ComponentState<TContractState>, id: felt252) {
-
-        }
-
-        fn cancel_escrow(ref self: ComponentState<TContractState>, id: felt252) {
-
-        }
-
-        fn get_escrow_details(self: @ComponentState<TContractState>, id: felt252) -> (u256, ContractAddress) {
-
-        }
+        fn get_escrow_details(self: @TState, id: felt252) -> (u256, ContractAddress);
     }
 }
