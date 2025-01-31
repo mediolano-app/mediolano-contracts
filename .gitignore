@@ -1,2 +1,9 @@
+web/node_modules
+node_modules
+npm
+.npm
+web/.next
+web/.env.local
 .env.local
 .env
+.next
