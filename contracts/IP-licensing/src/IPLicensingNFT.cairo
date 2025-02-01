@@ -20,10 +20,12 @@ pub mod IPLicensingNFT {
     // *************************************************************************
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
+    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
 
     // ERC721 Mixin
     impl ERC721MixinImpl = ERC721Component::ERC721MixinImpl<ContractState>;
     impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
+    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;    
 
     // *************************************************************************
     //                             STORAGE
@@ -36,7 +38,6 @@ pub mod IPLicensingNFT {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         ownable: OwnableComponent::Storage,
-        admin: ContractAddress,
         last_minted_id: u256,
         mint_timestamp: Map<u256, u64>,
         token_uris : Map<u256  , ByteArray>,
@@ -51,7 +52,9 @@ pub mod IPLicensingNFT {
         #[flat]
         ERC721Event: ERC721Component::Event,
         #[flat]
-        SRC5Event: SRC5Component::Event
+        SRC5Event: SRC5Component::Event,
+        #[flat]
+        OwnableEvent: OwnableComponent::Event,
     }
 
     // *************************************************************************
@@ -59,8 +62,8 @@ pub mod IPLicensingNFT {
     // *************************************************************************
     #[constructor]
     fn constructor(ref self: ContractState, admin: ContractAddress) {
-        self.admin.write(admin);
-        self.erc721.initializer("SPIDERS", "WEBS", "" // The pinata URL will be updated soon
+        self.ownable.initializer(admin);
+        self.erc721.initializer("MediolanoIntelctualProperty", "MIP", "https://ipfs.io/ipfs/" 
         );
     }
 

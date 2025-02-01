@@ -31,7 +31,6 @@ fn USER() -> ContractAddress {
 fn __setup__() ->  ContractAddress {
 
     let nft_address = __deploy_WeaverNFT__();
-
    
  nft_address
 }
@@ -81,6 +80,10 @@ fn test_Licensing_nft_minted_extended() {
     let token_uri = nft_dispatcher.get_token_uri(first_token_id);
     println!("first token uri: {:?}", token_uri);
     assert_eq!(token_uri, valid_url, "Mismatch token uri");
+
+    // 6. Check owner of token id
+
+
 }
 
 #[test]
