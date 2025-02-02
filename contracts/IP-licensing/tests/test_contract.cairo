@@ -81,9 +81,6 @@ fn test_Licensing_nft_minted_extended() {
     println!("first token uri: {:?}", token_uri);
     assert_eq!(token_uri, valid_url, "Mismatch token uri");
 
-    // 6. Check owner of token id
-
-
 }
 
 #[test]
