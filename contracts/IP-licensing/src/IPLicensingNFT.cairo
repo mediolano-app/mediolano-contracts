@@ -3,7 +3,8 @@ pub mod IPLicensingNFT {
     // *************************************************************************
     //                             IMPORTS
     // *************************************************************************
-    use starknet::{ContractAddress, get_block_timestamp};
+
+use starknet::{ContractAddress, get_block_timestamp , get_caller_address};
     use core::num::traits::zero::Zero;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc721::{ERC721Component, ERC721HooksEmptyImpl};
@@ -41,6 +42,7 @@ pub mod IPLicensingNFT {
         last_minted_id: u256,
         mint_timestamp: Map<u256, u64>,
         token_uris : Map<u256  , ByteArray>,
+        licensing_data : Map<u256 , ByteArray>,
     }
 
     // *************************************************************************
@@ -74,28 +76,43 @@ pub mod IPLicensingNFT {
         //                            EXTERNAL
         // *************************************************************************
 
-        fn mint_Licensing_nft(ref self:ContractState, recipient: ContractAddress , token_uri : ByteArray)-> u256 {
+        fn mint_Licensing_nft(
+            ref self:ContractState,
+            recipient: ContractAddress,
+            token_id: u256,
+            new_token_uri: ByteArray,
+            license_data: ByteArray,
+        ) -> u256 {
+            assert(self.owner_of(token_id) == get_caller_address(), 'INVALID_CALLER');
             assert(recipient.is_non_zero(), 'EMPTY_ADDRESS');
-            assert(token_uri.len()>0 , 'EMPTY_URI');
-            let mut token_id = self.last_minted_id.read() + 1;
-            self.erc721.mint(recipient, token_id);
-            self.token_uris.write(token_id , token_uri);
-            let timestamp: u64 = get_block_timestamp();
+            assert(new_token_uri.len() > 0, 'EMPTY_URI');
+            assert(license_data.len() > 0, 'EMPTY_LICENSE');
+            
+            
+            let mut new_token_id = self.last_minted_id.read() + 1;
+            self.erc721.mint(recipient, new_token_id);
+            self.token_uris.write(new_token_id, new_token_uri);
+            self.licensing_data.write(new_token_id, license_data);
 
-            self.last_minted_id.write(token_id);
-            self.mint_timestamp.write(token_id, timestamp);
-            token_id
+            self.last_minted_id.write(new_token_id);
+            self.mint_timestamp.write(new_token_id, get_block_timestamp());
+            new_token_id
         }
 
         fn get_last_minted_id(self: @ContractState) -> u256 {
             self.last_minted_id.read()
         }
-        fn get_token_uri(self: @ContractState  , token_id : u256) -> ByteArray {
-            self.token_uris.read(token_id) 
+        
+        fn get_token_uri(self: @ContractState, token_id: u256) -> ByteArray {
+            self.token_uris.read(token_id)
         }
 
         fn get_token_mint_timestamp(self: @ContractState, token_id: u256) -> u64 {
             self.mint_timestamp.read(token_id)
+        }
+
+        fn get_license_data(self: @ContractState, token_id: u256) -> ByteArray {
+            self.licensing_data.read(token_id)
         }
     }
 }
