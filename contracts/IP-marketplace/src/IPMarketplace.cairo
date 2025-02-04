@@ -1,103 +1,105 @@
-use starknet::{ContractAddress, get_caller_address, get_contract_address};
+use core::array::ArrayTrait;
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
-use core::array::ArrayTrait;
+use starknet::{ContractAddress, get_caller_address, get_contract_address};
 
 #[derive(Drop, Copy, Serde, starknet::Store)]
-struct IPUsageRights {
-    commercial_use: bool,
-    modifications_allowed: bool,
-    attribution_required: bool,
-    geographic_restrictions: felt252,
-    usage_duration: u64,
-    sublicensing_allowed: bool,
-    industry_restrictions: felt252,
-}
-
-#[derive(Drop, Copy, Serde, starknet::Store)]
-struct DerivativeRights {
-    allowed: bool,
-    royalty_share: u16,
-    requires_approval: bool,
-    max_derivatives: u32,
+pub struct IPUsageRights {
+    pub commercial_use: bool,
+    pub modifications_allowed: bool,
+    pub attribution_required: bool,
+    pub geographic_restrictions: felt252,
+    pub usage_duration: u64,
+    pub sublicensing_allowed: bool,
+    pub industry_restrictions: felt252,
 }
 
 #[derive(Drop, Copy, Serde, starknet::Store)]
-struct IPMetadata {
-    ipfs_hash: felt252,
-    license_terms: felt252,
-    creator: ContractAddress,
-    creation_date: u64,
-    last_updated: u64,
-    version: u32,
-    content_type: felt252,
-    derivative_of: u256,
+pub struct DerivativeRights {
+    pub allowed: bool,
+    pub royalty_share: u16,
+    pub requires_approval: bool,
+    pub max_derivatives: u32
 }
 
 #[derive(Drop, Copy, Serde, starknet::Store)]
-struct Listing {
-    seller: ContractAddress,
-    price: u256,
-    currency: ContractAddress,
-    active: bool,
-    metadata: IPMetadata,
-    royalty_percentage: u16,
-    usage_rights: IPUsageRights,
-    derivative_rights: DerivativeRights,
-    minimum_purchase_duration: u64,
-    bulk_discount_rate: u16,
+pub struct IPMetadata {
+    pub ipfs_hash: felt252,
+    pub license_terms: felt252,
+    pub creator: ContractAddress,
+    pub creation_date: u64,
+    pub last_updated: u64,
+    pub version: u32,
+    pub content_type: felt252,
+    pub derivative_of: u256,
+}
+
+#[derive(Drop, Copy, Serde, starknet::Store)]
+pub struct Listing {
+    pub seller: ContractAddress,
+    pub price: u256,
+    pub currency: ContractAddress,
+    pub active: bool,
+    pub metadata: IPMetadata,
+    pub royalty_percentage: u16,
+    pub usage_rights: IPUsageRights,
+    pub derivative_rights: DerivativeRights,
+    pub minimum_purchase_duration: u64,
+    pub bulk_discount_rate: u16,
+}
+
+// Event structures
+#[derive(Drop, starknet::Event)]
+pub struct ItemListed {
+    #[key]
+    pub token_id: u256,
+    pub seller: ContractAddress,
+    pub price: u256,
+    pub currency: ContractAddress,
 }
 
 #[derive(Drop, starknet::Event)]
-struct ItemListed {
+pub struct ItemUnlisted {
     #[key]
-    token_id: u256,
-    seller: ContractAddress,
-    price: u256,
-    currency: ContractAddress,
+    pub token_id: u256,
 }
 
 #[derive(Drop, starknet::Event)]
-struct ItemUnlisted {
+pub struct ItemSold {
     #[key]
-    token_id: u256,
+    pub token_id: u256,
+    pub seller: ContractAddress,
+    pub buyer: ContractAddress,
+    pub price: u256,
 }
 
 #[derive(Drop, starknet::Event)]
-struct ItemSold {
+pub struct ListingUpdated {
     #[key]
-    token_id: u256,
-    seller: ContractAddress,
-    buyer: ContractAddress,
-    price: u256,
+    pub token_id: u256,
+    pub new_price: u256,
 }
 
 #[derive(Drop, starknet::Event)]
-struct ListingUpdated {
+pub struct MetadataUpdated {
     #[key]
-    token_id: u256,
-    new_price: u256,
+    pub token_id: u256,
+    pub new_metadata_hash: felt252,
+    pub new_license_terms_hash: felt252,
+    pub updater: ContractAddress,
 }
 
 #[derive(Drop, starknet::Event)]
-struct MetadataUpdated {
+pub struct DerivativeRegistered {
     #[key]
-    token_id: u256,
-    new_metadata_hash: felt252,
-    new_license_terms_hash: felt252,
-    updater: ContractAddress,
+    pub token_id: u256,
+    pub parent_token_id: u256,
+    pub creator: ContractAddress,
 }
 
-#[derive(Drop, starknet::Event)]
-struct DerivativeRegistered {
-    #[key]
-    token_id: u256,
-    parent_token_id: u256,
-    creator: ContractAddress,
-}
-
+// Contract Interface
 #[starknet::interface]
-trait IIPMarketplace<TContractState> {
+pub trait IIPMarketplace<TContractState> {
     fn list_item(
         ref self: TContractState,
         token_id: u256,
@@ -126,13 +128,14 @@ trait IIPMarketplace<TContractState> {
     ) -> u256;
 }
 
+// Contract Implementation
 #[starknet::contract]
 mod IPMarketplace {
     use super::{
-        IPUsageRights, DerivativeRights, IPMetadata, Listing,
-        ItemListed, ItemUnlisted, ItemSold, ListingUpdated, MetadataUpdated, DerivativeRegistered,
-        IERC20Dispatcher, IERC20DispatcherTrait, IERC721Dispatcher, IERC721DispatcherTrait, 
-        ArrayTrait, ContractAddress, get_caller_address, get_contract_address
+        IPUsageRights, DerivativeRights, IPMetadata, Listing, ItemListed, ItemUnlisted, ItemSold,
+        ListingUpdated, MetadataUpdated, DerivativeRegistered, IERC20Dispatcher,
+        IERC20DispatcherTrait, IERC721Dispatcher, IERC721DispatcherTrait, ArrayTrait,
+        ContractAddress, get_caller_address, get_contract_address
     };
 
     #[storage]
@@ -158,9 +161,7 @@ mod IPMarketplace {
 
     #[constructor]
     fn constructor(
-        ref self: ContractState,
-        nft_contract_address: ContractAddress,
-        marketplace_fee: u256
+        ref self: ContractState, nft_contract_address: ContractAddress, marketplace_fee: u256
     ) {
         self.nft_contract.write(nft_contract_address);
         self.owner.write(get_caller_address());
@@ -182,14 +183,14 @@ mod IPMarketplace {
         ) {
             let caller = get_caller_address();
             let nft_contract = IERC721Dispatcher { contract_address: self.nft_contract.read() };
-            
+
             // Verify ownership
             assert(nft_contract.owner_of(token_id) == caller, 'Not token owner');
-            
+
             // Verify approval
             assert(
-                nft_contract.get_approved(token_id) == get_contract_address() 
-                || nft_contract.is_approved_for_all(caller, get_contract_address()),
+                nft_contract.get_approved(token_id) == get_contract_address()
+                    || nft_contract.is_approved_for_all(caller, get_contract_address()),
                 'Not approved for marketplace'
             );
 
@@ -219,18 +220,18 @@ mod IPMarketplace {
 
             self.listings.write(token_id, listing);
 
-            self.emit(Event::ItemListed(ItemListed {
-                token_id,
-                seller: caller,
-                price,
-                currency: currency_address,
-            }));
+            self
+                .emit(
+                    Event::ItemListed(
+                        ItemListed { token_id, seller: caller, price, currency: currency_address, }
+                    )
+                );
         }
 
         fn unlist_item(ref self: ContractState, token_id: u256) {
             let caller = get_caller_address();
             let mut listing = self.listings.read(token_id);
-            
+
             assert(listing.active, 'Listing not active');
             assert(listing.seller == caller, 'Not the seller');
 
@@ -243,7 +244,7 @@ mod IPMarketplace {
         fn buy_item(ref self: ContractState, token_id: u256) {
             let caller = get_caller_address();
             let listing = self.listings.read(token_id);
-            
+
             assert(listing.active, 'Listing not active');
             assert(caller != listing.seller, 'Seller cannot buy');
 
@@ -264,28 +265,27 @@ mod IPMarketplace {
             updated_listing.active = false;
             self.listings.write(token_id, updated_listing);
 
-            self.emit(Event::ItemSold(ItemSold {
-                token_id,
-                seller: listing.seller,
-                buyer: caller,
-                price: listing.price,
-            }));
+            self
+                .emit(
+                    Event::ItemSold(
+                        ItemSold {
+                            token_id, seller: listing.seller, buyer: caller, price: listing.price,
+                        }
+                    )
+                );
         }
 
         fn update_listing(ref self: ContractState, token_id: u256, new_price: u256) {
             let caller = get_caller_address();
             let mut listing = self.listings.read(token_id);
-            
+
             assert(listing.active, 'Listing not active');
             assert(listing.seller == caller, 'Not the seller');
 
             listing.price = new_price;
             self.listings.write(token_id, listing);
 
-            self.emit(Event::ListingUpdated(ListingUpdated {
-                token_id,
-                new_price,
-            }));
+            self.emit(Event::ListingUpdated(ListingUpdated { token_id, new_price, }));
         }
 
         fn get_listing(self: @ContractState, token_id: u256) -> Listing {
@@ -309,12 +309,14 @@ mod IPMarketplace {
 
             self.listings.write(token_id, listing);
 
-            self.emit(Event::MetadataUpdated(MetadataUpdated {
-                token_id,
-                new_metadata_hash,
-                new_license_terms_hash,
-                updater: caller,
-            }));
+            self
+                .emit(
+                    Event::MetadataUpdated(
+                        MetadataUpdated {
+                            token_id, new_metadata_hash, new_license_terms_hash, updater: caller,
+                        }
+                    )
+                );
         }
 
         fn register_derivative(
@@ -325,7 +327,7 @@ mod IPMarketplace {
         ) -> u256 {
             let caller = get_caller_address();
             let parent_listing = self.listings.read(parent_token_id);
-            
+
             assert(parent_listing.derivative_rights.allowed, 'Derivatives not allowed');
             assert(parent_listing.active, 'Parent listing not active');
 
@@ -334,11 +336,14 @@ mod IPMarketplace {
 
             self.derivative_registry.write(new_token_id, parent_token_id);
 
-            self.emit(Event::DerivativeRegistered(DerivativeRegistered {
-                token_id: new_token_id,
-                parent_token_id,
-                creator: caller,
-            }));
+            self
+                .emit(
+                    Event::DerivativeRegistered(
+                        DerivativeRegistered {
+                            token_id: new_token_id, parent_token_id, creator: caller,
+                        }
+                    )
+                );
 
             new_token_id
         }

@@ -5,10 +5,6 @@ mod components {
     pub mod ERC721Enumerable;
 }
 
-mod dev {
-    pub mod IPMarketplace;  
-}
-
 #[cfg(test)]
 mod test {
     mod TestContract;
