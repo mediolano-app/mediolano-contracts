@@ -42,6 +42,7 @@ pub trait IMarketplace<TContractState> {
 pub trait IMIPListing<TContractState> {
     fn create_listing(
         ref self: TContractState,
+        assetContractAddress: ContractAddress,
         tokenId: u256,
         startTime: u256,
         secondsUntilEndTime: u256,
@@ -50,6 +51,5 @@ pub trait IMIPListing<TContractState> {
         buyoutPricePerToken: u256,
         tokenTypeOfListing: u256,
     );
-    fn update_ip_asset_address(ref self: TContractState, new_address: ContractAddress);
     fn update_ip_marketplace_address(ref self: TContractState, new_address: ContractAddress);
 }

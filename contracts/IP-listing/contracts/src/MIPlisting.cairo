@@ -19,7 +19,6 @@ pub mod MIPListing {
 
     #[storage]
     struct Storage {
-        ip_asset_address: ContractAddress,
         ip_marketplace_address: ContractAddress,
         #[substorage(v0)]
         ownable: OwnableComponent::Storage
@@ -29,7 +28,6 @@ pub mod MIPListing {
     #[derive(Drop, starknet::Event)]
     enum Event {
         ListingCreated: ListingCreated,
-        IPAssetUpdated: IPAssetUpdated,
         IPMarketplaceUpdated: IPMarketplaceUpdated,
         #[flat]
         OwnableEvent: OwnableComponent::Event
@@ -43,12 +41,6 @@ pub mod MIPListing {
         date: u64
     }
 
-    #[derive(Drop, starknet::Event)]
-    struct IPAssetUpdated {
-        #[key]
-        address: ContractAddress,
-        date: u64
-    }
 
     #[derive(Drop, starknet::Event)]
     struct IPMarketplaceUpdated {
@@ -61,11 +53,9 @@ pub mod MIPListing {
     fn constructor(
         ref self: ContractState,
         owner: ContractAddress,
-        ip_asset: ContractAddress,
         ip_marketplace: ContractAddress
     ) {
         self.ownable.initializer(owner);
-        self.ip_asset_address.write(ip_asset);
         self.ip_marketplace_address.write(ip_marketplace);
     }
 
@@ -73,6 +63,7 @@ pub mod MIPListing {
     impl IMIPListingImpl of IMIPListing<ContractState> {
         fn create_listing(
             ref self: ContractState,
+            assetContractAddress: ContractAddress,
             tokenId: u256,
             startTime: u256,
             secondsUntilEndTime: u256,
@@ -82,11 +73,11 @@ pub mod MIPListing {
             tokenTypeOfListing: u256,
         ) {
             let caller = get_caller_address();
-            let ip_asset_address = self.ip_asset_address.read();
+            assert(assetContractAddress != Zero::zero(), Errors::INVALID_IP_ASSET);
             let marketplace_dispatcher = IMarketplaceDispatcher {
                 contract_address: self.ip_marketplace_address.read()
             };
-            let erc721_dispatcher = IERC721Dispatcher { contract_address: ip_asset_address };
+            let erc721_dispatcher = IERC721Dispatcher { contract_address: assetContractAddress };
             // check whether asset is IP asset
             assert(erc721_dispatcher.owner_of(tokenId) != Zero::zero(), Errors::INVALID_IP_ASSET);
             // check whether asset is caller asset
@@ -98,7 +89,7 @@ pub mod MIPListing {
             );
             marketplace_dispatcher
                 .create_listing(
-                    ip_asset_address,
+                    assetContractAddress,
                     tokenId,
                     startTime,
                     secondsUntilEndTime,
@@ -113,12 +104,6 @@ pub mod MIPListing {
                         token_id: tokenId, lister: caller, date: get_block_timestamp()
                     }
                 )
-        }
-
-        fn update_ip_asset_address(ref self: ContractState, new_address: ContractAddress) {
-            self.ownable.assert_only_owner();
-            self.ip_asset_address.write(new_address);
-            self.emit(IPAssetUpdated { address: new_address, date: get_block_timestamp() });
         }
 
         fn update_ip_marketplace_address(ref self: ContractState, new_address: ContractAddress) {
