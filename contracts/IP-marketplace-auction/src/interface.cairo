@@ -3,7 +3,10 @@ use starknet::{ContractAddress};
 #[starknet::interface]
 pub trait IMarketPlace<TContractState> {
     fn create_auction(
-        ref self: TContractState, token_address: ContractAddress, token_id: u256, start_price: u256
+        ref self: TContractState,
+        token_address: ContractAddress,
+        token_id: u256,
+        start_price: u256, //currency_address: ContractAddress,
     ) -> u64;
     fn get_auction(self: @TContractState, auction_id: u64) -> Auction;
     fn commit_bid(ref self: TContractState, auction_id: u64, amount: u256, salt: felt252);
@@ -23,4 +26,6 @@ pub struct Auction {
     pub end_time: u64, // Auction end time
     pub active: bool, // Whether the auction is still active within the specified duration
     pub is_completed: bool, // Whether the auction is completed and winner is determined
+    // pub currency_address: ContractAddress, // Contract address of the currency used for the
+// payment.
 }

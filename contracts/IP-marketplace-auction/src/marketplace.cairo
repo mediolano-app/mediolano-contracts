@@ -10,7 +10,8 @@ pub mod MarketPlace {
         Vec, VecTrait,
     };
     use starknet::{
-        ContractAddress, get_block_timestamp, get_caller_address, contract_address_const
+        ContractAddress, get_block_timestamp, get_caller_address, contract_address_const,
+        get_contract_address
     };
 
     #[storage]
@@ -39,7 +40,8 @@ pub mod MarketPlace {
             ref self: ContractState,
             token_address: ContractAddress,
             token_id: u256,
-            start_price: u256
+            start_price: u256,
+            // currency_address: ContractAddress,
         ) -> u64 {
             let owner = get_caller_address();
             let end_time = get_block_timestamp() + 0; //TODO: add auction duration
@@ -47,6 +49,7 @@ pub mod MarketPlace {
 
             assert(!start_price.is_zero(), 'Start price is zero');
             assert(self._is_owner(token_address, token_id, owner), 'Caller is not owner');
+            // assert(!currency_address.is_zero(), 'Currency address is zero');
 
             let auction = Auction {
                 owner,
@@ -58,14 +61,18 @@ pub mod MarketPlace {
                 end_time,
                 active: true,
                 is_completed: false,
+                // currency_address,
             };
 
             // Store auction details
             self.auctions.entry(auction_id).write(auction);
             self.auction_count.write(auction_id);
 
-            // TODO: transfer asset
+            // transfer asset
+            IERC721Dispatcher { contract_address: token_address }
+                .transfer_from(owner, get_contract_address(), token_id);
 
+            //TODO emit event
             auction_id
         }
 

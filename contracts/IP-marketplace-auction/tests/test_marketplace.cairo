@@ -90,6 +90,11 @@ fn test_create_auction_start_price_is_zero() {
 fn test_create_auction_ok() {
     let (marketplace, my_nft, token_id) = setup();
 
+    // approve marketplace
+    start_cheat_caller_address(my_nft.contract_address, OWNER());
+    my_nft.approve(marketplace.contract_address, token_id);
+    stop_cheat_caller_address(my_nft.contract_address);
+
     start_cheat_caller_address(marketplace.contract_address, OWNER());
     let auction_id = marketplace
         .create_auction(my_nft.contract_address, token_id, STARTING_PRICE());
@@ -103,6 +108,8 @@ fn test_create_auction_ok() {
     assert(auction.highest_bid == 0, 'wrong highest bid');
     assert(auction.highest_bidder == 0.try_into().unwrap(), 'wrong highest bidder');
     assert(auction.active, 'wrong active status');
+
+    assert(my_nft.owner_of(token_id) == marketplace.contract_address, 'asset transfer failed');
 }
 
 #[test]
