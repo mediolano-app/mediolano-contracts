@@ -6,7 +6,8 @@ pub mod MarketPlace {
 
     use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
     use starknet::storage::{
-        Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess,
+        Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess, MutableVecTrait,
+        Vec, VecTrait,
     };
     use starknet::{
         ContractAddress, get_block_timestamp, get_caller_address, contract_address_const
@@ -16,8 +17,9 @@ pub mod MarketPlace {
     struct Storage {
         auctions: Map<u64, Auction>, // auction_id -> Auction
         auction_count: u64,
-        bids: Map<(u64, ContractAddress), felt252>, // (auction_id, bidder) -> bid_hash
+        committed_bids: Map<(u64, ContractAddress), felt252>, // (auction_id, bidder) -> bid_hash
         bids_count: Map<u64, u64>, // auction_id -> number of bids
+        revealed_bids: Map<u64, Vec<(u256, ContractAddress)>>, // auction_id -> Vec(amount, bidder)
     }
 
 
@@ -89,7 +91,7 @@ pub mod MarketPlace {
             let bid_count = self.get_auction_bid_count(auction_id);
 
             // store bid hash
-            self.bids.entry((auction_id, bidder)).write(bid_hash);
+            self.committed_bids.entry((auction_id, bidder)).write(bid_hash);
             self.bids_count.entry(auction_id).write(bid_count + 1);
             // TODO: transfer funds
         }
@@ -99,7 +101,39 @@ pub mod MarketPlace {
         }
 
 
-        fn reveal_bid(ref self: ContractState) {}
+        fn reveal_bid(ref self: ContractState, auction_id: u64, amount: u256, salt: felt252) {
+            let bidder = get_caller_address();
+
+            //TODO: use auction duration
+            // check if auction is still active
+            // assert(!self.get_auction(auction_id).active, 'Auction is still active');
+
+            // get initial bid hash
+            let bid_hash = self.committed_bids.entry((auction_id, bidder)).read();
+
+            assert(!bid_hash.is_zero(), 'No bid found');
+
+            // compare bid hash
+            let revealed_bid_hash = hash::compute_bid_hash(amount, salt);
+
+            assert(bid_hash == revealed_bid_hash, 'Wrong amount or salt');
+
+            self.revealed_bids.entry(auction_id).append().write((amount, bidder));
+        }
+
+        fn get_revealed_bids(
+            self: @ContractState, auction_id: u64
+        ) -> Span<(u256, ContractAddress)> {
+            let bid_len = self.revealed_bids.entry(auction_id).len();
+            let mut bids: Array<(u256, ContractAddress)> = array![];
+
+            for i in 0
+                ..bid_len {
+                    let bid = self.revealed_bids.entry(auction_id).at(i).read();
+                    bids.append(bid);
+                };
+            bids.span()
+        }
     }
 
     #[generate_trait]

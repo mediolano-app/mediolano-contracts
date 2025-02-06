@@ -15,6 +15,10 @@ fn OWNER() -> ContractAddress {
     'OWNER'.try_into().unwrap()
 }
 
+fn BOB() -> ContractAddress {
+    'BOB'.try_into().unwrap()
+}
+
 fn TOKEN_ADDRESS() -> ContractAddress {
     'TOKEN_ADDRESS'.try_into().unwrap()
 }
@@ -178,4 +182,89 @@ fn test_commit_bid_ok() {
     let bid_count = marketplace.get_auction_bid_count(auction_id);
 
     assert(bid_count == 2, 'wrong bid count');
+}
+
+#[test]
+#[should_panic(expected: ('No bid found',))]
+fn test_reveal_bid_no_bid_found() {
+    let (marketplace, my_nft, token_id) = setup();
+
+    let bid_amount = 200_u256;
+
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(my_nft.contract_address, token_id, STARTING_PRICE());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // reveal bid
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.reveal_bid(auction_id, bid_amount, SALT());
+}
+
+#[test]
+#[should_panic(expected: ('Wrong amount or salt',))]
+fn test_reveal_bid_wrong_amount() {
+    let (marketplace, my_nft, token_id) = setup();
+
+    let bid_amount = 200_u256;
+    let wrong_bid_amount = 500_u256;
+
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(my_nft.contract_address, token_id, STARTING_PRICE());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, bid_amount, SALT());
+
+    // reveal bid
+    marketplace.reveal_bid(auction_id, wrong_bid_amount, SALT());
+}
+
+#[test]
+#[should_panic(expected: ('Wrong amount or salt',))]
+fn test_reveal_bid_wrong_salt() {
+    let (marketplace, my_nft, token_id) = setup();
+
+    let bid_amount = 200_u256;
+
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(my_nft.contract_address, token_id, STARTING_PRICE());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, bid_amount, SALT());
+
+    // reveal bid
+    marketplace.reveal_bid(auction_id, bid_amount, 'wrong_salt'.try_into().unwrap());
+}
+
+#[test]
+fn test_reveal_bid_ok() {
+    let (marketplace, my_nft, token_id) = setup();
+
+    let bid_amount = 200_u256;
+
+    // create auction
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(my_nft.contract_address, token_id, STARTING_PRICE());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, bid_amount, SALT());
+
+    // reveal bid
+    marketplace.reveal_bid(auction_id, bid_amount, SALT());
+
+    let bids = marketplace.get_revealed_bids(auction_id);
+    let (amount, bidder) = bids.at(0);
+
+    assert(bids.len() == 1, 'wrong number of bids');
+    assert(*amount == bid_amount, 'wrong bid amount');
+    assert(*bidder == BOB(), 'wrong bidder');
 }

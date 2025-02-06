@@ -8,7 +8,8 @@ pub trait IMarketPlace<TContractState> {
     fn get_auction(self: @TContractState, auction_id: u64) -> Auction;
     fn commit_bid(ref self: TContractState, auction_id: u64, amount: u256, salt: felt252);
     fn get_auction_bid_count(self: @TContractState, auction_id: u64) -> u64;
-    fn reveal_bid(ref self: TContractState);
+    fn reveal_bid(ref self: TContractState, auction_id: u64, amount: u256, salt: felt252);
+    fn get_revealed_bids(self: @TContractState, auction_id: u64) -> Span<(u256, ContractAddress)>;
 }
 
 #[derive(Drop, Copy, Serde, starknet::Store)]
