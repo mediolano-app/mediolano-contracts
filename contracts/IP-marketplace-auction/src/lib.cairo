@@ -6,5 +6,6 @@ pub mod utils {
 }
 
 pub mod mock {
+    pub mod erc20;
     pub mod erc721;
 }

@@ -41,7 +41,7 @@ pub mod MarketPlace {
             token_address: ContractAddress,
             token_id: u256,
             start_price: u256,
-            // currency_address: ContractAddress,
+            currency_address: ContractAddress,
         ) -> u64 {
             let owner = get_caller_address();
             let end_time = get_block_timestamp() + 0; //TODO: add auction duration
@@ -49,7 +49,7 @@ pub mod MarketPlace {
 
             assert(!start_price.is_zero(), 'Start price is zero');
             assert(self._is_owner(token_address, token_id, owner), 'Caller is not owner');
-            // assert(!currency_address.is_zero(), 'Currency address is zero');
+            assert(!currency_address.is_zero(), 'Currency address is zero');
 
             let auction = Auction {
                 owner,
@@ -61,7 +61,7 @@ pub mod MarketPlace {
                 end_time,
                 active: true,
                 is_completed: false,
-                // currency_address,
+                currency_address,
             };
 
             // Store auction details
