@@ -6,7 +6,8 @@ pub trait IMarketPlace<TContractState> {
         ref self: TContractState, token_address: ContractAddress, token_id: u256, start_price: u256
     ) -> u64;
     fn get_auction(self: @TContractState, auction_id: u64) -> Auction;
-    fn commit_bid(ref self: TContractState);
+    fn commit_bid(ref self: TContractState, auction_id: u64, amount: u256, salt: felt252);
+    fn get_auction_bid_count(self: @TContractState, auction_id: u64) -> u64;
     fn reveal_bid(ref self: TContractState);
 }
 
@@ -19,5 +20,6 @@ pub struct Auction {
     pub highest_bid: u256, // Highest revealed bid
     pub highest_bidder: ContractAddress, // Address of highest bidder
     pub end_time: u64, // Auction end time
-    pub active: bool // Whether the auction is active
+    pub active: bool, // Whether the auction is still active within the specified duration
+    pub is_completed: bool, // Whether the auction is completed and winner is determined
 }
