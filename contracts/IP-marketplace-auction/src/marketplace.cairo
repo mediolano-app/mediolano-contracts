@@ -3,13 +3,14 @@ pub mod MarketPlace {
     use core::num::traits::Zero;
     use marketplace_auction::interface::{IMarketPlace, Auction};
     use marketplace_auction::utils::hash;
+
+    use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
     use starknet::storage::{
         Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess,
     };
     use starknet::{
         ContractAddress, get_block_timestamp, get_caller_address, contract_address_const
     };
-
 
     #[storage]
     struct Storage {
@@ -43,7 +44,7 @@ pub mod MarketPlace {
             let auction_id = self.auction_count.read() + 1;
 
             assert(!start_price.is_zero(), 'starting price is zero');
-            //TODO: assert caller is owner of asset
+            assert(self._is_owner(token_address, token_id, owner), 'Caller is not owner');
 
             let auction = Auction {
                 owner,
@@ -99,5 +100,15 @@ pub mod MarketPlace {
 
 
         fn reveal_bid(ref self: ContractState) {}
+    }
+
+    #[generate_trait]
+    pub impl InternalFunctions of InternalFunctionsTrait {
+        fn _is_owner(
+            token_address: ContractAddress, token_id: u256, caller: ContractAddress
+        ) -> bool {
+            let owner = IERC721Dispatcher { contract_address: token_address }.owner_of(token_id);
+            owner == caller
+        }
     }
 }
