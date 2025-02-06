@@ -43,7 +43,7 @@ pub mod MarketPlace {
             let end_time = get_block_timestamp() + 0; //TODO: add auction duration
             let auction_id = self.auction_count.read() + 1;
 
-            assert(!start_price.is_zero(), 'starting price is zero');
+            assert(!start_price.is_zero(), 'Start price is zero');
             assert(self._is_owner(token_address, token_id, owner), 'Caller is not owner');
 
             let auction = Auction {
@@ -105,7 +105,10 @@ pub mod MarketPlace {
     #[generate_trait]
     pub impl InternalFunctions of InternalFunctionsTrait {
         fn _is_owner(
-            token_address: ContractAddress, token_id: u256, caller: ContractAddress
+            ref self: ContractState,
+            token_address: ContractAddress,
+            token_id: u256,
+            caller: ContractAddress
         ) -> bool {
             let owner = IERC721Dispatcher { contract_address: token_address }.owner_of(token_id);
             owner == caller
