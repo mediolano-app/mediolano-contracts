@@ -2,6 +2,7 @@ pub mod interface;
 pub mod marketplace;
 
 pub mod utils {
+    pub mod constants;
     pub mod hash;
 }
 

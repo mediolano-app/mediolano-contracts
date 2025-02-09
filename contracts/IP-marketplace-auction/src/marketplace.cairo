@@ -2,7 +2,7 @@
 pub mod MarketPlace {
     use core::num::traits::Zero;
     use marketplace_auction::interface::{IMarketPlace, Auction};
-    use marketplace_auction::utils::hash;
+    use marketplace_auction::utils::{hash, constants};
     use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
 
@@ -23,6 +23,8 @@ pub mod MarketPlace {
         bids_count: Map<u64, u64>, // auction_id -> number of bids
         revealed_bids: Map<u64, Vec<(u256, ContractAddress)>>, // auction_id -> Vec(amount, bidder)
         balances: Map<ContractAddress, u256>, // bidder -> total deposited funds  
+        auction_duration: u64, // auction duration in days
+        reveal_duration: u64,
     }
 
 
@@ -34,7 +36,10 @@ pub mod MarketPlace {
     //TODO: bid successful event
 
     #[constructor]
-    fn constructor(ref self: ContractState) {}
+    fn constructor(ref self: ContractState, auction_duration: u64, reveal_duration: u64) {
+        self.auction_duration.write(auction_duration);
+        self.reveal_duration.write(reveal_duration);
+    }
 
     #[abi(embed_v0)]
     pub impl MarketPlaceImpl of IMarketPlace<ContractState> {
@@ -46,7 +51,8 @@ pub mod MarketPlace {
             currency_address: ContractAddress,
         ) -> u64 {
             let owner = get_caller_address();
-            let end_time = get_block_timestamp() + 0; //TODO: add auction duration
+            let auction_duration = self.auction_duration.read();
+            let end_time = get_block_timestamp() + (auction_duration * constants::DAY_IN_SECONDS);
             let auction_id = self.auction_count.read() + 1;
 
             assert(!start_price.is_zero(), 'Start price is zero');
@@ -84,6 +90,8 @@ pub mod MarketPlace {
 
 
         fn commit_bid(ref self: ContractState, auction_id: u64, amount: u256, salt: felt252) {
+            self._check_auction_status(auction_id);
+
             let auction = self.get_auction(auction_id);
             let bidder = get_caller_address();
             let erc20_dispatcher = IERC20Dispatcher { contract_address: auction.currency_address };
@@ -120,11 +128,12 @@ pub mod MarketPlace {
 
 
         fn reveal_bid(ref self: ContractState, auction_id: u64, amount: u256, salt: felt252) {
+            self._check_auction_status(auction_id);
             let bidder = get_caller_address();
 
-            //TODO: use auction duration
-            // check if auction is still active
-            // assert(!self.get_auction(auction_id).active, 'Auction is still active');
+            // check if auction is open
+            let auction = self.get_auction(auction_id);
+            assert(!auction.is_open, 'Auction is still open');
 
             // get initial bid hash
             let bid_hash = self.committed_bids.entry((auction_id, bidder)).read();
@@ -154,9 +163,16 @@ pub mod MarketPlace {
         }
 
         fn finalize_auction(ref self: ContractState, auction_id: u64) {
+            self._check_auction_status(auction_id);
+
             let mut auction = self.get_auction(auction_id);
-            // TODO: assert(!auction.is_open, 'Auction is still open');
-            // TODO: assert(!auction.is_finalized, 'Auction already finalized');
+            let reveal_duration = self.reveal_duration.read();
+            let reveal_duration_end = auction.end_time
+                + (reveal_duration * constants::DAY_IN_SECONDS);
+
+            assert(!auction.is_open, 'Auction is still open');
+            assert(get_block_timestamp() >= reveal_duration_end, 'Reveal time not over');
+            assert(!auction.is_finalized, 'Auction already finalized');
 
             let (highest_bid, highest_bidder) = self._get_highest_bidder(auction_id);
 
@@ -241,6 +257,16 @@ pub mod MarketPlace {
                         .transfer(*bidder, *amount);
                 }
             };
+        }
+
+        fn _check_auction_status(ref self: ContractState, auction_id: u64) {
+            let mut auction = self.get_auction(auction_id);
+            let current_time = get_block_timestamp();
+
+            if current_time >= auction.end_time {
+                auction.is_open = false;
+                self.auctions.entry(auction_id).write(auction);
+            }
         }
     }
 }

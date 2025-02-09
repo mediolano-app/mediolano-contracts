@@ -3,15 +3,21 @@ use marketplace_auction::interface::{
     IMarketPlace, IMarketPlaceDispatcher, IMarketPlaceDispatcherTrait
 };
 use marketplace_auction::mock::erc721::{IMyNFTDispatcher, IMyNFTDispatcherTrait};
+use marketplace_auction::utils::{constants};
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
 use snforge_std::{
     ContractClassTrait, DeclareResultTrait, EventSpyAssertionsTrait, declare, spy_events,
     start_cheat_block_timestamp_global, start_cheat_caller_address,
-    stop_cheat_block_timestamp_global, stop_cheat_caller_address,
+    stop_cheat_block_timestamp_global, stop_cheat_caller_address, start_cheat_block_timestamp,
+    stop_cheat_block_timestamp, cheat_caller_address, CheatSpan, stop_cheat_caller_address_global
 };
 use starknet::{ContractAddress, get_block_timestamp};
 
+
+const TIMESTAMP: u64 = 23_000_000;
+const AUCTION_DURATION: u64 = 1;
+const REVEAL_DURATION: u64 = 1;
 
 fn OWNER() -> ContractAddress {
     'OWNER'.try_into().unwrap()
@@ -19,6 +25,10 @@ fn OWNER() -> ContractAddress {
 
 fn BOB() -> ContractAddress {
     'BOB'.try_into().unwrap()
+}
+
+fn ALICE() -> ContractAddress {
+    'ALICE'.try_into().unwrap()
 }
 
 fn TOKEN_ADDRESS() -> ContractAddress {
@@ -37,15 +47,28 @@ fn SALT() -> felt252 {
     'salt'.try_into().unwrap()
 }
 
+fn fast_forward(marketplace_address: ContractAddress, to: u64) {
+    let forward_timestamp: u64 = TIMESTAMP + (to * constants::DAY_IN_SECONDS);
+
+    start_cheat_block_timestamp(marketplace_address, forward_timestamp);
+}
+
 fn setup() -> (IMarketPlaceDispatcher, IERC721Dispatcher, u256, IERC20Dispatcher) {
     let marketplace = deploy_marketplace();
     let (erc721, token_id) = deploy_erc721();
     let erc20 = deploy_erc20();
 
-    // approve marketplace to spend token
+    // approve marketplace to spend token for BOB
     start_cheat_caller_address(erc20.contract_address, BOB());
     erc20.approve(marketplace.contract_address, Bounded::<u256>::MAX);
     stop_cheat_caller_address(erc20.contract_address);
+
+    // approve marketplace to spend token for ALICE
+    start_cheat_caller_address(erc20.contract_address, ALICE());
+    erc20.approve(marketplace.contract_address, Bounded::<u256>::MAX);
+    stop_cheat_caller_address(erc20.contract_address);
+
+    start_cheat_block_timestamp(marketplace.contract_address, TIMESTAMP);
 
     (marketplace, erc721, token_id, erc20)
 }
@@ -53,7 +76,7 @@ fn setup() -> (IMarketPlaceDispatcher, IERC721Dispatcher, u256, IERC20Dispatcher
 
 fn deploy_marketplace() -> IMarketPlaceDispatcher {
     let contract = declare("MarketPlace").unwrap().contract_class();
-    let mut constructor_calldata = array![];
+    let mut constructor_calldata = array![AUCTION_DURATION.into(), REVEAL_DURATION.into()];
 
     let (contract_address, _) = contract.deploy(@constructor_calldata).unwrap();
 
@@ -78,6 +101,11 @@ fn deploy_erc20() -> IERC20Dispatcher {
     let mut constructor_calldata: Array<felt252> = array![BOB().into()];
 
     let (contract_address, _) = contract.deploy(@constructor_calldata).unwrap();
+
+    // fund alice
+    start_cheat_caller_address(contract_address, BOB());
+    IERC20Dispatcher { contract_address }.transfer(ALICE(), 10_000);
+    stop_cheat_caller_address(contract_address);
 
     IERC20Dispatcher { contract_address }
 }
@@ -121,6 +149,9 @@ fn test_create_auction_currency_address_is_zero() {
 #[test]
 fn test_create_auction_ok() {
     let (marketplace, my_nft, token_id, my_token) = setup();
+    let expected_timestamp: u64 = TIMESTAMP + (1 * constants::DAY_IN_SECONDS);
+
+    // start_cheat_block_timestamp_global(timestamp);
 
     // approve marketplace
     start_cheat_caller_address(my_nft.contract_address, OWNER());
@@ -143,6 +174,7 @@ fn test_create_auction_ok() {
     assert(auction.highest_bidder == 0.try_into().unwrap(), 'wrong highest bidder');
     assert(auction.is_open, 'wrong open status');
     assert(!auction.is_finalized, 'should not be finalized');
+    assert(auction.end_time == expected_timestamp, 'wrong end time');
 
     assert(my_nft.owner_of(token_id) == marketplace.contract_address, 'asset transfer failed');
 }
@@ -171,16 +203,23 @@ fn test_commit_bid_owner_is_bidder() {
     marketplace.commit_bid(auction_id, 200_u256, SALT());
 }
 
-// #[test]
-// #[should_panic(expected: ('Auction is not active',))]
-// fn test_commit_bid_non_active() {
-//     let (marketplace, _) = setup();
+#[test]
+#[should_panic(expected: ('Auction closed',))]
+fn test_commit_bid_auction_closed() {
+    let (marketplace, my_nft, token_id, my_token) = setup();
 
-//     start_cheat_caller_address(marketplace.contract_address, OWNER());
-//     let auction_id = marketplace.create_auction(TOKEN_ADDRESS(), TOKEN_ID(), STARTING_PRICE());
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(
+            my_nft.contract_address, token_id, STARTING_PRICE(), my_token.contract_address
+        );
+    stop_cheat_caller_address(marketplace.contract_address);
 
-//     marketplace.commit_bid(auction_id, 200_u256, SALT());
-// }
+    fast_forward(marketplace.contract_address, AUCTION_DURATION);
+
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, 200_u256, SALT());
+}
 
 #[test]
 #[should_panic(expected: ('Amount less than start price',))]
@@ -259,7 +298,7 @@ fn test_commit_bid_ok() {
 
 #[test]
 #[should_panic(expected: ('No bid found',))]
-fn test_reveal_bid_no_bid_found() {
+fn test_reveal_bid_when_no_bid() {
     let (marketplace, my_nft, token_id, my_token) = setup();
 
     let bid_amount = 200_u256;
@@ -271,8 +310,32 @@ fn test_reveal_bid_no_bid_found() {
         );
     stop_cheat_caller_address(marketplace.contract_address);
 
+    fast_forward(marketplace.contract_address, AUCTION_DURATION);
+
     // reveal bid
     start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.reveal_bid(auction_id, bid_amount, SALT());
+}
+
+#[test]
+#[should_panic(expected: ('Auction is still open',))]
+fn test_reveal_bid_when_auction_open() {
+    let (marketplace, my_nft, token_id, my_token) = setup();
+
+    let bid_amount = 200_u256;
+
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(
+            my_nft.contract_address, token_id, STARTING_PRICE(), my_token.contract_address
+        );
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, bid_amount, SALT());
+
+    // reveal bid
     marketplace.reveal_bid(auction_id, bid_amount, SALT());
 }
 
@@ -294,6 +357,8 @@ fn test_reveal_bid_wrong_amount() {
     // commit bid
     start_cheat_caller_address(marketplace.contract_address, BOB());
     marketplace.commit_bid(auction_id, bid_amount, SALT());
+
+    fast_forward(marketplace.contract_address, AUCTION_DURATION);
 
     // reveal bid
     marketplace.reveal_bid(auction_id, wrong_bid_amount, SALT());
@@ -317,6 +382,8 @@ fn test_reveal_bid_wrong_salt() {
     start_cheat_caller_address(marketplace.contract_address, BOB());
     marketplace.commit_bid(auction_id, bid_amount, SALT());
 
+    fast_forward(marketplace.contract_address, AUCTION_DURATION);
+
     // reveal bid
     marketplace.reveal_bid(auction_id, bid_amount, 'wrong_salt'.try_into().unwrap());
 }
@@ -339,6 +406,8 @@ fn test_reveal_bid_ok() {
     start_cheat_caller_address(marketplace.contract_address, BOB());
     marketplace.commit_bid(auction_id, bid_amount, SALT());
 
+    fast_forward(marketplace.contract_address, AUCTION_DURATION);
+
     // reveal bid
     marketplace.reveal_bid(auction_id, bid_amount, SALT());
 
@@ -349,61 +418,158 @@ fn test_reveal_bid_ok() {
     assert(*amount == bid_amount, 'wrong bid amount');
     assert(*bidder == BOB(), 'wrong bidder');
 }
-// #[test]
-// #[should_panic(expected: ('Auction is still open',))]
-// fn test_finalize_auction_when_open() {
-//     let (marketplace, my_nft, token_id, my_token) = setup();
 
-//     let bid_amount = 200_u256;
+#[test]
+#[should_panic(expected: ('Auction is still open',))]
+fn test_finalize_auction_when_open() {
+    let (marketplace, my_nft, token_id, my_token) = setup();
 
-//     // create auction
-//     start_cheat_caller_address(marketplace.contract_address, OWNER());
-//     let auction_id = marketplace
-//         .create_auction(
-//             my_nft.contract_address, token_id, STARTING_PRICE(), my_token.contract_address
-//         );
-//     stop_cheat_caller_address(marketplace.contract_address);
+    let bid_amount = 200_u256;
 
-//     // commit bid
-//     start_cheat_caller_address(marketplace.contract_address, BOB());
-//     marketplace.commit_bid(auction_id, bid_amount, SALT());
+    // create auction
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(
+            my_nft.contract_address, token_id, STARTING_PRICE(), my_token.contract_address
+        );
+    stop_cheat_caller_address(marketplace.contract_address);
 
-//     // reveal bid
-//     marketplace.reveal_bid(auction_id, bid_amount, SALT());
+    // commit bid
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, bid_amount, SALT());
 
-//     let bids = marketplace.get_revealed_bids(auction_id);
-//     let (amount, bidder) = bids.at(0);
+    // reveal bid
+    marketplace.reveal_bid(auction_id, bid_amount, SALT());
 
-//     // finalize bid
-//     marketplace.finalize_auction(auction_id);
-// }
+    let bids = marketplace.get_revealed_bids(auction_id);
+    let (amount, bidder) = bids.at(0);
 
-// #[test]
-// #[should_panic(expected: ('Auction already finalized',))]
-// fn test_finalize_auction_when_finalized() {
-//     let (marketplace, my_nft, token_id, my_token) = setup();
+    // finalize bid
+    marketplace.finalize_auction(auction_id);
+}
 
-//     let bid_amount = 200_u256;
+#[test]
+#[should_panic(expected: ('Reveal time not over',))]
+fn test_finalize_auction_during_reveal_time() {
+    let (marketplace, my_nft, token_id, my_token) = setup();
 
-//     // create auction
-//     start_cheat_caller_address(marketplace.contract_address, OWNER());
-//     let auction_id = marketplace
-//         .create_auction(
-//             my_nft.contract_address, token_id, STARTING_PRICE(), my_token.contract_address
-//         );
-//     stop_cheat_caller_address(marketplace.contract_address);
+    let bid_amount = 200_u256;
 
-//     // commit bid
-//     start_cheat_caller_address(marketplace.contract_address, BOB());
-//     marketplace.commit_bid(auction_id, bid_amount, SALT());
+    // create auction
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(
+            my_nft.contract_address, token_id, STARTING_PRICE(), my_token.contract_address
+        );
+    stop_cheat_caller_address(marketplace.contract_address);
 
-//     // reveal bid
-//     marketplace.reveal_bid(auction_id, bid_amount, SALT());
+    // commit bid
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, bid_amount, SALT());
 
-//     let bids = marketplace.get_revealed_bids(auction_id);
-//     let (amount, bidder) = bids.at(0);
+    fast_forward(marketplace.contract_address, AUCTION_DURATION);
 
-//     // finalize bid
-//     marketplace.finalize_auction(auction_id);
-// }
+    // reveal bid
+    marketplace.reveal_bid(auction_id, bid_amount, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    let bids = marketplace.get_revealed_bids(auction_id);
+    let (amount, bidder) = bids.at(0);
+
+    // stop_cheat_caller_address(marketplace.contract_address);
+    stop_cheat_caller_address_global();
+    // finalize bid
+    marketplace.finalize_auction(auction_id);
+    marketplace.finalize_auction(auction_id);
+}
+
+#[test]
+#[should_panic(expected: ('Auction already finalized',))]
+fn test_finalize_auction_when_finalized() {
+    let (marketplace, my_nft, token_id, my_token) = setup();
+
+    let bid_amount = 200_u256;
+
+    // create auction
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(
+            my_nft.contract_address, token_id, STARTING_PRICE(), my_token.contract_address
+        );
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, bid_amount, SALT());
+
+    fast_forward(marketplace.contract_address, AUCTION_DURATION + REVEAL_DURATION);
+
+    // reveal bid
+    marketplace.reveal_bid(auction_id, bid_amount, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    let bids = marketplace.get_revealed_bids(auction_id);
+    let (amount, bidder) = bids.at(0);
+
+    // stop_cheat_caller_address(marketplace.contract_address);
+    stop_cheat_caller_address_global();
+    // finalize bid
+    marketplace.finalize_auction(auction_id);
+    marketplace.finalize_auction(auction_id);
+}
+
+#[test]
+fn test_finalize_auction_ok() {
+    let (marketplace, my_nft, token_id, my_token) = setup();
+
+    let bid_amount_bob = 200_u256;
+    let bid_amount_alice = 500_u256;
+
+    // create auction
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(
+            my_nft.contract_address, token_id, STARTING_PRICE(), my_token.contract_address
+        );
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid BOB
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, bid_amount_bob, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid ALICE
+    start_cheat_caller_address(marketplace.contract_address, ALICE());
+    marketplace.commit_bid(auction_id, bid_amount_alice, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    fast_forward(marketplace.contract_address, AUCTION_DURATION + REVEAL_DURATION);
+
+    // reveal bid BOB
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.reveal_bid(auction_id, bid_amount_bob, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // reveal bid ALICE
+    start_cheat_caller_address(marketplace.contract_address, ALICE());
+    marketplace.reveal_bid(auction_id, bid_amount_alice, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // let bids = marketplace.get_revealed_bids(auction_id);
+    // let (amount, bidder) = bids.at(0);
+
+    let bob_balance_before = my_token.balance_of(BOB());
+    let alice_balance_before = my_token.balance_of(ALICE());
+    let marketplace_balance_before = my_token.balance_of(marketplace.contract_address);
+
+    stop_cheat_caller_address_global();
+    // finalize bid
+    marketplace.finalize_auction(auction_id);
+
+    assert(my_nft.owner_of(token_id) == ALICE(), 'wrong owner');
+    assert(my_token.balance_of(BOB()) == bob_balance_before + bid_amount_bob, 'wrong bob balance');
+    assert(my_token.balance_of(ALICE()) == alice_balance_before, 'wrong alice balance');
+    assert(my_token.balance_of(OWNER()) == bid_amount_alice, 'wrong owner balance');
+    assert(my_token.balance_of(marketplace.contract_address) == 0, 'wrong market balance');
+}
 
