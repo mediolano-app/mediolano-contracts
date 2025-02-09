@@ -3,8 +3,9 @@ pub mod MarketPlace {
     use core::num::traits::Zero;
     use marketplace_auction::interface::{IMarketPlace, Auction};
     use marketplace_auction::utils::hash;
-
+    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
+
     use starknet::storage::{
         Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess, MutableVecTrait,
         Vec, VecTrait,
@@ -21,6 +22,7 @@ pub mod MarketPlace {
         committed_bids: Map<(u64, ContractAddress), felt252>, // (auction_id, bidder) -> bid_hash
         bids_count: Map<u64, u64>, // auction_id -> number of bids
         revealed_bids: Map<u64, Vec<(u256, ContractAddress)>>, // auction_id -> Vec(amount, bidder)
+        balances: Map<ContractAddress, u256>, // bidder -> total deposited funds  
     }
 
 
@@ -59,8 +61,8 @@ pub mod MarketPlace {
                 highest_bid: 0,
                 highest_bidder: contract_address_const::<0>(),
                 end_time,
-                active: true,
-                is_completed: false,
+                is_open: true,
+                is_finalized: false,
                 currency_address,
             };
 
@@ -84,12 +86,17 @@ pub mod MarketPlace {
         fn commit_bid(ref self: ContractState, auction_id: u64, amount: u256, salt: felt252) {
             let auction = self.get_auction(auction_id);
             let bidder = get_caller_address();
+            let erc20_dispatcher = IERC20Dispatcher { contract_address: auction.currency_address };
 
             assert(!auction.owner.is_zero(), 'Invalid auction');
             assert(auction.owner != bidder, 'Bidder is owner');
-            assert(auction.active, 'Auction is not active');
+            assert(auction.is_open, 'Auction closed');
             assert(amount >= auction.start_price, 'Amount less than start price');
             assert(!salt.is_zero(), 'salt is zero');
+            assert(
+                self._has_sufficient_funds(erc20_dispatcher, amount, get_caller_address()),
+                'Insufficient funds'
+            );
 
             let token_address = auction.token_address;
             let token_id = auction.token_id;
@@ -100,7 +107,11 @@ pub mod MarketPlace {
             // store bid hash
             self.committed_bids.entry((auction_id, bidder)).write(bid_hash);
             self.bids_count.entry(auction_id).write(bid_count + 1);
-            // TODO: transfer funds
+
+            // transfer funds & update state
+            erc20_dispatcher.transfer_from(bidder, get_contract_address(), amount);
+            let prev_balance = self.balances.entry(bidder).read();
+            self.balances.entry(bidder).write(prev_balance + amount);
         }
 
         fn get_auction_bid_count(self: @ContractState, auction_id: u64) -> u64 {
@@ -141,6 +152,35 @@ pub mod MarketPlace {
                 };
             bids.span()
         }
+
+        fn finalize_auction(ref self: ContractState, auction_id: u64) {
+            let mut auction = self.get_auction(auction_id);
+            // TODO: assert(!auction.is_open, 'Auction is still open');
+            // TODO: assert(!auction.is_finalized, 'Auction already finalized');
+
+            let (highest_bid, highest_bidder) = self._get_highest_bidder(auction_id);
+
+            // refund bidders
+            self._refund_committed_funds(auction_id, highest_bidder, auction.currency_address);
+
+            // transfer asset to highest bidder
+            IERC721Dispatcher { contract_address: auction.token_address }
+                .transfer_from(get_contract_address(), highest_bidder, auction.token_id);
+
+            // transfer bid amount to asset owner
+            let prev_balance = self.balances.entry(highest_bidder).read();
+            self.balances.entry(highest_bidder).write(prev_balance - highest_bid);
+            IERC20Dispatcher { contract_address: auction.currency_address }
+                .transfer(auction.owner, highest_bid);
+
+            // update auction state
+            auction.highest_bid = highest_bid;
+            auction.highest_bidder = highest_bidder;
+            auction.is_finalized = true;
+
+            self.auctions.entry(auction_id).write(auction);
+            // emit event
+        }
     }
 
     #[generate_trait]
@@ -153,6 +193,54 @@ pub mod MarketPlace {
         ) -> bool {
             let owner = IERC721Dispatcher { contract_address: token_address }.owner_of(token_id);
             owner == caller
+        }
+
+        fn _has_sufficient_funds(
+            ref self: ContractState,
+            erc20_dispatcher: IERC20Dispatcher,
+            amount: u256,
+            caller: ContractAddress
+        ) -> bool {
+            erc20_dispatcher.balance_of(caller) >= amount
+        }
+
+        fn _get_highest_bidder(self: @ContractState, auction_id: u64) -> (u256, ContractAddress) {
+            let bids = self.get_revealed_bids(auction_id);
+            let mut highest_bid = 0;
+            let mut highest_bidder = contract_address_const::<0>();
+
+            for (
+                amount, bidder
+            ) in bids {
+                if *amount > highest_bid {
+                    highest_bid = *amount;
+                    highest_bidder = *bidder;
+                }
+            };
+
+            (highest_bid, highest_bidder)
+        }
+
+        fn _refund_committed_funds(
+            ref self: ContractState,
+            auction_id: u64,
+            highest_bidder: ContractAddress,
+            currency_address: ContractAddress
+        ) {
+            let bids = self.get_revealed_bids(auction_id);
+
+            for (
+                amount, bidder
+            ) in bids {
+                if *bidder != highest_bidder {
+                    let prev_balance = self.balances.entry(*bidder).read();
+                    self.balances.entry(*bidder).write(prev_balance - *amount);
+
+                    // transfer
+                    IERC20Dispatcher { contract_address: currency_address }
+                        .transfer(*bidder, *amount);
+                }
+            };
         }
     }
 }
