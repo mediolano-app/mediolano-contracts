@@ -31,10 +31,49 @@ pub mod MarketPlace {
 
     #[event]
     #[derive(Drop, starknet::Event)]
-    pub enum Event {}
+    pub enum Event {
+        AuctionCreated: AuctionCreated,
+        BidCommitted: BidCommitted,
+        BidRevealed: BidRevealed,
+        AuctionFinalized: AuctionFinalized,
+    }
 
-    //TODO: action created event
-    //TODO: bid successful event
+    #[derive(Drop, starknet::Event)]
+    pub struct AuctionCreated {
+        #[key]
+        pub owner: ContractAddress,
+        #[key]
+        pub token_address: ContractAddress,
+        #[key]
+        pub token_id: u256,
+        pub start_price: u256,
+        pub currency_address: ContractAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct BidCommitted {
+        #[key]
+        pub bidder: ContractAddress,
+        #[key]
+        pub auction_id: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct BidRevealed {
+        #[key]
+        pub bidder: ContractAddress,
+        #[key]
+        pub auction_id: u64,
+        pub amount: u256,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct AuctionFinalized {
+        #[key]
+        pub auction_id: u64,
+        #[key]
+        pub highest_bidder: ContractAddress,
+    }
 
     /// Initializes the marketplace contract with auction and reveal durations.
     ///
@@ -96,7 +135,16 @@ pub mod MarketPlace {
             IERC721Dispatcher { contract_address: token_address }
                 .transfer_from(owner, get_contract_address(), token_id);
 
-            //TODO emit event
+            //emit auction created event
+            self
+                .emit(
+                    Event::AuctionCreated(
+                        AuctionCreated {
+                            owner, token_address, token_id, start_price, currency_address
+                        },
+                    ),
+                );
+
             auction_id
         }
 
@@ -145,6 +193,8 @@ pub mod MarketPlace {
             erc20_dispatcher.transfer_from(bidder, get_contract_address(), amount);
             let prev_balance = self.balances.entry(bidder).read();
             self.balances.entry(bidder).write(prev_balance + amount);
+
+            self.emit(Event::BidCommitted(BidCommitted { bidder, auction_id }));
         }
 
         /// Gets the number of committed bids for an auction.
@@ -183,6 +233,9 @@ pub mod MarketPlace {
             assert(bid_hash == revealed_bid_hash, Errors::WRONG_AMOUNT_OR_SALT);
 
             self.revealed_bids.entry(auction_id).append().write((amount, bidder));
+
+            // emit event
+            self.emit(Event::BidRevealed(BidRevealed { bidder, auction_id, amount }));
         }
 
         /// Retrieves all revealed bids for a specific auction.
@@ -244,6 +297,7 @@ pub mod MarketPlace {
 
             self.auctions.entry(auction_id).write(auction);
             // emit event
+            self.emit(Event::AuctionFinalized(AuctionFinalized { auction_id, highest_bidder }));
         }
     }
 
