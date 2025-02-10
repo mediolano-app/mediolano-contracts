@@ -36,6 +36,11 @@ pub mod MarketPlace {
     //TODO: action created event
     //TODO: bid successful event
 
+    /// Initializes the marketplace contract with auction and reveal durations.
+    ///
+    /// # Arguments
+    /// * `auction_duration` - The duration of auctions in days.
+    /// * `reveal_duration` - The duration for revealing bids in days.
     #[constructor]
     fn constructor(ref self: ContractState, auction_duration: u64, reveal_duration: u64) {
         self.auction_duration.write(auction_duration);
@@ -44,6 +49,16 @@ pub mod MarketPlace {
 
     #[abi(embed_v0)]
     pub impl MarketPlaceImpl of IMarketPlace<ContractState> {
+        /// Creates a new auction for an ERC-721 token.
+        ///
+        /// # Arguments
+        /// * `token_address` - The contract address of the ERC-721 token.
+        /// * `token_id` - The ID of the token being auctioned.
+        /// * `start_price` - The minimum bid amount.
+        /// * `currency_address` - The ERC-20 token used for bidding.
+        ///
+        /// # Returns
+        /// * The unique identifier of the newly created auction.
         fn create_auction(
             ref self: ContractState,
             token_address: ContractAddress,
@@ -85,11 +100,23 @@ pub mod MarketPlace {
             auction_id
         }
 
+        /// Retrieves the details of an auction by its ID.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The unique identifier of the auction.
+        ///
+        /// # Returns
+        /// * The `Auction` struct containing auction details.
         fn get_auction(self: @ContractState, auction_id: u64) -> Auction {
             self.auctions.entry(auction_id).read()
         }
 
-
+        /// Commits a bid for a specific auction by storing a hash of the bid amount and salt.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The ID of the auction being bid on.
+        /// * `amount` - The bid amount.
+        /// * `salt` - A secret value used to hash the bid for commitment.
         fn commit_bid(ref self: ContractState, auction_id: u64, amount: u256, salt: felt252) {
             self._check_auction_status(auction_id);
 
@@ -120,11 +147,23 @@ pub mod MarketPlace {
             self.balances.entry(bidder).write(prev_balance + amount);
         }
 
+        /// Gets the number of committed bids for an auction.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The unique identifier of the auction.
+        ///
+        /// # Returns
+        /// * The total number of bids committed for the auction.
         fn get_auction_bid_count(self: @ContractState, auction_id: u64) -> u64 {
             self.bids_count.entry(auction_id).read()
         }
 
-
+        /// Reveals a previously committed bid for an auction.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The ID of the auction.
+        /// * `amount` - The bid amount previously committed.
+        /// * `salt` - The same salt used during the bid commitment.
         fn reveal_bid(ref self: ContractState, auction_id: u64, amount: u256, salt: felt252) {
             self._check_auction_status(auction_id);
             let bidder = get_caller_address();
@@ -146,6 +185,13 @@ pub mod MarketPlace {
             self.revealed_bids.entry(auction_id).append().write((amount, bidder));
         }
 
+        /// Retrieves all revealed bids for a specific auction.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The ID of the auction.
+        ///
+        /// # Returns
+        /// * A Span of tuples containing bid amounts and bidder addresses.
         fn get_revealed_bids(
             self: @ContractState, auction_id: u64
         ) -> Span<(u256, ContractAddress)> {
@@ -160,6 +206,10 @@ pub mod MarketPlace {
             bids.span()
         }
 
+        /// Finalizes an auction, determines the winner, and transfers the asset and token.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The unique identifier of the auction.
         fn finalize_auction(ref self: ContractState, auction_id: u64) {
             self._check_auction_status(auction_id);
 
@@ -199,6 +249,15 @@ pub mod MarketPlace {
 
     #[generate_trait]
     pub impl InternalFunctions of InternalFunctionsTrait {
+        /// Checks whether a given address owns a specific ERC-721 token.
+        ///
+        /// # Arguments
+        /// * `token_address` - The contract address of the ERC-721 token.
+        /// * `token_id` - The ID of the token.
+        /// * `caller` - The address to verify ownership for.
+        ///
+        /// # Returns
+        /// * `true` if the caller is the owner of the token, otherwise `false`.
         fn _is_owner(
             ref self: ContractState,
             token_address: ContractAddress,
@@ -209,6 +268,15 @@ pub mod MarketPlace {
             owner == caller
         }
 
+        /// Checks if an address has sufficient ERC-20 balance to place a bid.
+        ///
+        /// # Arguments
+        /// * `erc20_dispatcher` - The ERC-20 dispatcher for interacting with the token contract.
+        /// * `amount` - The required balance amount.
+        /// * `caller` - The address whose balance is being checked.
+        ///
+        /// # Returns
+        /// * `true` if the balance is sufficient, otherwise `false`.
         fn _has_sufficient_funds(
             ref self: ContractState,
             erc20_dispatcher: IERC20Dispatcher,
@@ -218,6 +286,13 @@ pub mod MarketPlace {
             erc20_dispatcher.balance_of(caller) >= amount
         }
 
+        /// Determines the highest bid and bidder for a given auction.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The unique identifier of the auction.
+        ///
+        /// # Returns
+        /// * A tuple containing the highest bid amount and the highest bidder's address.
         fn _get_highest_bidder(self: @ContractState, auction_id: u64) -> (u256, ContractAddress) {
             let bids = self.get_revealed_bids(auction_id);
             let mut highest_bid = 0;
@@ -235,6 +310,12 @@ pub mod MarketPlace {
             (highest_bid, highest_bidder)
         }
 
+        /// Refunds all losing bidders for a finalized auction.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The unique identifier of the auction.
+        /// * `highest_bidder` - The address of the winning bidder.
+        /// * `currency_address` - The ERC-20 token used for bidding.
         fn _refund_committed_funds(
             ref self: ContractState,
             auction_id: u64,
