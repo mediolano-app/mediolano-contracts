@@ -3,6 +3,7 @@ pub mod marketplace;
 
 pub mod utils {
     pub mod constants;
+    pub mod errors;
     pub mod hash;
 }
 

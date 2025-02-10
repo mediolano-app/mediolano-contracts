@@ -2,6 +2,7 @@
 pub mod MarketPlace {
     use core::num::traits::Zero;
     use marketplace_auction::interface::{IMarketPlace, Auction};
+    use marketplace_auction::utils::errors::Errors;
     use marketplace_auction::utils::{hash, constants};
     use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
@@ -55,9 +56,9 @@ pub mod MarketPlace {
             let end_time = get_block_timestamp() + (auction_duration * constants::DAY_IN_SECONDS);
             let auction_id = self.auction_count.read() + 1;
 
-            assert(!start_price.is_zero(), 'Start price is zero');
-            assert(self._is_owner(token_address, token_id, owner), 'Caller is not owner');
-            assert(!currency_address.is_zero(), 'Currency address is zero');
+            assert(!start_price.is_zero(), Errors::START_PRIZE_IS_ZERO);
+            assert(self._is_owner(token_address, token_id, owner), Errors::CALLER_NOT_OWNER);
+            assert(!currency_address.is_zero(), Errors::CURRENCY_ADDRESS_ZERO);
 
             let auction = Auction {
                 owner,
@@ -96,18 +97,15 @@ pub mod MarketPlace {
             let bidder = get_caller_address();
             let erc20_dispatcher = IERC20Dispatcher { contract_address: auction.currency_address };
 
-            assert(!auction.owner.is_zero(), 'Invalid auction');
-            assert(auction.owner != bidder, 'Bidder is owner');
-            assert(auction.is_open, 'Auction closed');
-            assert(amount >= auction.start_price, 'Amount less than start price');
-            assert(!salt.is_zero(), 'salt is zero');
+            assert(!auction.owner.is_zero(), Errors::INVALID_AUCTION);
+            assert(auction.owner != bidder, Errors::BIDDER_IS_OWNER);
+            assert(auction.is_open, Errors::AUCTION_CLOSED);
+            assert(amount >= auction.start_price, Errors::AMOUNT_LESS_THAN_START_PRICE);
+            assert(!salt.is_zero(), Errors::SALT_IS_ZERO);
             assert(
                 self._has_sufficient_funds(erc20_dispatcher, amount, get_caller_address()),
-                'Insufficient funds'
+                Errors::INSUFFICIENT_FUNDS
             );
-
-            let token_address = auction.token_address;
-            let token_id = auction.token_id;
 
             let bid_hash = hash::compute_bid_hash(amount, salt);
             let bid_count = self.get_auction_bid_count(auction_id);
@@ -133,17 +131,17 @@ pub mod MarketPlace {
 
             // check if auction is open
             let auction = self.get_auction(auction_id);
-            assert(!auction.is_open, 'Auction is still open');
+            assert(!auction.is_open, Errors::AUCTION_STILL_OPEN);
 
             // get initial bid hash
             let bid_hash = self.committed_bids.entry((auction_id, bidder)).read();
 
-            assert(!bid_hash.is_zero(), 'No bid found');
+            assert(!bid_hash.is_zero(), Errors::NO_BID_FOUND);
 
             // compare bid hash
             let revealed_bid_hash = hash::compute_bid_hash(amount, salt);
 
-            assert(bid_hash == revealed_bid_hash, 'Wrong amount or salt');
+            assert(bid_hash == revealed_bid_hash, Errors::WRONG_AMOUNT_OR_SALT);
 
             self.revealed_bids.entry(auction_id).append().write((amount, bidder));
         }
@@ -170,9 +168,9 @@ pub mod MarketPlace {
             let reveal_duration_end = auction.end_time
                 + (reveal_duration * constants::DAY_IN_SECONDS);
 
-            assert(!auction.is_open, 'Auction is still open');
-            assert(get_block_timestamp() >= reveal_duration_end, 'Reveal time not over');
-            assert(!auction.is_finalized, 'Auction already finalized');
+            assert(!auction.is_open, Errors::AUCTION_STILL_OPEN);
+            assert(get_block_timestamp() >= reveal_duration_end, Errors::REVEAL_TIME_NOT_OVER);
+            assert(!auction.is_finalized, Errors::AUCTION_IS_FINALIZED);
 
             let (highest_bid, highest_bidder) = self._get_highest_bidder(auction_id);
 
