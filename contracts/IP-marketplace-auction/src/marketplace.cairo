@@ -232,7 +232,9 @@ pub mod MarketPlace {
 
             assert(bid_hash == revealed_bid_hash, Errors::WRONG_AMOUNT_OR_SALT);
 
-            self.revealed_bids.entry(auction_id).append().write((amount, bidder));
+            if !self._is_reveal_duration_over(auction_id) {
+                self.revealed_bids.entry(auction_id).append().write((amount, bidder));
+            }
 
             // emit event
             self.emit(Event::BidRevealed(BidRevealed { bidder, auction_id, amount }));
@@ -267,12 +269,8 @@ pub mod MarketPlace {
             self._check_auction_status(auction_id);
 
             let mut auction = self.get_auction(auction_id);
-            let reveal_duration = self.reveal_duration.read();
-            let reveal_duration_end = auction.end_time
-                + (reveal_duration * constants::DAY_IN_SECONDS);
-
             assert(!auction.is_open, Errors::AUCTION_STILL_OPEN);
-            assert(get_block_timestamp() >= reveal_duration_end, Errors::REVEAL_TIME_NOT_OVER);
+            assert(self._is_reveal_duration_over(auction_id), Errors::REVEAL_TIME_NOT_OVER);
             assert(!auction.is_finalized, Errors::AUCTION_IS_FINALIZED);
 
             let (highest_bid, highest_bidder) = self._get_highest_bidder(auction_id);
@@ -298,6 +296,36 @@ pub mod MarketPlace {
             self.auctions.entry(auction_id).write(auction);
             // emit event
             self.emit(Event::AuctionFinalized(AuctionFinalized { auction_id, highest_bidder }));
+        }
+
+        /// Withdraws/refund committed bid from an auction that wasn't revealed within the reveal
+        /// time.
+        ///
+        /// Ensures the caller is not the highest bidder(winner) and that the bid has not been
+        /// refunded.
+        /// Reveals the bid before allowing the withdrawal to confirm it's authenticity.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The ID of the auction.
+        /// * `amount` - The amount to withdraw.
+        /// * `salt` - The salt used for bid commitment.
+        fn withdraw(ref self: ContractState, auction_id: u64, amount: u256, salt: felt252) {
+            let bidder = get_caller_address();
+            assert(
+                bidder != self.get_auction(auction_id).highest_bidder,
+                Errors::CALLER_ALREADY_WON_AUCTION
+            );
+            assert(!self._is_refunded(auction_id), Errors::BID_REFUNDED);
+
+            self.reveal_bid(auction_id, amount, salt);
+
+            let balance = self.balances.entry(bidder).read();
+            assert(amount >= balance, Errors::AMOUNT_EXCEEDS_BALANCE);
+
+            //refund
+            self.balances.entry(bidder).write(balance - amount);
+            IERC20Dispatcher { contract_address: self.get_auction(auction_id).currency_address }
+                .transfer(bidder, amount);
         }
     }
 
@@ -392,6 +420,10 @@ pub mod MarketPlace {
             };
         }
 
+        /// Checks the status of an auction and closes it if the end time has passed.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The ID of the auction to check.
         fn _check_auction_status(ref self: ContractState, auction_id: u64) {
             let mut auction = self.get_auction(auction_id);
             let current_time = get_block_timestamp();
@@ -400,6 +432,41 @@ pub mod MarketPlace {
                 auction.is_open = false;
                 self.auctions.entry(auction_id).write(auction);
             }
+        }
+
+        /// Determines whether the reveal duration for an auction has expired.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The ID of the auction.
+        ///
+        /// # Returns
+        /// * `bool` - Returns `true` if the reveal duration has ended, otherwise `false`.
+        fn _is_reveal_duration_over(self: @ContractState, auction_id: u64) -> bool {
+            let auction = self.get_auction(auction_id);
+            let reveal_duration = self.reveal_duration.read();
+            let reveal_duration_end = auction.end_time
+                + (reveal_duration * constants::DAY_IN_SECONDS);
+
+            get_block_timestamp() >= reveal_duration_end
+        }
+
+        /// Checks if the caller's bid in a given auction has already been refunded.
+        ///
+        /// # Arguments
+        /// * `auction_id` - The ID of the auction.
+        ///
+        /// # Returns
+        /// * `bool` - Returns `true` if the caller's bid has been refunded, otherwise `false`.
+        fn _is_refunded(self: @ContractState, auction_id: u64) -> bool {
+            let bids = self.get_revealed_bids(auction_id);
+            let mut is_refunded = false;
+
+            for (_, bidder) in bids {
+                if *bidder == get_caller_address() {
+                    is_refunded = true;
+                }
+            };
+            is_refunded
         }
     }
 }

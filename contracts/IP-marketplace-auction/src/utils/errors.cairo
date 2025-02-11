@@ -13,4 +13,7 @@ pub mod Errors {
     pub const WRONG_AMOUNT_OR_SALT: felt252 = 'Wrong amount or salt';
     pub const REVEAL_TIME_NOT_OVER: felt252 = 'Reveal time not over';
     pub const AUCTION_IS_FINALIZED: felt252 = 'Auction already finalized';
+    pub const BID_REFUNDED: felt252 = 'Bid refunded';
+    pub const AMOUNT_EXCEEDS_BALANCE: felt252 = 'Amount exceeds balance';
+    pub const CALLER_ALREADY_WON_AUCTION: felt252 = 'Caller already won auction';
 }

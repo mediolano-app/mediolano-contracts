@@ -15,6 +15,7 @@ pub trait IMarketPlace<TContractState> {
     fn reveal_bid(ref self: TContractState, auction_id: u64, amount: u256, salt: felt252);
     fn get_revealed_bids(self: @TContractState, auction_id: u64) -> Span<(u256, ContractAddress)>;
     fn finalize_auction(ref self: TContractState, auction_id: u64);
+    fn withdraw(ref self: TContractState, auction_id: u64, amount: u256, salt: felt252);
 }
 
 #[derive(Drop, Copy, Serde, starknet::Store)]

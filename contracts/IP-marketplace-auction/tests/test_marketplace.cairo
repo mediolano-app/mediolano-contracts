@@ -139,7 +139,7 @@ fn test_commit_bid_amount_less_than_start_price() {
 }
 
 #[test]
-#[should_panic(expected: ('salt is zero',))]
+#[should_panic(expected: ('Salt is zero',))]
 fn test_commit_bid_salt_is_zero() {
     let (marketplace, my_nft, token_id, my_token) = setup();
 
@@ -404,7 +404,7 @@ fn test_finalize_auction_when_finalized() {
     start_cheat_caller_address(marketplace.contract_address, BOB());
     marketplace.commit_bid(auction_id, bid_amount, SALT());
 
-    fast_forward(marketplace.contract_address, AUCTION_DURATION + REVEAL_DURATION);
+    fast_forward(marketplace.contract_address, AUCTION_DURATION);
 
     // reveal bid
     marketplace.reveal_bid(auction_id, bid_amount, SALT());
@@ -412,6 +412,8 @@ fn test_finalize_auction_when_finalized() {
 
     let bids = marketplace.get_revealed_bids(auction_id);
     let (amount, bidder) = bids.at(0);
+
+    fast_forward(marketplace.contract_address, AUCTION_DURATION + REVEAL_DURATION);
 
     // stop_cheat_caller_address(marketplace.contract_address);
     stop_cheat_caller_address_global();
@@ -445,7 +447,8 @@ fn test_finalize_auction_ok() {
     marketplace.commit_bid(auction_id, bid_amount_alice, SALT());
     stop_cheat_caller_address(marketplace.contract_address);
 
-    fast_forward(marketplace.contract_address, AUCTION_DURATION + REVEAL_DURATION);
+    // fast forward block timestamp to after the auction duration i.e when auction is closed
+    fast_forward(marketplace.contract_address, AUCTION_DURATION);
 
     // reveal bid BOB
     start_cheat_caller_address(marketplace.contract_address, BOB());
@@ -456,6 +459,9 @@ fn test_finalize_auction_ok() {
     start_cheat_caller_address(marketplace.contract_address, ALICE());
     marketplace.reveal_bid(auction_id, bid_amount_alice, SALT());
     stop_cheat_caller_address(marketplace.contract_address);
+
+    // fast forward block timestamp to after the reveal duration i.e when auction can be finalized
+    fast_forward(marketplace.contract_address, AUCTION_DURATION + REVEAL_DURATION);
 
     // let bids = marketplace.get_revealed_bids(auction_id);
     // let (amount, bidder) = bids.at(0);
@@ -473,5 +479,163 @@ fn test_finalize_auction_ok() {
     assert(my_token.balance_of(ALICE()) == alice_balance_before, 'wrong alice balance');
     assert(my_token.balance_of(OWNER()) == bid_amount_alice, 'wrong owner balance');
     assert(my_token.balance_of(marketplace.contract_address) == 0, 'wrong market balance');
+}
+
+#[test]
+#[should_panic(expected: ('Bid refunded',))]
+fn test_withdraw_when_refunded() {
+    let (marketplace, my_nft, token_id, my_token) = setup();
+
+    let bid_amount_bob = 200_u256;
+    let bid_amount_alice = 500_u256;
+
+    // create auction
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(
+            my_nft.contract_address, token_id, STARTING_PRICE(), my_token.contract_address
+        );
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid BOB
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, bid_amount_bob, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid ALICE
+    start_cheat_caller_address(marketplace.contract_address, ALICE());
+    marketplace.commit_bid(auction_id, bid_amount_alice, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // fast forward block timestamp to after the reveal duration
+    fast_forward(marketplace.contract_address, AUCTION_DURATION);
+
+    // reveal bid BOB
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.reveal_bid(auction_id, bid_amount_bob, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // reveal bid ALICE
+    start_cheat_caller_address(marketplace.contract_address, ALICE());
+    marketplace.reveal_bid(auction_id, bid_amount_alice, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    fast_forward(marketplace.contract_address, AUCTION_DURATION + REVEAL_DURATION);
+
+    stop_cheat_caller_address_global();
+
+    // finalize bid
+    marketplace.finalize_auction(auction_id);
+
+    // withdraw
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.withdraw(auction_id, bid_amount_bob, SALT());
+}
+
+#[test]
+#[should_panic(expected: ('Caller already won auction',))]
+fn test_withdraw_by_auction_winner() {
+    let (marketplace, my_nft, token_id, my_token) = setup();
+
+    let bid_amount_bob = 200_u256;
+    let bid_amount_alice = 500_u256;
+
+    // create auction
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(
+            my_nft.contract_address, token_id, STARTING_PRICE(), my_token.contract_address
+        );
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid BOB
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, bid_amount_bob, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid ALICE
+    start_cheat_caller_address(marketplace.contract_address, ALICE());
+    marketplace.commit_bid(auction_id, bid_amount_alice, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // fast forward block timestamp to after the reveal duration
+    fast_forward(marketplace.contract_address, AUCTION_DURATION);
+
+    // reveal bid BOB
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.reveal_bid(auction_id, bid_amount_bob, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // reveal bid ALICE
+    start_cheat_caller_address(marketplace.contract_address, ALICE());
+    marketplace.reveal_bid(auction_id, bid_amount_alice, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    fast_forward(marketplace.contract_address, AUCTION_DURATION + REVEAL_DURATION);
+
+    stop_cheat_caller_address_global();
+
+    // finalize bid
+    marketplace.finalize_auction(auction_id);
+
+    // withdraw
+    start_cheat_caller_address(marketplace.contract_address, ALICE());
+    marketplace.withdraw(auction_id, bid_amount_bob, SALT());
+}
+
+#[test]
+fn test_withdraw_ok() {
+    let (marketplace, my_nft, token_id, my_token) = setup();
+
+    let bid_amount_bob = 200_u256;
+    let bid_amount_alice = 500_u256;
+
+    // create auction
+    start_cheat_caller_address(marketplace.contract_address, OWNER());
+    let auction_id = marketplace
+        .create_auction(
+            my_nft.contract_address, token_id, STARTING_PRICE(), my_token.contract_address
+        );
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid BOB
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.commit_bid(auction_id, bid_amount_bob, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // commit bid ALICE
+    start_cheat_caller_address(marketplace.contract_address, ALICE());
+    marketplace.commit_bid(auction_id, bid_amount_alice, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    // fast forward block timestamp to after the reveal duration
+    fast_forward(marketplace.contract_address, AUCTION_DURATION);
+
+    // reveal bid BOB
+    start_cheat_caller_address(marketplace.contract_address, BOB());
+    marketplace.reveal_bid(auction_id, bid_amount_bob, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    fast_forward(marketplace.contract_address, AUCTION_DURATION + REVEAL_DURATION);
+
+    // reveal bid ALICE
+    start_cheat_caller_address(marketplace.contract_address, ALICE());
+    marketplace.reveal_bid(auction_id, bid_amount_alice, SALT());
+    stop_cheat_caller_address(marketplace.contract_address);
+
+    stop_cheat_caller_address_global();
+
+    // finalize bid
+    marketplace.finalize_auction(auction_id);
+
+    let alice_balance_before = my_token.balance_of(ALICE());
+
+    // withdraw
+    start_cheat_caller_address(marketplace.contract_address, ALICE());
+    marketplace.withdraw(auction_id, bid_amount_alice, SALT());
+
+    let alice_balance_after = my_token.balance_of(ALICE());
+
+    assert(alice_balance_after == alice_balance_before + bid_amount_alice, 'wrong alice balance')
 }
 

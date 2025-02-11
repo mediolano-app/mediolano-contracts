@@ -46,12 +46,6 @@ pub fn SALT() -> felt252 {
     'salt'.try_into().unwrap()
 }
 
-pub fn fast_forward(marketplace_address: ContractAddress, to: u64) {
-    let forward_timestamp: u64 = TIMESTAMP + (to * constants::DAY_IN_SECONDS);
-
-    start_cheat_block_timestamp(marketplace_address, forward_timestamp);
-}
-
 pub fn setup() -> (IMarketPlaceDispatcher, IERC721Dispatcher, u256, IERC20Dispatcher) {
     let marketplace = deploy_marketplace();
     let (erc721, token_id) = deploy_erc721();
@@ -107,4 +101,18 @@ fn deploy_erc20() -> IERC20Dispatcher {
     stop_cheat_caller_address(contract_address);
 
     IERC20Dispatcher { contract_address }
+}
+
+/// Advances the blockchain timestamp for marketplace contract.
+///
+/// # Arguments
+/// * `marketplace_address` - The address of the marketplace contract.
+/// * `to` - The number of days to fast-forward the timestamp.
+///
+/// This function calculates the new timestamp by adding `to` days (converted to seconds)
+/// to the current `TIMESTAMP` and applies it using `start_cheat_block_timestamp`.
+pub fn fast_forward(marketplace_address: ContractAddress, to: u64) {
+    let forward_timestamp: u64 = TIMESTAMP + (to * constants::DAY_IN_SECONDS);
+
+    start_cheat_block_timestamp(marketplace_address, forward_timestamp);
 }
