@@ -309,7 +309,9 @@ pub mod MarketPlace {
         /// * `auction_id` - The ID of the auction.
         /// * `amount` - The amount to withdraw.
         /// * `salt` - The salt used for bid commitment.
-        fn withdraw(ref self: ContractState, auction_id: u64, amount: u256, salt: felt252) {
+        fn withdraw_unrevealed_bid(
+            ref self: ContractState, auction_id: u64, amount: u256, salt: felt252
+        ) {
             let bidder = get_caller_address();
             assert(
                 bidder != self.get_auction(auction_id).highest_bidder,

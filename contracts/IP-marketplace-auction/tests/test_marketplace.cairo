@@ -529,7 +529,7 @@ fn test_withdraw_when_refunded() {
 
     // withdraw
     start_cheat_caller_address(marketplace.contract_address, BOB());
-    marketplace.withdraw(auction_id, bid_amount_bob, SALT());
+    marketplace.withdraw_unrevealed_bid(auction_id, bid_amount_bob, SALT());
 }
 
 #[test]
@@ -580,7 +580,7 @@ fn test_withdraw_by_auction_winner() {
 
     // withdraw
     start_cheat_caller_address(marketplace.contract_address, ALICE());
-    marketplace.withdraw(auction_id, bid_amount_bob, SALT());
+    marketplace.withdraw_unrevealed_bid(auction_id, bid_amount_bob, SALT());
 }
 
 #[test]
@@ -632,7 +632,7 @@ fn test_withdraw_ok() {
 
     // withdraw
     start_cheat_caller_address(marketplace.contract_address, ALICE());
-    marketplace.withdraw(auction_id, bid_amount_alice, SALT());
+    marketplace.withdraw_unrevealed_bid(auction_id, bid_amount_alice, SALT());
 
     let alice_balance_after = my_token.balance_of(ALICE());
 
