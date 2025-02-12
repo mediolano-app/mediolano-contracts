@@ -1,6 +1,7 @@
-mod ip_collection {
-    mod IPCollection;
-}
+
+mod IPCollection;
 
 #[cfg(test)]
-mod tests {}
+mod test {
+    mod IPCollectionTest;
+}
