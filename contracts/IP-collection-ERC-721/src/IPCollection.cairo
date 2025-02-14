@@ -1,7 +1,7 @@
 use starknet::ContractAddress;
 
 #[starknet::interface]
-trait IIPCollection<ContractState> {
+pub trait IIPCollection<ContractState> {
     fn mint(ref self: ContractState, recipient: ContractAddress) -> u256;
     fn burn(ref self: ContractState, token_id: u256);
     fn list_user_tokens(self: @ContractState, owner: ContractAddress) -> Array<u256>;
@@ -11,7 +11,7 @@ trait IIPCollection<ContractState> {
 }
 
 #[starknet::contract]
-mod IPCollection {
+pub mod IPCollection {
     use core::num::traits::Zero;
     use openzeppelin::token::erc721::ERC721Component::InternalTrait;
     use alexandria_storage::ListTrait;
@@ -28,7 +28,7 @@ mod IPCollection {
     use openzeppelin::token::erc721::extensions::ERC721EnumerableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
     use openzeppelin::upgrades::UpgradeableComponent;
-    use alexandria_storage::List;
+    use alexandria_storage::List;   
 
     use super::IIPCollection;
 
