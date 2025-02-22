@@ -1,8 +1,3 @@
-use core::array::Array;
-use core::array::ArrayTrait;
-use core::array::SpanTrait;
-use core::traits::Into;
-use core::option::OptionTrait;
 use starknet::ContractAddress;
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
@@ -15,7 +10,6 @@ struct Contribution {
     timestamp: u64,
 }
 
-// Define the interface trait
 #[starknet::interface]
 trait IIPCollection<TContractState> {
     fn submit_contribution(ref self: TContractState, asset_uri: felt252, metadata: felt252);
@@ -31,9 +25,6 @@ trait IIPCollection<TContractState> {
 #[starknet::contract]
 mod IPCollection {
     use super::{IIPCollection, Contribution};
-    use core::array::ArrayTrait;
-    use core::array::SpanTrait;
-    use core::traits::Into;
     use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
     use core::starknet::storage::{
         StoragePointerReadAccess, StoragePointerWriteAccess, StoragePathEntry, Map,
@@ -44,7 +35,8 @@ mod IPCollection {
         owner: ContractAddress,
         contributions_count: u256,
         contributions: Map<u256, Contribution>,
-        contributor_contributions: Map<ContractAddress, Array<u256>>,
+        contributor_to_contribution_count: Map<ContractAddress, u256>,
+        contributor_contributions: Map<(ContractAddress, u256), u256>,
         verifiers: Map<ContractAddress, bool>,
     }
 
@@ -99,7 +91,6 @@ mod IPCollection {
         self.verifiers.entry(owner).write(true);
     }
 
-    // Implement the interface
     #[abi(embed_v0)]
     impl IPCollectionImpl of IIPCollection<ContractState> {
         fn submit_contribution(ref self: ContractState, asset_uri: felt252, metadata: felt252) {
@@ -117,9 +108,11 @@ mod IPCollection {
 
             self.contributions.entry(contribution_id).write(contribution);
 
-            let mut new_contributions: Array<u256> = ArrayTrait::new();
-            new_contributions.append(contribution_id);
-            self.contributor_contributions.entry(caller).write(new_contributions);
+            let current_count = self.contributor_to_contribution_count.entry(caller).read();
+            let new_count = current_count + 1;
+
+            self.contributor_contributions.entry((caller, new_count)).write(contribution_id);
+            self.contributor_to_contribution_count.entry(caller).write(new_count);
 
             self.contributions_count.write(contribution_id);
 
@@ -197,7 +190,6 @@ mod IPCollection {
         }
     }
 
-    // Internal functions
     #[generate_trait]
     impl InternalFunctions of InternalFunctionsTrait {
         fn only_owner(self: @ContractState) {
@@ -206,4 +198,3 @@ mod IPCollection {
         }
     }
 }
-
