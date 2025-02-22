@@ -15,8 +15,10 @@ trait IIPCollection<TContractState> {
     fn submit_contribution(ref self: TContractState, asset_uri: felt252, metadata: felt252);
     fn verify_contribution(ref self: TContractState, contribution_id: u256, verified: bool);
     fn mint_nft(ref self: TContractState, contribution_id: u256, recipient: ContractAddress);
+    fn batch_submit_contributions(ref self: TContractState, assets: Array<felt252>, metadatas: Array<felt252>);
     fn get_contribution(self: @TContractState, contribution_id: u256) -> Contribution;
     fn get_contributions_count(self: @TContractState) -> u256;
+    fn get_contributor_contributions(self: @TContractState, contributor: ContractAddress) -> Array<u256>;
     fn is_verifier(self: @TContractState, address: ContractAddress) -> bool;
     fn add_verifier(ref self: TContractState, verifier: ContractAddress);
     fn remove_verifier(ref self: TContractState, verifier: ContractAddress);
@@ -26,8 +28,10 @@ trait IIPCollection<TContractState> {
 mod IPCollection {
     use super::{IIPCollection, Contribution};
     use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
+    use core::array::ArrayTrait;
+    // use core::array::SpanTrait;
     use core::starknet::storage::{
-        StoragePointerReadAccess, StoragePointerWriteAccess, StoragePathEntry, Map,
+        StoragePointerReadAccess, StoragePointerWriteAccess, StoragePathEntry, Map
     };
 
     #[storage]
@@ -48,6 +52,7 @@ mod IPCollection {
         NFTMinted: NFTMinted,
         VerifierAdded: VerifierAdded,
         VerifierRemoved: VerifierRemoved,
+        BatchSubmitted: BatchSubmitted
     }
 
     #[derive(Drop, starknet::Event)]
@@ -84,6 +89,13 @@ mod IPCollection {
         verifier: ContractAddress,
     }
 
+    #[derive(Drop, starknet::Event)]
+    struct BatchSubmitted {
+        #[key]
+        count: u256,
+        contributor: ContractAddress,
+    }
+
     #[constructor]
     fn constructor(ref self: ContractState, owner: ContractAddress) {
         self.owner.write(owner);
@@ -92,11 +104,11 @@ mod IPCollection {
     }
 
     #[abi(embed_v0)]
-    impl IPCollectionImpl of IIPCollection<ContractState> {
+    impl IPCollectionImpl of super::IIPCollection<ContractState> {
         fn submit_contribution(ref self: ContractState, asset_uri: felt252, metadata: felt252) {
             let caller = get_caller_address();
             let contribution_id = self.contributions_count.read() + 1;
-
+            
             let contribution = Contribution {
                 contributor: caller,
                 asset_uri,
@@ -107,27 +119,51 @@ mod IPCollection {
             };
 
             self.contributions.entry(contribution_id).write(contribution);
-
+            
             let current_count = self.contributor_to_contribution_count.entry(caller).read();
             let new_count = current_count + 1;
-
+            
             self.contributor_contributions.entry((caller, new_count)).write(contribution_id);
             self.contributor_to_contribution_count.entry(caller).write(new_count);
-
+            
             self.contributions_count.write(contribution_id);
 
-            self
-                .emit(
-                    Event::ContributionSubmitted(
-                        ContributionSubmitted { contribution_id, contributor: caller, asset_uri },
-                    ),
-                );
+            self.emit(Event::ContributionSubmitted(ContributionSubmitted {
+                contribution_id,
+                contributor: caller,
+                asset_uri,
+            }));
+        }
+
+        fn batch_submit_contributions(
+            ref self: ContractState,
+            assets: Array<felt252>,
+            metadatas: Array<felt252>
+        ) {
+            assert(assets.len() == metadatas.len(), 'Arrays length mismatch');
+            let caller = get_caller_address();
+            
+            let mut i: u32 = 0;
+            let len = assets.len();
+            
+            loop {
+                if i >= len {
+                    break;
+                }
+                self.submit_contribution(*assets.at(i), *metadatas.at(i));
+                i += 1;
+            };
+
+            self.emit(Event::BatchSubmitted(BatchSubmitted {
+                count: len.into(),
+                contributor: caller,
+            }));
         }
 
         fn verify_contribution(ref self: ContractState, contribution_id: u256, verified: bool) {
             let caller = get_caller_address();
             assert(self.verifiers.entry(caller).read(), 'Not authorized');
-
+            
             let contribution = self.contributions.entry(contribution_id).read();
             assert(!contribution.minted, 'Already minted');
 
@@ -139,12 +175,12 @@ mod IPCollection {
                 minted: contribution.minted,
                 timestamp: contribution.timestamp,
             };
-
+            
             self.contributions.entry(contribution_id).write(new_contribution);
-            self
-                .emit(
-                    Event::ContributionVerified(ContributionVerified { contribution_id, verified }),
-                );
+            self.emit(Event::ContributionVerified(ContributionVerified { 
+                contribution_id, 
+                verified 
+            }));
         }
 
         fn mint_nft(ref self: ContractState, contribution_id: u256, recipient: ContractAddress) {
@@ -160,9 +196,12 @@ mod IPCollection {
                 minted: true,
                 timestamp: contribution.timestamp,
             };
-
+            
             self.contributions.entry(contribution_id).write(new_contribution);
-            self.emit(Event::NFTMinted(NFTMinted { contribution_id, recipient }));
+            self.emit(Event::NFTMinted(NFTMinted { 
+                contribution_id, 
+                recipient 
+            }));
         }
 
         fn get_contribution(self: @ContractState, contribution_id: u256) -> Contribution {
@@ -171,6 +210,23 @@ mod IPCollection {
 
         fn get_contributions_count(self: @ContractState) -> u256 {
             self.contributions_count.read()
+        }
+
+        fn get_contributor_contributions(self: @ContractState, contributor: ContractAddress) -> Array<u256> {
+            let count = self.contributor_to_contribution_count.entry(contributor).read();
+            let mut contributions = ArrayTrait::new();
+            
+            let mut i: u256 = 1;
+            loop {
+                if i > count {
+                    break;
+                }
+                let contribution_id = self.contributor_contributions.entry((contributor, i)).read();
+                contributions.append(contribution_id);
+                i += 1;
+            };
+            
+            contributions
         }
 
         fn is_verifier(self: @ContractState, address: ContractAddress) -> bool {
