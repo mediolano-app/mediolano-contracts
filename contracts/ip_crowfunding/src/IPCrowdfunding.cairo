@@ -1,248 +1,258 @@
+use starknet::ContractAddress;
+
+#[starknet::interface]
+trait IERC20<TContractState> {
+    fn transfer(ref self: TContractState, recipient: ContractAddress, amount: u256) -> bool;
+    fn transfer_from(
+        ref self: TContractState, sender: ContractAddress, recipient: ContractAddress, amount: u256
+    ) -> bool;
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store)]
+struct Campaign {
+    creator: ContractAddress,
+    title: felt252,
+    description: felt252,
+    goal_amount: u256,
+    raised_amount: u256,
+    start_time: u64,
+    end_time: u64,
+    completed: bool,
+    refunded: bool,
+}
+
+#[derive(Copy, Drop, Serde, starknet::Store)]
+struct Contribution {
+    contributor: ContractAddress,
+    amount: u256,
+    timestamp: u64,
+}
+
+#[starknet::interface]
+trait IIPCrowdfunding<TContractState> {
+    // Campaign functions
+    fn create_campaign(
+        ref self: TContractState,
+        title: felt252,
+        description: felt252,
+        goal_amount: u256,
+        duration: u64,
+    );
+    fn contribute(ref self: TContractState, campaign_id: u256, amount: u256);
+    fn withdraw_funds(ref self: TContractState, campaign_id: u256);
+    fn refund_contributions(ref self: TContractState, campaign_id: u256);
+
+    // Query functions
+    fn get_campaign(self: @TContractState, campaign_id: u256) -> Campaign;
+    fn get_contributions(self: @TContractState, campaign_id: u256) -> Array<Contribution>;
+}
+
 #[starknet::contract]
 mod IPCrowdfunding {
-    use core::{
-        array::ArrayTrait, traits::Into,
-        starknet::{ContractAddress, get_caller_address, get_block_timestamp, get_contract_address}
+    use super::{Campaign, Contribution, IERC20DispatcherTrait, IERC20Dispatcher};
+    use starknet::{
+        ContractAddress, get_caller_address, get_block_timestamp, contract_address_const
     };
-    use openzeppelin::access::ownable::OwnableComponent;
-    use openzeppelin::security::pausable::PausableComponent;
-    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use super::super::types::{
-        Campaign, CampaignStats, MIN_DURATION, MAX_DURATION, ERROR_INVALID_DURATION,
-        ERROR_INVALID_GOAL, ERROR_CAMPAIGN_NOT_FOUND, ERROR_CAMPAIGN_ENDED, ERROR_CAMPAIGN_ACTIVE,
-        ERROR_ALREADY_WITHDRAWN, ERROR_NOT_CREATOR, ERROR_NO_CONTRIBUTION
-    };
+    use core::array::ArrayTrait;
     use core::starknet::storage::{
-        StoragePointerWriteAccess, StoragePointerReadAccess, StorageMapReadAccess,
-        StorageMapWriteAccess
+        StoragePointerReadAccess, StoragePointerWriteAccess, StoragePathEntry, Map,
     };
-    use super::super::interfaces::IIPCrowdfunding;
-
-
-    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
-    component!(path: PausableComponent, storage: pausable, event: PausableEvent);
-
-    #[abi(embed_v0)]
-    impl OwnableImpl = OwnableComponent::OwnableImpl<ContractState>;
-    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
-    #[abi(embed_v0)]
-    impl PausableImpl = PausableComponent::PausableImpl<ContractState>;
-    impl PausableInternalImpl = PausableComponent::InternalImpl<ContractState>;
 
     #[storage]
     struct Storage {
-        campaign_count: u256,
-        campaigns: LegacyMap<u256, Campaign>,
-        contributions: LegacyMap<(u256, ContractAddress), u256>,
-        campaign_stats: LegacyMap<u256, CampaignStats>,
-        accepted_token: ContractAddress,
-        tokenizer_contract: ContractAddress,
-        #[substorage(v0)]
-        ownable: OwnableComponent::Storage,
-        #[substorage(v0)]
-        pausable: PausableComponent::Storage,
+        owner: ContractAddress,
+        token: ContractAddress,
+        campaigns_count: u256,
+        campaigns: Map<u256, Campaign>,
+        contributions: Map<(u256, u256), Contribution>, // (campaign_id, contribution_id)
+        campaign_contributions_count: Map<u256, u256>,
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
         CampaignCreated: CampaignCreated,
-        ContributionReceived: ContributionReceived,
+        ContributionMade: ContributionMade,
         FundsWithdrawn: FundsWithdrawn,
-        RefundProcessed: RefundProcessed,
-        #[flat]
-        OwnableEvent: OwnableComponent::Event,
-        #[flat]
-        PausableEvent: PausableComponent::Event
+        ContributionsRefunded: ContributionsRefunded,
     }
 
     #[derive(Drop, starknet::Event)]
     struct CampaignCreated {
+        #[key]
         campaign_id: u256,
         creator: ContractAddress,
-        asset_id: u256,
-        funding_goal: u256,
-        duration: u64
+        title: felt252,
     }
 
     #[derive(Drop, starknet::Event)]
-    struct ContributionReceived {
+    struct ContributionMade {
+        #[key]
         campaign_id: u256,
         contributor: ContractAddress,
-        amount: u256
+        amount: u256,
     }
 
     #[derive(Drop, starknet::Event)]
     struct FundsWithdrawn {
+        #[key]
         campaign_id: u256,
-        amount: u256
     }
 
     #[derive(Drop, starknet::Event)]
-    struct RefundProcessed {
+    struct ContributionsRefunded {
+        #[key]
         campaign_id: u256,
-        contributor: ContractAddress,
-        amount: u256
+        amount: u256,
     }
 
     #[constructor]
-    fn constructor(
-        ref self: ContractState,
-        owner: ContractAddress,
-        accepted_token: ContractAddress,
-        tokenizer_contract: ContractAddress
-    ) {
-        self.ownable.initializer(owner);
-        self.accepted_token.write(accepted_token);
-        self.tokenizer_contract.write(tokenizer_contract);
-        self.campaign_count.write(0);
+    fn constructor(ref self: ContractState, owner: ContractAddress, token: ContractAddress) {
+        self.owner.write(owner);
+        self.token.write(token);
+        self.campaigns_count.write(0);
     }
 
     #[abi(embed_v0)]
-    impl IPCrowdfundingImpl of IIPCrowdfunding<ContractState> {
-        // Implementation remains the same as in the previous version
+    impl IPCrowdfundingImpl of super::IIPCrowdfunding<ContractState> {
         fn create_campaign(
             ref self: ContractState,
-            asset_id: u256,
-            funding_goal: u256,
+            title: felt252,
+            description: felt252,
+            goal_amount: u256,
             duration: u64,
-            reward_terms: ByteArray
-        ) -> u256 {
-            self.pausable.assert_not_paused();
-
-            assert(funding_goal > 0, ERROR_INVALID_GOAL);
-            assert(duration >= MIN_DURATION && duration <= MAX_DURATION, ERROR_INVALID_DURATION);
-
-            let creator = get_caller_address();
-            let start_time = get_block_timestamp();
-            let end_time = start_time + duration;
-
-            let campaign_id = self.campaign_count.read() + 1;
-            self.campaign_count.write(campaign_id);
+        ) {
+            let caller = get_caller_address();
+            let campaign_id = self.campaigns_count.read() + 1;
+            let current_time = get_block_timestamp();
 
             let campaign = Campaign {
-                creator,
-                asset_id,
-                funding_goal,
-                total_raised: 0,
-                start_time,
-                end_time,
-                reward_terms,
-                is_active: true,
-                is_funded: false,
-                funds_withdrawn: false
+                creator: caller,
+                title,
+                description,
+                goal_amount,
+                raised_amount: 0.into(),
+                start_time: current_time,
+                end_time: current_time + duration,
+                completed: false,
+                refunded: false,
             };
 
-            self.campaigns.write(campaign_id, campaign);
+            self.campaigns.entry(campaign_id).write(campaign);
+            self.campaigns_count.write(campaign_id);
 
-            // Initialize campaign stats
-            let stats = CampaignStats {
-                total_contributors: 0,
-                avg_contribution: 0,
-                largest_contribution: 0,
-                funding_progress: 0
-            };
-            self.campaign_stats.write(campaign_id, stats);
-
-            self.emit(CampaignCreated { campaign_id, creator, asset_id, funding_goal, duration });
-
-            campaign_id
+            self
+                .emit(
+                    Event::CampaignCreated(CampaignCreated { campaign_id, creator: caller, title }),
+                );
         }
 
         fn contribute(ref self: ContractState, campaign_id: u256, amount: u256) {
-            self.pausable.assert_not_paused();
+            let caller = get_caller_address();
+            let current_time = get_block_timestamp();
 
-            let mut campaign = self.campaigns.read(campaign_id);
-            assert(campaign.is_active, ERROR_CAMPAIGN_NOT_FOUND);
-            assert(get_block_timestamp() <= campaign.end_time, ERROR_CAMPAIGN_ENDED);
+            let campaign = self.campaigns.entry(campaign_id).read();
+            assert(current_time >= campaign.start_time, 'Campaign not started');
+            assert(current_time <= campaign.end_time, 'Campaign ended');
+            assert(!campaign.completed, 'Campaign completed');
+            assert(!campaign.refunded, 'Campaign refunded');
 
-            let contributor = get_caller_address();
+            // Transfer tokens from contributor to contract
+            let token = IERC20Dispatcher { contract_address: self.token.read() };
+            assert(
+                token.transfer_from(caller, contract_address_const::<0>(), amount),
+                'Token transfer failed'
+            );
 
-            let token = IERC20Dispatcher { contract_address: self.accepted_token.read() };
-            token.transfer_from(contributor, get_contract_address(), amount);
+            let contribution_id = self.campaign_contributions_count.entry(campaign_id).read() + 1;
 
-            let current_contribution = self.contributions.read((campaign_id, contributor));
-            self.contributions.write((campaign_id, contributor), current_contribution + amount);
+            let contribution = Contribution {
+                contributor: caller, amount, timestamp: current_time,
+            };
 
-            let total_raised = campaign.total_raised + amount;
-            let funding_goal = campaign.funding_goal; // Save funding_goal before moving campaign
+            self.contributions.entry((campaign_id, contribution_id)).write(contribution);
+            self.campaign_contributions_count.entry(campaign_id).write(contribution_id);
 
-            campaign.total_raised = total_raised;
-            campaign.is_funded = total_raised >= funding_goal;
+            let new_raised_amount = campaign.raised_amount + amount;
+            let updated_campaign = Campaign { raised_amount: new_raised_amount, ..campaign };
+            self.campaigns.entry(campaign_id).write(updated_campaign);
 
-            self.campaigns.write(campaign_id, campaign);
-
-            // Update campaign stats
-            let mut stats = self.campaign_stats.read(campaign_id);
-            if current_contribution == 0 {
-                stats.total_contributors += 1;
-            }
-            stats.avg_contribution = total_raised / stats.total_contributors.into();
-            if amount > stats.largest_contribution {
-                stats.largest_contribution = amount;
-            }
-            stats.funding_progress = (total_raised * 100) / funding_goal;
-            self.campaign_stats.write(campaign_id, stats);
-
-            self.emit(ContributionReceived { campaign_id, contributor, amount });
+            self
+                .emit(
+                    Event::ContributionMade(
+                        ContributionMade { campaign_id, contributor: caller, amount },
+                    ),
+                );
         }
-
 
         fn withdraw_funds(ref self: ContractState, campaign_id: u256) {
-            self.pausable.assert_not_paused();
+            let caller = get_caller_address();
+            let campaign = self.campaigns.entry(campaign_id).read();
+            assert(caller == campaign.creator, 'Not the creator');
+            assert(!campaign.completed, 'Campaign completed');
+            assert(campaign.raised_amount >= campaign.goal_amount, 'Goal not reached');
 
-            let mut campaign = self.campaigns.read(campaign_id);
-            assert(campaign.is_active, ERROR_CAMPAIGN_NOT_FOUND);
-            assert(get_caller_address() == campaign.creator, ERROR_NOT_CREATOR);
-            assert(!campaign.funds_withdrawn, ERROR_ALREADY_WITHDRAWN);
+            // Transfer tokens to campaign creator
+            let token = IERC20Dispatcher { contract_address: self.token.read() };
             assert(
-                campaign.is_funded || get_block_timestamp() > campaign.end_time,
-                ERROR_CAMPAIGN_ACTIVE
+                token.transfer(campaign.creator, campaign.raised_amount), 'Token transfer failed'
             );
 
-            // Store the total_raised value before the move
-            let total_raised = campaign.total_raised;
+            let updated_campaign = Campaign { completed: true, ..campaign };
+            self.campaigns.entry(campaign_id).write(updated_campaign);
 
-            let token = IERC20Dispatcher { contract_address: self.accepted_token.read() };
-            token.transfer(campaign.creator, total_raised);
-
-            campaign.funds_withdrawn = true;
-            campaign.is_active = false;
-            self.campaigns.write(campaign_id, campaign);
-
-            self.emit(FundsWithdrawn { campaign_id, amount: total_raised });
+            self.emit(Event::FundsWithdrawn(FundsWithdrawn { campaign_id }));
         }
 
-        fn refund(ref self: ContractState, campaign_id: u256) {
-            self.pausable.assert_not_paused();
+        fn refund_contributions(ref self: ContractState, campaign_id: u256) {
+            let campaign = self.campaigns.entry(campaign_id).read();
+            assert(!campaign.completed, 'Campaign completed');
+            assert(!campaign.refunded, 'Already refunded');
+            assert(campaign.raised_amount < campaign.goal_amount, 'Goal reached');
+            assert(get_block_timestamp() > campaign.end_time, 'Campaign not ended');
 
-            let campaign = self.campaigns.read(campaign_id);
-            assert(campaign.is_active, ERROR_CAMPAIGN_NOT_FOUND);
-            assert(
-                get_block_timestamp() > campaign.end_time && !campaign.is_funded,
-                ERROR_CAMPAIGN_ACTIVE
-            );
+            let token = IERC20Dispatcher { contract_address: self.token.read() };
 
-            let contributor = get_caller_address();
-            let contribution = self.contributions.read((campaign_id, contributor));
-            assert(contribution > 0, ERROR_NO_CONTRIBUTION);
+            let contributions_count = self.campaign_contributions_count.entry(campaign_id).read();
+            let mut i: u256 = 1;
 
-            let token = IERC20Dispatcher { contract_address: self.accepted_token.read() };
-            token.transfer(contributor, contribution);
+            loop {
+                if i > contributions_count {
+                    break;
+                }
+                let contribution = self.contributions.entry((campaign_id, i)).read();
+                // Refund tokens to contributor
+                assert(
+                    token.transfer(contribution.contributor, contribution.amount),
+                    'Token transfer failed'
+                );
+                i += 1;
+            };
 
-            self.contributions.write((campaign_id, contributor), 0);
-
-            self.emit(RefundProcessed { campaign_id, contributor, amount: contribution });
+            let updated_campaign = Campaign { refunded: true, ..campaign };
+            self.campaigns.entry(campaign_id).write(updated_campaign);
         }
 
+        // Query functions
         fn get_campaign(self: @ContractState, campaign_id: u256) -> Campaign {
-            self.campaigns.read(campaign_id)
+            self.campaigns.entry(campaign_id).read()
         }
 
-        fn get_contribution(
-            self: @ContractState, campaign_id: u256, contributor: ContractAddress
-        ) -> u256 {
-            self.contributions.read((campaign_id, contributor))
+        fn get_contributions(self: @ContractState, campaign_id: u256) -> Array<Contribution> {
+            let contributions_count = self.campaign_contributions_count.entry(campaign_id).read();
+            let mut contributions = ArrayTrait::new();
+
+            let mut i: u256 = 1;
+            loop {
+                if i > contributions_count {
+                    break;
+                }
+                let contribution = self.contributions.entry((campaign_id, i)).read();
+                contributions.append(contribution);
+                i += 1;
+            };
+
+            contributions
         }
     }
 }
