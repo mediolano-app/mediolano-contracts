@@ -6,7 +6,7 @@ pub mod Errors {
     pub const FUNDRAISING_COMPLETED: felt252 = 'Fundraising already completed';
     pub const NOT_IN_WHITELIST_MODE: felt252 = 'Not in whitelist mode';
     pub const NOT_IP_OWNER: felt252 = 'Not IP owner';
-    pub const COMPLETED_OR_CANCELLED: felt252 = 'Syndication completed or cancelled';
+    pub const COMPLETED_OR_CANCELLED: felt252 = 'Syn: completed or cancelled';
     pub const SYNDICATION_NOT_COMPLETED: felt252 = 'Syndication not completed';
     pub const NON_SYNDICATE_PARTICIPANT: felt252 = 'Not Syndication Participant';
     pub const ALREADY_MINTED: felt252 = 'Already minted';

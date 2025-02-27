@@ -1,4 +1,4 @@
-use ip_syndication::types::{IPMetadata, SyndicationDetails, Status, Mode, ParticipantsDetails};
+use ip_syndication::types::{IPMetadata, SyndicationDetails, Status, Mode, ParticipantDetails};
 use starknet::{ContractAddress};
 
 #[starknet::interface]
@@ -34,5 +34,7 @@ pub trait IIPSyndication<TContractState> {
     ) -> ParticipantDetails;
 
     fn get_syndication_status(self: @TContractState, ip_id: u256) -> Status;
+    fn get_participant_count(self: @TContractState, ip_id: u256) -> u256;
+    fn mint_asset(ref self: TContractState, ip_id: u256);
 }
 

@@ -52,7 +52,7 @@ pub mod IPSyndication {
         owner: ContractAddress,
         price: u256,
         name: felt252,
-        mode: u8,
+        mode: Mode,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -150,7 +150,7 @@ pub mod IPSyndication {
 
             // Check if more deposits are needed
             let total_deposited = syndication_details.total_raised;
-            let ip_price = self.get_ip_metadata().price;
+            let ip_price = self.get_ip_metadata(ip_id).price;
             assert(total_deposited < ip_price, Errors::FUNDRAISING_COMPLETED);
 
             // Calculate the actual deposit amount (in case it exceeds the target)
@@ -164,7 +164,7 @@ pub mod IPSyndication {
             // Add participant if first deposit
             let current_deposit = self.participants_deposit.entry(ip_id).entry(caller).read();
             if current_deposit == 0 {
-                self.participant_addresses.entry(ip_id).append(caller);
+                self.participant_addresses.entry(ip_id).append().write(caller);
                 self.emit(ParticipantAdded { ip_id, participant: caller });
             }
 
@@ -214,15 +214,15 @@ pub mod IPSyndication {
         }
 
         fn get_participant_count(self: @ContractState, ip_id: u256) -> u256 {
-            self.participant_addresses.entry(ip_id).read().len()
+            self.participant_addresses.entry(ip_id).len().into()
         }
 
         fn get_all_participants(self: @ContractState, ip_id: u256) -> Span<ContractAddress> {
-            let participants = array![];
+            let mut participants = array![];
             let count = self.get_participant_count(ip_id);
 
             let mut idx = 0;
-            while (idx < count) {
+            while (idx < count.try_into().unwrap()) {
                 participants.append(self.participant_addresses.entry(ip_id).at(idx).read());
                 idx += 1;
             };
@@ -243,7 +243,7 @@ pub mod IPSyndication {
             assert(syndication_details.mode == Mode::Whitelist, Errors::NOT_IN_WHITELIST_MODE);
 
             // Update whitelist status
-            self.ip_whitelist.entry(ip_id).entry(address).append(status);
+            self.ip_whitelist.entry(ip_id).entry(address).write(status);
 
             // Emit event
             self.emit(WhitelistUpdated { address, status });
@@ -256,7 +256,7 @@ pub mod IPSyndication {
         fn cancel_syndication(ref self: ContractState, ip_id: u256) {
             // Validations
             let caller = get_caller_address();
-            assert(ip_metadata.owner == caller, Errors::NOT_IP_OWNER);
+            assert(self.get_ip_metadata(ip_id).owner == caller, Errors::NOT_IP_OWNER);
 
             let status = self.get_syndication_details(ip_id).status;
             assert(
@@ -287,7 +287,7 @@ pub mod IPSyndication {
 
         fn get_participant_details(
             self: @ContractState, ip_id: u256, participant: ContractAddress
-        ) -> ParticipantsDetails {
+        ) -> ParticipantDetails {
             self.participants_details.entry(ip_id).entry(participant).read()
         }
 
@@ -303,7 +303,7 @@ pub mod IPSyndication {
             );
 
             // Only participants can mint
-            assert(self._is_participant(caller), Errors::NON_SYNDICATE_PARTICIPANT);
+            assert(self._is_participant(ip_id, caller), Errors::NON_SYNDICATE_PARTICIPANT);
 
             // Check if already minted
             assert(!participants_details.minted, Errors::ALREADY_MINTED);
@@ -319,7 +319,7 @@ pub mod IPSyndication {
                 / total_price; // Multiply by 10000 to preserve 2 decimal points
 
             // Emit mint event
-            self.emit(AssetMinted { caller, share });
+            self.emit(AssetMinted { recipient: caller, share });
             //TODO: mint token with appropriate fraction
         }
     }
