@@ -9,16 +9,16 @@ trait IERC20<TContractState> {
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
-struct Campaign {
-    creator: ContractAddress,
-    title: felt252,
-    description: felt252,
-    goal_amount: u256,
-    raised_amount: u256,
-    start_time: u64,
-    end_time: u64,
-    completed: bool,
-    refunded: bool,
+pub struct Campaign {
+    pub creator: ContractAddress,
+    pub title: felt252,
+    pub description: felt252,
+    pub goal_amount: u256,
+    pub raised_amount: u256,
+    pub start_time: u64,
+    pub end_time: u64,
+    pub completed: bool,
+    pub refunded: bool,
 }
 
 #[derive(Copy, Drop, Serde, starknet::Store)]
@@ -29,7 +29,7 @@ struct Contribution {
 }
 
 #[starknet::interface]
-trait IIPCrowdfunding<TContractState> {
+pub trait IIPCrowdfunding<TContractState> {
     // Campaign functions
     fn create_campaign(
         ref self: TContractState,
@@ -48,7 +48,7 @@ trait IIPCrowdfunding<TContractState> {
 }
 
 #[starknet::contract]
-mod IPCrowdfunding {
+pub mod IPCrowdfunding {
     use super::{Campaign, Contribution, IERC20DispatcherTrait, IERC20Dispatcher};
     use starknet::{
         ContractAddress, get_caller_address, get_block_timestamp, contract_address_const
