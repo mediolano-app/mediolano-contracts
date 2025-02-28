@@ -9,7 +9,7 @@ pub struct IPMetadata {
     pub description: ByteArray,
     pub uri: ByteArray,
     pub licensing_terms: felt252,
-    //TODO pub collection_id: u256,
+    pub token_id: u256,
 }
 
 #[derive(Drop, Copy, Serde, starknet::Store)]
@@ -26,8 +26,8 @@ pub struct ParticipantDetails {
     pub address: ContractAddress,
     pub amount_deposited: u256,
     pub minted: bool,
-    pub collection_id: u256,
-    // pub amount_refunded: u256,
+    pub token_id: u256,
+    pub amount_refunded: u256,
 }
 
 

@@ -1,10 +1,11 @@
 #[starknet::contract]
 pub mod IPSyndication {
-    // use openzeppelin::token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
     use core::num::traits::Zero;
     use ip_syndication::errors::Errors;
     use ip_syndication::interface::{IIPSyndication};
     use ip_syndication::types::{IPMetadata, SyndicationDetails, Status, Mode, ParticipantDetails};
+    use openzeppelin::token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
+    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 
 
     use starknet::storage::{
@@ -114,7 +115,14 @@ pub mod IPSyndication {
 
             // set metadata
             let ip_metadata = IPMetadata {
-                ip_id, owner: caller, price, name, description, uri, licensing_terms,
+                ip_id,
+                owner: caller,
+                price,
+                name,
+                description,
+                uri,
+                licensing_terms,
+                token_id: ip_id
             };
 
             self.ip_metadata.entry(ip_id).write(ip_metadata);
@@ -205,12 +213,14 @@ pub mod IPSyndication {
                 address: caller,
                 amount_deposited: deposit_amount,
                 minted: false,
-                collection_id: 0, //TODO
+                token_id: ip_id,
+                amount_refunded: 0
             };
 
             self.syndication_details.entry(ip_id).write(syndication_details);
             self.participants_details.entry(ip_id).entry(caller).write(participants_details);
             //TODO: transfer funds to the contract
+
         }
 
         fn get_participant_count(self: @ContractState, ip_id: u256) -> u256 {
