@@ -154,6 +154,22 @@ pub mod IPSyndication {
                 );
         }
 
+        fn activate_syndication(ref self: ContractState, ip_id: u256) {
+            // Validations
+            let caller = get_caller_address();
+            let ip_metadata = self.get_ip_metadata(ip_id);
+            assert(ip_metadata.owner == caller, Errors::NOT_IP_OWNER);
+
+            let status = self.get_syndication_status(ip_id);
+            assert(status == Status::Pending, Errors::SYNDICATION_IS_ACTIVE);
+
+            // Update status
+            let mut syndication_details = self.get_syndication_details(ip_id);
+            syndication_details.status = Status::Active;
+            self.syndication_details.entry(ip_id).write(syndication_details);
+        }
+
+
         fn deposit(ref self: ContractState, ip_id: u256, amount: u256) {
             // Validations
             let caller = get_caller_address();
@@ -384,7 +400,7 @@ pub mod IPSyndication {
                 let amount = participant_details.amount_deposited
                     - participant_details.amount_refunded;
 
-                assert(amount.is_zero(), Errors::ALREADY_REFUNDED);
+                assert(!amount.is_zero(), Errors::ALREADY_REFUNDED);
 
                 // Update refunded amount
                 participant_details.amount_refunded += amount;
@@ -396,6 +412,8 @@ pub mod IPSyndication {
 
                 // transfer funds
                 self._erc20_dispatcher(ip_id).transfer(participant, amount);
+
+                idx += 1;
             }
         }
 

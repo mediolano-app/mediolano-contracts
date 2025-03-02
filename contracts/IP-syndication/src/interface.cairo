@@ -36,5 +36,6 @@ pub trait IIPSyndication<TContractState> {
     fn get_syndication_status(self: @TContractState, ip_id: u256) -> Status;
     fn get_participant_count(self: @TContractState, ip_id: u256) -> u256;
     fn mint_asset(ref self: TContractState, ip_id: u256);
+    fn activate_syndication(ref self: TContractState, ip_id: u256);
 }
 
