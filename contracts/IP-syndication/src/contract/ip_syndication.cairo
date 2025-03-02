@@ -1,6 +1,7 @@
 #[starknet::contract]
 pub mod IPSyndication {
     use core::num::traits::Zero;
+    use ip_syndication::contract::asset_nft::{IAssetNFTDispatcher, IAssetNFTDispatcherTrait};
     use ip_syndication::errors::Errors;
     use ip_syndication::interface::{IIPSyndication};
     use ip_syndication::types::{IPMetadata, SyndicationDetails, Status, Mode, ParticipantDetails};
@@ -25,14 +26,12 @@ pub mod IPSyndication {
         //Syndication details
         syndication_details: Map<u256, SyndicationDetails>, // ip_id -> SyndicationDetails
         // Participant details
-        participants_deposit: Map<
-            u256, Map<ContractAddress, u256>
-        >, // ip_id -> address -> amount deposited
         ip_whitelist: Map<u256, Map<ContractAddress, bool>>, // ip_id -> address -> status 
         participant_addresses: Map<u256, Vec<ContractAddress>>, // ip_id -> Vec<ContractAddress> 
         participants_details: Map<
             u256, Map<ContractAddress, ParticipantDetails>
         >, // ip_id -> participant -> ParticipantDetails
+        asset_nft_address: ContractAddress,
     }
 
 
@@ -54,6 +53,8 @@ pub mod IPSyndication {
         price: u256,
         name: felt252,
         mode: Mode,
+        token_id: u256,
+        currency_address: ContractAddress,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -94,7 +95,9 @@ pub mod IPSyndication {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState) {}
+    fn constructor(ref self: ContractState, asset_nft_address: ContractAddress) {
+        self.asset_nft_address.write(asset_nft_address);
+    }
 
     #[abi(embed_v0)]
     pub impl IIPSyndicationImpl of IIPSyndication<ContractState> {
@@ -107,6 +110,7 @@ pub mod IPSyndication {
             uri: ByteArray,
             licensing_terms: felt252,
             mode: Mode,
+            currency_address: ContractAddress,
         ) {
             let caller = get_caller_address();
             assert(!price.is_zero(), Errors::PRICE_IS_ZERO);
@@ -134,6 +138,7 @@ pub mod IPSyndication {
                 mode,
                 total_raised: 0_u256,
                 participant_count: self.get_participant_count(ip_id),
+                currency_address,
             };
 
             self.syndication_details.entry(ip_id).write(syndication_details);
@@ -141,7 +146,12 @@ pub mod IPSyndication {
             self.ip_count.write(ip_id);
 
             // Emit event
-            self.emit(IPRegistered { owner: caller, price, name, mode });
+            self
+                .emit(
+                    IPRegistered {
+                        owner: caller, price, name, mode, token_id: ip_id, currency_address
+                    }
+                );
         }
 
         fn deposit(ref self: ContractState, ip_id: u256, amount: u256) {
@@ -150,6 +160,10 @@ pub mod IPSyndication {
             let mut syndication_details = self.syndication_details.entry(ip_id).read();
             assert(syndication_details.status == Status::Active, Errors::SYNDICATION_NON_ACTIVE);
             assert(!amount.is_zero(), Errors::AMOUNT_IS_ZERO);
+            assert(
+                self._has_sufficient_funds(syndication_details.currency_address, amount),
+                Errors::INSUFFICIENT_BALANCE
+            );
 
             // Check if whitelisted when in whitelist mode
             if syndication_details.mode == Mode::Whitelist {
@@ -170,18 +184,18 @@ pub mod IPSyndication {
             };
 
             // Add participant if first deposit
-            let current_deposit = self.participants_deposit.entry(ip_id).entry(caller).read();
-            if current_deposit == 0 {
+            let mut participant_details = self.get_participant_details(ip_id, caller);
+
+            let current_deposit = participant_details.amount_deposited;
+            if current_deposit == 0 && participant_details.address.is_zero() {
+                participant_details.address = caller;
+                participant_details.token_id = ip_id;
                 self.participant_addresses.entry(ip_id).append().write(caller);
                 self.emit(ParticipantAdded { ip_id, participant: caller });
             }
 
             // Update participant deposit
-            self
-                .participants_deposit
-                .entry(ip_id)
-                .entry(caller)
-                .write(current_deposit + deposit_amount);
+            participant_details.amount_deposited = current_deposit + deposit_amount;
 
             syndication_details.total_raised = total_deposited + deposit_amount;
             syndication_details.participant_count = self.get_participant_count(ip_id);
@@ -209,18 +223,13 @@ pub mod IPSyndication {
                     );
             }
 
-            let participants_details = ParticipantDetails {
-                address: caller,
-                amount_deposited: deposit_amount,
-                minted: false,
-                token_id: ip_id,
-                amount_refunded: 0
-            };
-
             self.syndication_details.entry(ip_id).write(syndication_details);
-            self.participants_details.entry(ip_id).entry(caller).write(participants_details);
-            //TODO: transfer funds to the contract
+            self.participants_details.entry(ip_id).entry(caller).write(participant_details);
 
+            //transfer funds to the contract
+            self
+                ._erc20_dispatcher(ip_id)
+                .transfer_from(caller, get_contract_address(), deposit_amount);
         }
 
         fn get_participant_count(self: @ContractState, ip_id: u256) -> u256 {
@@ -281,7 +290,9 @@ pub mod IPSyndication {
 
             // Emit event
             self.emit(SyndicationCancelled { timestamp: get_block_timestamp() });
-            // TODO: refund all deposits
+
+            // refund all deposits
+            self._refund(ip_id);
         }
 
         fn get_ip_metadata(self: @ContractState, ip_id: u256) -> IPMetadata {
@@ -330,7 +341,10 @@ pub mod IPSyndication {
 
             // Emit mint event
             self.emit(AssetMinted { recipient: caller, share });
+
             //TODO: mint token with appropriate fraction
+            IAssetNFTDispatcher { contract_address: self.asset_nft_address.read() }
+                .mint(caller, ip_id, share);
         }
     }
 
@@ -351,6 +365,43 @@ pub mod IPSyndication {
                 idx += 1;
             };
             is_participant
+        }
+
+        fn _has_sufficient_funds(
+            self: @ContractState, currency_address: ContractAddress, amount: u256
+        ) -> bool {
+            let erc20 = IERC20Dispatcher { contract_address: currency_address };
+
+            erc20.balance_of(get_caller_address()) >= amount
+        }
+
+        fn _refund(ref self: ContractState, ip_id: u256) {
+            let depositors_len = self.participant_addresses.entry(ip_id).len();
+            let mut idx = 0;
+            while idx < depositors_len {
+                let participant = self.participant_addresses.entry(ip_id).at(idx).read();
+                let mut participant_details = self.get_participant_details(ip_id, participant);
+                let amount = participant_details.amount_deposited
+                    - participant_details.amount_refunded;
+
+                assert(amount.is_zero(), Errors::ALREADY_REFUNDED);
+
+                // Update refunded amount
+                participant_details.amount_refunded += amount;
+                self
+                    .participants_details
+                    .entry(ip_id)
+                    .entry(participant)
+                    .write(participant_details);
+
+                // transfer funds
+                self._erc20_dispatcher(ip_id).transfer(participant, amount);
+            }
+        }
+
+        fn _erc20_dispatcher(self: @ContractState, ip_id: u256) -> IERC20Dispatcher {
+            let contract_address = self.get_syndication_details(ip_id).currency_address;
+            IERC20Dispatcher { contract_address }
         }
     }
 }

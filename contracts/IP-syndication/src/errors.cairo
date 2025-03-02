@@ -10,4 +10,6 @@ pub mod Errors {
     pub const SYNDICATION_NOT_COMPLETED: felt252 = 'Syndication not completed';
     pub const NON_SYNDICATE_PARTICIPANT: felt252 = 'Not Syndication Participant';
     pub const ALREADY_MINTED: felt252 = 'Already minted';
+    pub const INSUFFICIENT_BALANCE: felt252 = 'Insufficient balance';
+    pub const ALREADY_REFUNDED: felt252 = 'Already refunded';
 }

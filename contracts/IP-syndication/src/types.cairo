@@ -19,6 +19,7 @@ pub struct SyndicationDetails {
     pub mode: Mode,
     pub total_raised: u256,
     pub participant_count: u256,
+    pub currency_address: ContractAddress,
 }
 
 #[derive(Drop, Copy, Serde, starknet::Store)]
@@ -28,6 +29,7 @@ pub struct ParticipantDetails {
     pub minted: bool,
     pub token_id: u256,
     pub amount_refunded: u256,
+    //TODO share?
 }
 
 

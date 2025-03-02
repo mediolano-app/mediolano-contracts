@@ -11,7 +11,7 @@ pub trait IIPSyndication<TContractState> {
         uri: ByteArray,
         licensing_terms: felt252,
         mode: Mode,
-        // collection_id: felt252
+        currency_address: ContractAddress,
     );
 
     fn update_whitelist(

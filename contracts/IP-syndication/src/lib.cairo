@@ -3,6 +3,6 @@ pub mod interface;
 pub mod types;
 
 mod contract {
-    pub mod erc1155;
+    pub mod asset_nft;
     pub mod ip_syndication;
 }
