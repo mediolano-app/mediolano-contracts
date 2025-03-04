@@ -111,9 +111,10 @@ pub mod IPSyndication {
             licensing_terms: felt252,
             mode: Mode,
             currency_address: ContractAddress,
-        ) {
+        ) -> u256 {
             let caller = get_caller_address();
             assert(!price.is_zero(), Errors::PRICE_IS_ZERO);
+            assert(!currency_address.is_zero(), Errors::INVALID_CURRENCY_ADDRESS);
 
             let ip_id = self.ip_count.read() + 1;
 
@@ -152,6 +153,8 @@ pub mod IPSyndication {
                         owner: caller, price, name, mode, token_id: ip_id, currency_address
                     }
                 );
+
+            ip_id
         }
 
         fn activate_syndication(ref self: ContractState, ip_id: u256) {
@@ -183,7 +186,7 @@ pub mod IPSyndication {
 
             // Check if whitelisted when in whitelist mode
             if syndication_details.mode == Mode::Whitelist {
-                assert(self.is_whitelisted(caller, ip_id), Errors::ADDRESS_NOT_WHITELISTED);
+                assert(self.is_whitelisted(ip_id, caller), Errors::ADDRESS_NOT_WHITELISTED);
             }
 
             // Check if more deposits are needed
@@ -284,7 +287,7 @@ pub mod IPSyndication {
             self.emit(WhitelistUpdated { address, status });
         }
 
-        fn is_whitelisted(self: @ContractState, address: ContractAddress, ip_id: u256) -> bool {
+        fn is_whitelisted(self: @ContractState, ip_id: u256, address: ContractAddress) -> bool {
             self.ip_whitelist.entry(ip_id).entry(address).read()
         }
 
@@ -349,16 +352,15 @@ pub mod IPSyndication {
             participants_details.minted = true;
             self.participants_details.entry(ip_id).entry(caller).write(participants_details);
 
-            // Calculate share percentage (deposit_amount / total_price) * 100
-            let total_price = ip_metadata.price;
-            let deposit_amount = participants_details.amount_deposited;
-            let share = (deposit_amount * 10000)
-                / total_price; // Multiply by 10000 to preserve 2 decimal points
+            // Use deposit amount directly as share (1:1 ratio)
+            let mut participants_details = self.get_participant_details(ip_id, caller);
+            let share = participants_details.amount_deposited
+                - participants_details.amount_refunded;
 
             // Emit mint event
             self.emit(AssetMinted { recipient: caller, share });
 
-            //TODO: mint token with appropriate fraction
+            // mint token
             IAssetNFTDispatcher { contract_address: self.asset_nft_address.read() }
                 .mint(caller, ip_id, share);
         }
