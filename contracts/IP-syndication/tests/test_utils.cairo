@@ -26,7 +26,6 @@ pub fn ALICE() -> ContractAddress {
     'ALICE'.try_into().unwrap()
 }
 
-
 pub fn setup() -> (
     IIPSyndicationDispatcher, IAssetNFTDispatcher, IERC20Dispatcher, ContractAddress
 ) {

@@ -29,7 +29,7 @@ pub struct ParticipantDetails {
     pub minted: bool,
     pub token_id: u256,
     pub amount_refunded: u256,
-    //TODO share?
+    pub share: u256
 }
 
 
@@ -42,58 +42,9 @@ pub enum Status {
     Cancelled,
 }
 
-// impl StatusIntoFelt252 of Into<Status, felt252> {
-//     fn into(self: Status) -> felt252 {
-//         match self {
-//             Status::Pending => 'PENDING',
-//             Status::Active => 'ACTIVE',
-//             Status::Completed => 'COMPLETED',
-//             Status::Cancelled => 'CANCELLED',
-//         }
-//     }
-// }
-
-// impl Felt252TryIntoStatus of TryInto<felt252, Status> {
-//     fn try_into(self: felt252) -> Option<Status> {
-//         if self == 'PENDING' {
-//             Option::Some(Status::Pending)
-//         } else if self == 'ACTIVE' {
-//             Option::Some(Status::Active)
-//         } else if self == 'COMPLETED' {
-//             Option::Some(Status::Completed)
-//         } else if self == 'CANCELLED' {
-//             Option::Some(Status::Cancelled)
-//         } else {
-//             Option::None
-//         }
-//     }
-// }
-
 #[derive(Drop, Copy, Serde, PartialEq, starknet::Store)]
 pub enum Mode {
     #[default]
     Public,
     Whitelist,
 }
-// impl ModeIntoFelt252 of Into<Mode, felt252> {
-//     fn into(self: Mode) -> felt252 {
-//         match self {
-//             Mode::Public => 'PUBLIC',
-//             Mode::Whitelist => 'WHITELIST',
-//         }
-//     }
-// }
-
-// impl Felt252TryIntoMode of TryInto<felt252, Mode> {
-//     fn try_into(self: felt252) -> Option<Mode> {
-//         if self == 'PUBLIC' {
-//             Option::Some(Mode::Public)
-//         } else if self == 'WHITELIST' {
-//             Option::Some(Mode::Whitelist)
-//         } else {
-//             Option::None
-//         }
-//     }
-// }
-
-

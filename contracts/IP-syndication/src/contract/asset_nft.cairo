@@ -45,7 +45,7 @@ mod AssetNFT {
     #[abi(embed_v0)]
     impl AssetNFTImpl of super::IAssetNFT<ContractState> {
         fn mint(ref self: ContractState, recipient: ContractAddress, token_id: u256, amount: u256) {
-            //TODO restrict to syndicate contract
+            // restrict to syndicate contract
             self.erc1155.mint_with_acceptance_check(recipient, token_id, amount, array![].span());
         }
     }
