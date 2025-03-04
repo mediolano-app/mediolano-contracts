@@ -1,6 +1,6 @@
 ///
 /// @title IP Syndication Contract
-/// @notice Implements an IP syndication protocol on Starknet allowing fractionalized IP ownership
+/// @notice Implements an IP syndication protocol allowing fractionalized IP ownership
 /// @dev Uses ERC20 for payments and a custom NFT contract for asset ownership tokens
 ///
 #[starknet::contract]
