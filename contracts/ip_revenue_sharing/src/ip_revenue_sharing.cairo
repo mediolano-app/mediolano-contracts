@@ -1,5 +1,6 @@
 use starknet::ContractAddress;
 
+
 #[starknet::interface]
 pub trait IIPRevenueSharing<TContractState> {
     fn create_ip_asset(
@@ -10,8 +11,6 @@ pub trait IIPRevenueSharing<TContractState> {
         license_terms_hash: felt252,
         total_shares: u256,
     );
-
-
     fn list_ip_asset(
         ref self: TContractState,
         nft_contract: ContractAddress,
@@ -19,24 +18,19 @@ pub trait IIPRevenueSharing<TContractState> {
         price: u256,
         currency_address: ContractAddress,
     );
-
     fn remove_listing(ref self: TContractState, nft_contract: ContractAddress, token_id: u256);
-
     fn claim_royalty(ref self: TContractState, token_id: u256);
-
-    fn distribute_sale_revenue(
-        ref self: TContractState, nft_contract: ContractAddress, token_id: u256,
+    fn record_sale_revenue(
+        ref self: TContractState, nft_contract: ContractAddress, token_id: u256, amount: u256,
     );
     fn add_fractional_owner(ref self: TContractState, token_id: u256, owner: ContractAddress);
-
-    fn get_fractional_owners(self: @TContractState, token_id: u256) -> Array<ContractAddress>;
-
+    fn get_fractional_owner(self: @TContractState, token_id: u256, index: u32) -> ContractAddress;
+    fn get_fractional_owner_count(self: @TContractState, token_id: u256) -> u32;
     fn update_fractional_shares(
         ref self: TContractState, token_id: u256, owner: ContractAddress, new_shares: u256,
     );
     fn get_fractional_shares(self: @TContractState, token_id: u256, owner: ContractAddress) -> u256;
 }
-
 
 #[starknet::contract]
 pub mod IPRevenueSharing {
@@ -53,13 +47,14 @@ pub mod IPRevenueSharing {
     struct Storage {
         listings: Map<(ContractAddress, u256), Listing>,
         fractional_shares: Map<(u256, ContractAddress), u256>,
-        pending_revenue: Map<(u256, ContractAddress), u256>,
         contract_balance: Map<ContractAddress, u256>,
         owner: ContractAddress,
-        fractional_owners: Map<u256, Array<ContractAddress>>,
+        fractional_owner_index: Map<(u256, u32), ContractAddress>,
+        fractional_owner_count: Map<u256, u32>,
+        claimed_revenue: Map<(u256, ContractAddress), u256>,
     }
 
-    #[derive(Drop, Copy, Serde, starknet::Store)]
+    #[derive(Drop, Serde, starknet::Store)]
     pub struct IPMetadata {
         pub ipfs_hash: felt252,
         pub license_terms: felt252,
@@ -96,19 +91,18 @@ pub mod IPRevenueSharing {
     }
 
     #[derive(Drop, starknet::Event)]
-    pub struct RevenueDistributed {
+    pub struct RevenueRecorded {
         #[key]
         pub token_id: u256,
-        pub total_revenue: u256,
+        pub amount: u256,
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
         RoyaltyClaimed: RoyaltyClaimed,
-        RevenueDistributed: RevenueDistributed,
+        RevenueRecorded: RevenueRecorded,
     }
-
 
     #[constructor]
     fn constructor(ref self: ContractState, marketplace_fee: u256) {
@@ -158,6 +152,8 @@ pub mod IPRevenueSharing {
                 );
 
             self.fractional_shares.write((token_id, caller), total_shares);
+            self.fractional_owner_index.write((token_id, 0), caller);
+            self.fractional_owner_count.write(token_id, 1);
         }
 
         fn list_ip_asset(
@@ -185,59 +181,6 @@ pub mod IPRevenueSharing {
             self.listings.write((nft_contract, token_id), listing);
         }
 
-
-        fn claim_royalty(ref self: ContractState, token_id: u256) {
-            let caller = get_caller_address();
-            let shares = self.fractional_shares.read((token_id, caller));
-            assert(shares > 0, 'No shares held');
-
-            let listing = self.listings.read((get_contract_address(), token_id));
-            let total_shares = listing.fractional.total_shares;
-            let claimable = (listing.fractional.accrued_revenue * shares) / total_shares;
-
-            let currency = IERC20Dispatcher { contract_address: listing.currency };
-            let contract_balance = self.contract_balance.read(listing.currency);
-            assert(contract_balance >= claimable, 'Insufficient contract balance');
-
-            self.contract_balance.write(listing.currency, contract_balance - claimable);
-            currency.transfer_from(get_contract_address(), caller, claimable);
-
-            self.emit(RoyaltyClaimed { token_id, owner: caller, amount: claimable });
-        }
-
-        fn distribute_sale_revenue(
-            ref self: ContractState, nft_contract: ContractAddress, token_id: u256,
-        ) {
-            // Validate that the listing exists
-            let listing = self.listings.read((nft_contract, token_id));
-            assert(listing.active, 'Listing is not active');
-
-            // Validate that the total shares are greater than zero
-            let total_shares = listing.fractional.total_shares;
-            assert(total_shares > 0, 'Shares must be > than zero');
-
-            // Calculate total revenue (after deducting marketplace fee)
-            let total_revenue = listing.price;
-            let currency = IERC20Dispatcher { contract_address: listing.currency };
-
-            // Distribute revenue to fractional owners
-            // Instead of using `keys()`, track owners explicitly (e.g., using an array or mapping)
-            let owners = self.get_fractional_owners(token_id); // Assume this function exists
-            for owner in owners {
-                let shares = self.fractional_shares.read((token_id, owner));
-                let owner_revenue = (total_revenue * shares) / total_shares;
-
-                // Transfer funds to the owner (automatic distribution)
-                currency.transfer_from(get_contract_address(), owner, owner_revenue);
-
-                // Emit an event for transparency
-                self.emit(RoyaltyClaimed { token_id, owner, amount: owner_revenue });
-            };
-
-            // Emit an event for revenue distribution
-            self.emit(RevenueDistributed { token_id, total_revenue });
-        }
-
         fn remove_listing(ref self: ContractState, nft_contract: ContractAddress, token_id: u256) {
             let caller = get_caller_address();
             let mut listing = self.listings.read((nft_contract, token_id));
@@ -247,25 +190,116 @@ pub mod IPRevenueSharing {
             self.listings.write((nft_contract, token_id), listing);
         }
 
-        fn add_fractional_owner(ref self: ContractState, token_id: u256, owner: ContractAddress) {
-            let mut owners = self.fractional_owners.entry(token_id).read();
-            owners.append(owner);
-            self.fractional_owners.entry(token_id).write(owners);
+        fn claim_royalty(ref self: ContractState, token_id: u256) {
+            let caller = get_caller_address();
+            let shares = self.fractional_shares.read((token_id, caller));
+            assert(shares > 0, 'No shares held');
+
+            let listing_key = (get_contract_address(), token_id);
+            let listing = self.listings.read(listing_key);
+            assert(listing.token_id == token_id, 'Invalid token_id');
+
+            let total_shares = listing.fractional.total_shares;
+            let total_revenue = listing.fractional.accrued_revenue;
+            let currency_address = listing.currency;
+
+            let claimed_so_far = self.claimed_revenue.read((token_id, caller));
+            let claimable = (total_revenue * shares) / total_shares - claimed_so_far;
+
+            assert(claimable > 0, 'No revenue to claim');
+
+            let currency = IERC20Dispatcher { contract_address: currency_address };
+            let contract_balance = self.contract_balance.read(currency_address);
+            assert(contract_balance >= claimable, 'Insufficient contract balance');
+
+            self.contract_balance.write(currency_address, contract_balance - claimable);
+            self.claimed_revenue.write((token_id, caller), claimed_so_far + claimable);
+            currency.transfer(caller, claimable);
+
+            self.emit(RoyaltyClaimed { token_id, owner: caller, amount: claimable });
         }
 
-        fn get_fractional_owners(self: @ContractState, token_id: u256) -> Array<ContractAddress> {
-            self.fractional_owners.entry(token_id).read()
+        fn record_sale_revenue(
+            ref self: ContractState, nft_contract: ContractAddress, token_id: u256, amount: u256,
+        ) {
+            let caller = get_caller_address();
+            assert(self.owner.read() == caller, 'Only owner');
+            let listing_key = (nft_contract, token_id);
+            let mut listing = self.listings.read(listing_key);
+            assert(listing.token_id == token_id, 'Invalid token_id');
+
+            listing.fractional.accrued_revenue = listing.fractional.accrued_revenue + amount;
+            let currency_address = listing.currency;
+            self.listings.write(listing_key, listing);
+
+            let currency = IERC20Dispatcher { contract_address: currency_address };
+            currency.transfer_from(caller, get_contract_address(), amount);
+            let balance = self.contract_balance.read(currency_address);
+            self.contract_balance.write(currency_address, balance + amount);
+
+            self.emit(RevenueRecorded { token_id, amount });
+        }
+
+        fn add_fractional_owner(ref self: ContractState, token_id: u256, owner: ContractAddress) {
+            let caller = get_caller_address();
+            let listing_key = (get_contract_address(), token_id);
+            let listing = self.listings.read(listing_key);
+            assert(listing.seller == caller || self.owner.read() == caller, 'Not authorized');
+            assert(listing.token_id == token_id, 'Invalid token_id');
+
+            let count = self.fractional_owner_count.read(token_id);
+            let mut already_exists = false;
+            let mut i = 0;
+            while i < count {
+                if self.fractional_owner_index.read((token_id, i)) == owner {
+                    already_exists = true;
+                    break;
+                }
+                i += 1;
+            };
+
+            if !already_exists {
+                let new_index = count;
+                self.fractional_owner_index.write((token_id, new_index), owner);
+                self.fractional_owner_count.write(token_id, new_index + 1);
+            }
+        }
+
+        fn get_fractional_owner(
+            self: @ContractState, token_id: u256, index: u32,
+        ) -> ContractAddress {
+            let listing_key = (get_contract_address(), token_id);
+            let listing = self.listings.read(listing_key);
+            assert(listing.token_id == token_id, 'Invalid token_id');
+            let count = self.fractional_owner_count.read(token_id);
+            assert(index < count, 'Index out of bounds');
+            self.fractional_owner_index.read((token_id, index))
+        }
+
+        fn get_fractional_owner_count(self: @ContractState, token_id: u256) -> u32 {
+            let listing_key = (get_contract_address(), token_id);
+            let listing = self.listings.read(listing_key);
+            assert(listing.token_id == token_id, 'Invalid token_id');
+            self.fractional_owner_count.read(token_id)
         }
 
         fn update_fractional_shares(
             ref self: ContractState, token_id: u256, owner: ContractAddress, new_shares: u256,
         ) {
+            let caller = get_caller_address();
+            let listing_key = (get_contract_address(), token_id);
+            let listing = self.listings.read(listing_key);
+            assert(listing.seller == caller || self.owner.read() == caller, 'Not authorized');
+            assert(listing.token_id == token_id, 'Invalid token_id');
             self.fractional_shares.entry((token_id, owner)).write(new_shares);
         }
 
         fn get_fractional_shares(
             self: @ContractState, token_id: u256, owner: ContractAddress,
         ) -> u256 {
+            let listing_key = (get_contract_address(), token_id);
+            let listing = self.listings.read(listing_key);
+            assert(listing.token_id == token_id, 'Invalid token_id');
             self.fractional_shares.entry((token_id, owner)).read()
         }
     }
