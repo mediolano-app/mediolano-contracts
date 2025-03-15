@@ -105,8 +105,8 @@ pub mod IPRevenueSharing {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, marketplace_fee: u256) {
-        self.owner.write(get_caller_address());
+    fn constructor(ref self: ContractState, owner: ContractAddress) {
+        self.owner.write(owner);
     }
 
     #[abi(embed_v0)]

@@ -1,7 +1,15 @@
-#![cfg(test)]
+use snforge_std::DeclareResultTrait;
+use starknet::{ContractAddress, contract_address_const};
+use snforge_std::{cheat_caller_address, declare, CheatSpan, ContractClassTrait};
+use ip_revenue_sharing::IPRevenueSharing::{IIPRevenueSharingDispatcher, IIPRevenueSharingDispatcherTrait};
 
-use super::*;
-use starknet::testing::{deploy_contract, CallContext};
+fn owner() -> ContractAddress {
+    contract_address_const::<'owner'>()
+}
+
+fn deploy_ip_revenue_sharing(owner: ContractAddress) -> ContractAddress {
+    let contract_class = declare()
+}
 
 #[test]
 fn test_create_and_list_item() {

@@ -1,1 +1,1 @@
-mod ip_revenue_sharing;
+pub mod IPRevenueSharing;
