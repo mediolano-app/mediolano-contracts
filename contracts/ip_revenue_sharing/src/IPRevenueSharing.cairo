@@ -1,6 +1,5 @@
 use starknet::ContractAddress;
 
-
 #[starknet::interface]
 pub trait IIPRevenueSharing<TContractState> {
     fn create_ip_asset(
@@ -30,6 +29,8 @@ pub trait IIPRevenueSharing<TContractState> {
         ref self: TContractState, token_id: u256, owner: ContractAddress, new_shares: u256,
     );
     fn get_fractional_shares(self: @TContractState, token_id: u256, owner: ContractAddress) -> u256;
+    fn get_contract_balance(self: @TContractState, currency: ContractAddress) -> u256;
+    fn get_claimed_revenue(self: @TContractState, token_id: u256, owner: ContractAddress) -> u256;
 }
 
 #[starknet::contract]
@@ -41,7 +42,6 @@ pub mod IPRevenueSharing {
     use starknet::storage::{
         StoragePointerReadAccess, StoragePointerWriteAccess, StoragePathEntry, Map,
     };
-    use super::*;
 
     #[storage]
     struct Storage {
@@ -52,6 +52,7 @@ pub mod IPRevenueSharing {
         fractional_owner_index: Map<(u256, u32), ContractAddress>,
         fractional_owner_count: Map<u256, u32>,
         claimed_revenue: Map<(u256, ContractAddress), u256>,
+        is_fractional_owner: Map<(u256, ContractAddress), bool>,
     }
 
     #[derive(Drop, Serde, starknet::Store)]
@@ -208,6 +209,8 @@ pub mod IPRevenueSharing {
 
             assert(claimable > 0, 'No revenue to claim');
 
+            self.claimed_revenue.write((token_id, caller), claimed_so_far + claimable);
+
             let currency = IERC20Dispatcher { contract_address: currency_address };
             let contract_balance = self.contract_balance.read(currency_address);
             assert(contract_balance >= claimable, 'Insufficient contract balance');
@@ -245,24 +248,19 @@ pub mod IPRevenueSharing {
             let listing_key = (get_contract_address(), token_id);
             let listing = self.listings.read(listing_key);
             assert(listing.seller == caller || self.owner.read() == caller, 'Not authorized');
-            assert(listing.token_id == token_id, 'Invalid token_id');
+            assert(listing.token_id == token_id, 'Invalid token ID');
 
+            // Check if the owner already exists using the new mapping
+            let already_exists = self.is_fractional_owner.read((token_id, owner));
+            assert(!already_exists, 'Owner already exists');
+
+            // Add the owner to the fractional owners list
             let count = self.fractional_owner_count.read(token_id);
-            let mut already_exists = false;
-            let mut i = 0;
-            while i < count {
-                if self.fractional_owner_index.read((token_id, i)) == owner {
-                    already_exists = true;
-                    break;
-                }
-                i += 1;
-            };
+            self.fractional_owner_index.write((token_id, count), owner);
+            self.fractional_owner_count.write(token_id, count + 1);
 
-            if !already_exists {
-                let new_index = count;
-                self.fractional_owner_index.write((token_id, new_index), owner);
-                self.fractional_owner_count.write(token_id, new_index + 1);
-            }
+            // Mark the owner as existing in the new mapping
+            self.is_fractional_owner.write((token_id, owner), true);
         }
 
         fn get_fractional_owner(
@@ -301,6 +299,16 @@ pub mod IPRevenueSharing {
             let listing = self.listings.read(listing_key);
             assert(listing.token_id == token_id, 'Invalid token_id');
             self.fractional_shares.entry((token_id, owner)).read()
+        }
+
+        fn get_contract_balance(self: @ContractState, currency: ContractAddress) -> u256 {
+            self.contract_balance.read(currency)
+        }
+
+        fn get_claimed_revenue(
+            self: @ContractState, token_id: u256, owner: ContractAddress,
+        ) -> u256 {
+            self.claimed_revenue.read((token_id, owner))
         }
     }
 }
