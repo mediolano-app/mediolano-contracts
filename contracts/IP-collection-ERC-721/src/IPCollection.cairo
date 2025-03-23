@@ -28,7 +28,7 @@ pub mod IPCollection {
     use openzeppelin::token::erc721::extensions::ERC721EnumerableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
     use openzeppelin::upgrades::UpgradeableComponent;
-    use alexandria_storage::List;   
+    use alexandria_storage::List;
 
     use super::IIPCollection;
 
