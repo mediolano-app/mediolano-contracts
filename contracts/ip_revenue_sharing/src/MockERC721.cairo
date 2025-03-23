@@ -4,6 +4,8 @@ use starknet::{ContractAddress};
 pub trait IMockERC721<TContractState> {
     fn owner_of(self: @TContractState, token_id: u256) -> ContractAddress;
     fn mint(ref self: TContractState, to: ContractAddress, token_id: u256);
+    fn get_caller(self: @TContractState) -> ContractAddress;
+    fn get_owner(self: @TContractState) -> ContractAddress;
 }
 
 #[starknet::contract]
@@ -44,6 +46,14 @@ pub mod MockERC721 {
             assert(self.owners.read(token_id).is_zero(), 'ERC721: token already minted');
 
             self.owners.write(token_id, to);
+        }
+
+        fn get_caller(self: @ContractState) -> ContractAddress {
+            get_caller_address()
+        }
+
+        fn get_owner(self: @ContractState) -> ContractAddress {
+            self.owner.read()
         }
     }
 }

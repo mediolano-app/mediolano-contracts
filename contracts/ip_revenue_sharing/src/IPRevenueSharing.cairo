@@ -196,7 +196,7 @@ pub mod IPRevenueSharing {
             let shares = self.fractional_shares.read((token_id, caller));
             assert(shares > 0, 'No shares held');
 
-            let listing_key = (get_contract_address(), token_id);
+            let listing_key = (nft_contract, token_id); // Fix: Use nft_contract from listing
             let listing = self.listings.read(listing_key);
             assert(listing.token_id == token_id, 'Invalid token_id');
 
@@ -206,21 +206,21 @@ pub mod IPRevenueSharing {
 
             let claimed_so_far = self.claimed_revenue.read((token_id, caller));
             let claimable = (total_revenue * shares) / total_shares - claimed_so_far;
-
             assert(claimable > 0, 'No revenue to claim');
-
-            self.claimed_revenue.write((token_id, caller), claimed_so_far + claimable);
 
             let currency = IERC20Dispatcher { contract_address: currency_address };
             let contract_balance = self.contract_balance.read(currency_address);
             assert(contract_balance >= claimable, 'Insufficient contract balance');
 
             self.contract_balance.write(currency_address, contract_balance - claimable);
-            self.claimed_revenue.write((token_id, caller), claimed_so_far + claimable);
+            self
+                .claimed_revenue
+                .write((token_id, caller), claimed_so_far + claimable); // Single update
             currency.transfer(caller, claimable);
 
             self.emit(RoyaltyClaimed { token_id, owner: caller, amount: claimable });
         }
+
 
         fn record_sale_revenue(
             ref self: ContractState, nft_contract: ContractAddress, token_id: u256, amount: u256,

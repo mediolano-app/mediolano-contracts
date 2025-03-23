@@ -5,104 +5,114 @@ use snforge_std::{
 use ip_revenue_sharing::IPRevenueSharing::{
     IIPRevenueSharingDispatcher, IIPRevenueSharingDispatcherTrait,
 };
-use ip_revenue_sharing::MockERC721::{IMockErc721Dispatcher, IMockErc721DispatcherTrait};
+use ip_revenue_sharing::MockERC721::{IMockERC721Dispatcher, IMockERC721DispatcherTrait};
 
 // Test constants
 fn owner() -> ContractAddress {
-    starknet::contract_address_const::<0x123456789>()
+    starknet::contract_address_const::<'OWNER'>()
 }
 
 fn alex() -> ContractAddress {
-    starknet::contract_address_const::<0x987654321>()
+    starknet::contract_address_const::<'ALEX'>()
 }
 
-fn brenda() -> ContractAddress {
-    starknet::contract_address_const::<0x1122334455>()
-}
+// fn brenda() -> ContractAddress {
+//     starknet::contract_address_const::<0x1122334455>()
+// }
 
-// Deploy Mock ERC721 Contract
-fn deploy_mock_erc721() -> ContractAddress {
-    let contract = declare("MockErc721").unwrap();
-    let mut constructor_calldata = ArrayTrait::new();
-    constructor_calldata.append('https://example.com/'.into()); // Base URI
-    let (contract_address, _) = contract.deploy(@constructor_calldata).unwrap();
+// Deploy MockERC721 contract
+fn deploy_mock_erc721(owner: ContractAddress) -> ContractAddress {
+    let contract = declare("MockERC721").unwrap();
+    let mut calldata = array![owner.into()];
+    let (contract_address, _) = contract.deploy(@calldata).unwrap();
+    println!("mockerc721 deployed on: {:?}", contract_address);
     contract_address
 }
 
-// Helper to mint an NFT to a specific address
-fn mint_nft(nft_contract: ContractAddress, recipient: ContractAddress, token_id: u256) {
-    let nft_dispatcher = IMockErc721Dispatcher { contract_address: nft_contract };
-    start_cheat_caller_address(nft_contract, recipient);
-    nft_dispatcher.mint(recipient, token_id);
-    stop_cheat_caller_address(nft_contract);
-}
-
-
-// Deploy IPRevenueSharing
-fn deploy_iprevenuesharing() -> ContractAddress {
-    let mut constructor_calldata = ArrayTrait::new();
-    constructor_calldata.append(owner().into());
-
+// Deploy IPRevenueSharing contract
+fn deploy_ip_revenue_sharing(owner: ContractAddress) -> ContractAddress {
     let contract = declare("IPRevenueSharing").unwrap();
-    let (contract_address, _) = contract.deploy(@constructor_calldata).unwrap();
-
+    let mut calldata = array![owner.into()];
+    let (contract_address, _) = contract.deploy(@calldata).unwrap();
+    println!("ip_revenue_sharing deployed on: {:?}", contract_address);
     contract_address
+}
+
+// Helper to mint an NFT
+fn mint_nft(
+    nft_contract: ContractAddress, caller: ContractAddress, to: ContractAddress, token_id: u256
+) {
+    let dispatcher = IMockERC721Dispatcher { contract_address: nft_contract };
+    start_cheat_caller_address(nft_contract, caller);
+    dispatcher.mint(to, token_id);
+    stop_cheat_caller_address(nft_contract);
 }
 
 // Helper to create an IP asset
 fn create_ip_asset(
     ipc: ContractAddress,
+    caller: ContractAddress,
     nft_contract: ContractAddress,
     token_id: u256,
     metadata_hash: felt252,
     license_terms_hash: felt252,
     total_shares: u256,
 ) {
-    let ipc_dispatcher = IIPRevenueSharingDispatcher { contract_address: ipc };
-    start_cheat_caller_address(ipc, owner());
-    ipc_dispatcher
+    let dispatcher = IIPRevenueSharingDispatcher { contract_address: ipc };
+    start_cheat_caller_address(ipc, caller);
+    dispatcher
         .create_ip_asset(nft_contract, token_id, metadata_hash, license_terms_hash, total_shares);
-    stop_cheat_caller_address(ipc);
-}
-
-// Helper to list an IP asset
-fn list_ip_asset(
-    ipc: ContractAddress,
-    nft_contract: ContractAddress,
-    token_id: u256,
-    price: u256,
-    currency: ContractAddress,
-) {
-    let ipc_dispatcher = IIPRevenueSharingDispatcher { contract_address: ipc };
-    start_cheat_caller_address(ipc, owner());
-    ipc_dispatcher.list_ip_asset(nft_contract, token_id, price, currency);
     stop_cheat_caller_address(ipc);
 }
 
 #[test]
 fn test_create_ip_asset() {
-    let ipc = deploy_iprevenuesharing();
-    let nft = deploy_mock_erc721();
+    // 1. Deploy contracts
+    let owner = owner();
+    let nft_contract = deploy_mock_erc721(owner);
+    let ipc_contract = deploy_ip_revenue_sharing(owner);
 
-    // Mint an NFT to the owner
-    mint_nft(nft, owner(), 1.into());
+    // 2. Mint an NFT to Alex as the owner
+    let alex = alex();
+    let token_id: u256 = 1;
+    mint_nft(nft_contract, owner, alex, token_id);
 
-    // Debug: Print the token ID
-    let token_id: u256 = 1.into();
-    println!("Token ID: {}", token_id);
+    // Debug: Verify minting worked
+    let nft_dispatcher = IMockERC721Dispatcher { contract_address: nft_contract };
+    let nft_owner = nft_dispatcher.owner_of(token_id);
+    assert(nft_owner == alex, 'NFT not minted to Alex');
 
-    // Create IP asset
-    create_ip_asset(ipc, nft, 1.into(), 'metadata_hash'.into(), 'license_terms'.into(), 100.into());
+    // 3. Create IP asset as Alex
+    let metadata_hash = 'metadata_hash'.into();
+    let license_terms_hash = 'license_terms'.into();
+    let total_shares: u256 = 100;
+    create_ip_asset(
+        ipc_contract, alex, nft_contract, token_id, metadata_hash, license_terms_hash, total_shares
+    );
 
-    // Verify the IP asset was created
-    let ipc_dispatcher = IIPRevenueSharingDispatcher { contract_address: ipc };
-    let shares = ipc_dispatcher.get_fractional_shares(1.into(), owner());
-    assert(shares == 100.into(), 'Initial shares mismatch');
-    let owner_count = ipc_dispatcher.get_fractional_owner_count(1.into());
+    // 4. Verify IP asset creation
+    let ipc_dispatcher = IIPRevenueSharingDispatcher { contract_address: ipc_contract };
+    let shares = ipc_dispatcher.get_fractional_shares(token_id, alex);
+    assert(shares == total_shares, 'Shares mismatch');
+    let owner_count = ipc_dispatcher.get_fractional_owner_count(token_id);
     assert(owner_count == 1, 'Owner count mismatch');
-    let first_owner = ipc_dispatcher.get_fractional_owner(1.into(), 0);
-    assert(first_owner == owner(), 'Creator not first owner');
+    let first_owner = ipc_dispatcher.get_fractional_owner(token_id, 0);
+    assert(first_owner == alex, 'First owner mismatch');
 }
+// Helper to list an IP asset
+// fn list_ip_asset(
+//     ipc: ContractAddress,
+//     nft_contract: ContractAddress,
+//     token_id: u256,
+//     price: u256,
+//     currency: ContractAddress,
+// ) {
+//     let ipc_dispatcher = IIPRevenueSharingDispatcher { contract_address: ipc };
+//     start_cheat_caller_address(ipc, owner());
+//     ipc_dispatcher.list_ip_asset(nft_contract, token_id, price, currency);
+//     stop_cheat_caller_address(ipc);
+// }
+
 // #[test]
 // fn test_add_fractional_owner() {
 //     let ipc = deploy_iprevenuesharing();
