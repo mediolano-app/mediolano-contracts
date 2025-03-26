@@ -1,2 +1,3 @@
 pub mod IPRevenueSharing;
-pub mod MockERC721;
+pub mod Mock721;
+pub mod MockERC20;
