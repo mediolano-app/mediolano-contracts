@@ -73,6 +73,33 @@ pub mod PublicProfileMarketPlace {
         self.seller_count.write(seller_count);
     }
 
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    pub enum Event {
+        ProfileCreated: ProfileCreated,
+        ProfileUpdated: ProfileUpdated,
+        SocialLinkAdded: SocialLinkAdded,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ProfileCreated {
+        seller_id: u64,
+        seller_address: ContractAddress,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct ProfileUpdated {
+        seller_id: u64,
+        seller_address: ContractAddress
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct SocialLinkAdded {
+        seller_id: u64,
+        seller_address: ContractAddress,
+        link: (felt252, felt252)        
+    }
+
     #[abi(embed_v0)]
     impl PublicProfileMarketPlaceImpl of IPublicProfileMarketPlace<ContractState> {
         fn create_seller_profile(
@@ -124,6 +151,14 @@ pub mod PublicProfileMarketPlace {
                 self.sellers.entry(seller_id).write((seller_public_profile, seller_private_info));
                 self.seller_count.write(current_seller_count + 1);
                 self.registered_users.append().write(seller_address);
+                self.emit(
+                    Event::ProfileCreated(
+                        ProfileCreated {
+                            seller_id,
+                            seller_address
+                        }
+                    )
+                );
                 true
             } else {
                 false
@@ -177,6 +212,14 @@ pub mod PublicProfileMarketPlace {
                     private_email
                 };
                 self.sellers.entry(seller_id).write((new_seller_public_profile, new_seller_private_info));
+                self.emit(
+                    Event::ProfileUpdated(
+                        ProfileUpdated {
+                            seller_id,
+                            seller_address
+                        }
+                    )
+                );
                 true
             } else {
                 false
@@ -214,6 +257,15 @@ pub mod PublicProfileMarketPlace {
             assert(get_caller_address() == seller.seller_address, 'Error: Unauthorized Caller');
             // let mut_links
             self.social_links.entry(seller_id).append().write((link, platform));
+            self.emit(
+                Event::SocialLinkAdded(
+                    SocialLinkAdded {
+                        seller_id,
+                        seller_address: get_caller_address(),
+                        link: (platform, link)
+                    }
+                )
+            );
         }
         fn get_social_links(self: @ContractState, seller_id: u64) -> Array<(felt252, felt252)> {
             // let(seller, _) = self.sellers.entry(seller_id).read();
