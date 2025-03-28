@@ -277,26 +277,4 @@ pub mod PublicProfileMarketPlace {
             social_links
         }
     }
-
-    // #[generate_trait]
-    // pub impl InternalFunctions of InternalTrait<ContractState> {
-    //     fn _check_seller_exists(self: @ContractState) {
-    //         let seller_address = get_caller_address();
-    //         let mut existing_users = array![];
-    //         for i in 0..self.registered_users.len() {
-    //             existing_users.append(self.registered_users.at(i).read());
-    //         };
-    //         let mut i = 0;
-    //         let mut this_seller_exists = false;
-    //         while (i < self.registered_users.len().try_into().unwrap()) {
-    //             let current_seller_address = existing_users.at(i);
-    //             if current_seller_address == @seller_address {
-    //                 this_seller_exists = false;
-    //             } else {
-    //                 this_seller_exists = true
-    //             }
-    //             i += 1;
-    //         };
-    //     }
-    // }
 }
