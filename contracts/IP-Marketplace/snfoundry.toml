@@ -1,0 +1,4 @@
+[sncast.default]
+account = "new_account"
+# accounts-file = "~/my_accounts.json"
+url = "https://starknet-sepolia.g.alchemy.com/starknet/version/rpc/v0_7/VFVA--IYkSjn28CaMokBNYvFo5fZOw2n"
