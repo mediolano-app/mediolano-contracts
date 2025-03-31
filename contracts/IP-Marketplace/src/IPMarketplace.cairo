@@ -19,7 +19,7 @@ pub struct DerivativeRights {
     pub allowed: bool,
     pub royalty_share: u16,
     pub requires_approval: bool,
-    pub max_derivatives: u32
+    pub max_derivatives: u32,
 }
 
 #[derive(Drop, Copy, Serde, starknet::Store)]
@@ -119,7 +119,9 @@ pub trait IIPMarketplace<TContractState> {
     );
     fn unlist_item(ref self: TContractState, nft_contract: ContractAddress, token_id: u256);
     fn buy_item(ref self: TContractState, nft_contract: ContractAddress, token_id: u256);
-    fn update_listing(ref self: TContractState, nft_contract: ContractAddress, token_id: u256, new_price: u256);
+    fn update_listing(
+        ref self: TContractState, nft_contract: ContractAddress, token_id: u256, new_price: u256,
+    );
     fn get_listing(self: @TContractState, nft_contract: ContractAddress, token_id: u256) -> Listing;
     fn update_metadata(
         ref self: TContractState,
@@ -144,7 +146,7 @@ mod IPMarketplace {
         IPUsageRights, DerivativeRights, IPMetadata, Listing, ItemListed, ItemUnlisted, ItemSold,
         ListingUpdated, MetadataUpdated, DerivativeRegistered, IERC20Dispatcher,
         IERC20DispatcherTrait, IERC721Dispatcher, IERC721DispatcherTrait, ArrayTrait,
-        ContractAddress, get_caller_address, get_contract_address
+        ContractAddress, get_caller_address, get_contract_address,
     };
 
     #[storage]
@@ -152,7 +154,9 @@ mod IPMarketplace {
         // Composite key mapping combining NFT contract address and token ID
         listings: starknet::storage::Map::<(ContractAddress, u256), Listing>,
         // Tracking derivative relationships with composite keys
-        derivative_registry: starknet::storage::Map::<(ContractAddress, u256), (ContractAddress, u256)>,
+        derivative_registry: starknet::storage::Map::<
+            (ContractAddress, u256), (ContractAddress, u256),
+        >,
         owner: ContractAddress,
         marketplace_fee: u256,
         next_token_id: u256,
@@ -199,7 +203,7 @@ mod IPMarketplace {
             assert(
                 nft_dispatcher.get_approved(token_id) == get_contract_address()
                     || nft_dispatcher.is_approved_for_all(caller, get_contract_address()),
-                'Not approved for marketplace'
+                'Not approved for marketplace',
             );
 
             // Create metadata record with timestamp and versioning
@@ -233,13 +237,18 @@ mod IPMarketplace {
             self.listings.write((nft_contract, token_id), listing);
 
             // Emit listing event
-            self.emit(Event::ItemListed(ItemListed { 
-                token_id,
-                nft_contract,
-                seller: caller,
-                price,
-                currency: currency_address,
-            }));
+            self
+                .emit(
+                    Event::ItemListed(
+                        ItemListed {
+                            token_id,
+                            nft_contract,
+                            seller: caller,
+                            price,
+                            currency: currency_address,
+                        },
+                    ),
+                );
         }
 
         fn unlist_item(ref self: ContractState, nft_contract: ContractAddress, token_id: u256) {
@@ -252,10 +261,7 @@ mod IPMarketplace {
             listing.active = false;
             self.listings.write((nft_contract, token_id), listing);
 
-            self.emit(Event::ItemUnlisted(ItemUnlisted { 
-                token_id,
-                nft_contract 
-            }));
+            self.emit(Event::ItemUnlisted(ItemUnlisted { token_id, nft_contract }));
         }
 
         fn buy_item(ref self: ContractState, nft_contract: ContractAddress, token_id: u256) {
@@ -284,20 +290,22 @@ mod IPMarketplace {
             self.listings.write((nft_contract, token_id), updated_listing);
 
             // Emit sale event
-            self.emit(Event::ItemSold(ItemSold {
-                token_id,
-                nft_contract,
-                seller: listing.seller,
-                buyer: caller,
-                price: listing.price,
-            }));
+            self
+                .emit(
+                    Event::ItemSold(
+                        ItemSold {
+                            token_id,
+                            nft_contract,
+                            seller: listing.seller,
+                            buyer: caller,
+                            price: listing.price,
+                        },
+                    ),
+                );
         }
 
         fn update_listing(
-            ref self: ContractState, 
-            nft_contract: ContractAddress,
-            token_id: u256, 
-            new_price: u256
+            ref self: ContractState, nft_contract: ContractAddress, token_id: u256, new_price: u256,
         ) {
             let caller = get_caller_address();
             let mut listing = self.listings.read((nft_contract, token_id));
@@ -308,17 +316,11 @@ mod IPMarketplace {
             listing.price = new_price;
             self.listings.write((nft_contract, token_id), listing);
 
-            self.emit(Event::ListingUpdated(ListingUpdated { 
-                token_id,
-                nft_contract,
-                new_price,
-            }));
+            self.emit(Event::ListingUpdated(ListingUpdated { token_id, nft_contract, new_price }));
         }
 
         fn get_listing(
-            self: @ContractState,
-            nft_contract: ContractAddress,
-            token_id: u256
+            self: @ContractState, nft_contract: ContractAddress, token_id: u256,
         ) -> Listing {
             self.listings.read((nft_contract, token_id))
         }
@@ -341,13 +343,18 @@ mod IPMarketplace {
 
             self.listings.write((nft_contract, token_id), listing);
 
-            self.emit(Event::MetadataUpdated(MetadataUpdated {
-                token_id,
-                nft_contract,
-                new_metadata_hash,
-                new_license_terms_hash,
-                updater: caller,
-            }));
+            self
+                .emit(
+                    Event::MetadataUpdated(
+                        MetadataUpdated {
+                            token_id,
+                            nft_contract,
+                            new_metadata_hash,
+                            new_license_terms_hash,
+                            updater: caller,
+                        },
+                    ),
+                );
         }
 
         fn register_derivative(
@@ -366,17 +373,18 @@ mod IPMarketplace {
             let new_token_id = self.next_token_id.read() + 1;
             self.next_token_id.write(new_token_id);
 
-            self.derivative_registry.write(
-                (nft_contract, new_token_id),
-                (nft_contract, parent_token_id)
-            );
+            self
+                .derivative_registry
+                .write((nft_contract, new_token_id), (nft_contract, parent_token_id));
 
-            self.emit(Event::DerivativeRegistered(DerivativeRegistered {
-                token_id: new_token_id,
-                nft_contract,
-                parent_token_id,
-                creator: caller,
-            }));
+            self
+                .emit(
+                    Event::DerivativeRegistered(
+                        DerivativeRegistered {
+                            token_id: new_token_id, nft_contract, parent_token_id, creator: caller,
+                        },
+                    ),
+                );
 
             new_token_id
         }

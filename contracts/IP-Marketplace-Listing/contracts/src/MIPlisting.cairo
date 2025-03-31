@@ -3,10 +3,10 @@ pub mod MIPListing {
     use contracts::errors::Errors;
     use contracts::interfaces::{
         IERC721Dispatcher, IERC721DispatcherTrait, IMarketplaceDispatcher,
-        IMarketplaceDispatcherTrait, IMIPListing
+        IMarketplaceDispatcherTrait, IMIPListing,
     };
     use core::num::traits::Zero;
-    use openzeppelin_access::ownable::OwnableComponent;
+    use openzeppelin::access::ownable::OwnableComponent;
     use starknet::{ContractAddress, get_caller_address, get_block_timestamp, get_contract_address};
     use starknet::storage::{StoragePointerWriteAccess, StoragePointerReadAccess};
 
@@ -21,7 +21,7 @@ pub mod MIPListing {
     struct Storage {
         ip_marketplace_address: ContractAddress,
         #[substorage(v0)]
-        ownable: OwnableComponent::Storage
+        ownable: OwnableComponent::Storage,
     }
 
     #[event]
@@ -30,7 +30,7 @@ pub mod MIPListing {
         ListingCreated: ListingCreated,
         IPMarketplaceUpdated: IPMarketplaceUpdated,
         #[flat]
-        OwnableEvent: OwnableComponent::Event
+        OwnableEvent: OwnableComponent::Event,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -38,7 +38,7 @@ pub mod MIPListing {
         #[key]
         token_id: u256,
         lister: ContractAddress,
-        date: u64
+        date: u64,
     }
 
 
@@ -46,14 +46,12 @@ pub mod MIPListing {
     struct IPMarketplaceUpdated {
         #[key]
         address: ContractAddress,
-        date: u64
+        date: u64,
     }
 
     #[constructor]
     fn constructor(
-        ref self: ContractState,
-        owner: ContractAddress,
-        ip_marketplace: ContractAddress
+        ref self: ContractState, owner: ContractAddress, ip_marketplace: ContractAddress,
     ) {
         self.ownable.initializer(owner);
         self.ip_marketplace_address.write(ip_marketplace);
@@ -75,7 +73,7 @@ pub mod MIPListing {
             let caller = get_caller_address();
             assert(assetContractAddress != Zero::zero(), Errors::INVALID_IP_ASSET);
             let marketplace_dispatcher = IMarketplaceDispatcher {
-                contract_address: self.ip_marketplace_address.read()
+                contract_address: self.ip_marketplace_address.read(),
             };
             let erc721_dispatcher = IERC721Dispatcher { contract_address: assetContractAddress };
             // check whether asset is IP asset
@@ -85,7 +83,7 @@ pub mod MIPListing {
             // check whether contract has approval to move asset
             assert(
                 erc721_dispatcher.is_approved_for_all(caller, get_contract_address()),
-                Errors::NOT_APPROVED
+                Errors::NOT_APPROVED,
             );
             marketplace_dispatcher
                 .create_listing(
@@ -96,20 +94,27 @@ pub mod MIPListing {
                     quantityToList,
                     currencyToAccept,
                     buyoutPricePerToken,
-                    tokenTypeOfListing
+                    tokenTypeOfListing,
                 );
             self
                 .emit(
-                    ListingCreated {
-                        token_id: tokenId, lister: caller, date: get_block_timestamp()
-                    }
+                    Event::ListingCreated(
+                        ListingCreated {
+                            token_id: tokenId, lister: caller, date: get_block_timestamp(),
+                        },
+                    ),
                 )
         }
 
         fn update_ip_marketplace_address(ref self: ContractState, new_address: ContractAddress) {
             self.ownable.assert_only_owner();
             self.ip_marketplace_address.write(new_address);
-            self.emit(IPMarketplaceUpdated { address: new_address, date: get_block_timestamp() });
+            self
+                .emit(
+                    Event::IPMarketplaceUpdated(
+                        IPMarketplaceUpdated { address: new_address, date: get_block_timestamp() },
+                    ),
+                );
         }
     }
 }
