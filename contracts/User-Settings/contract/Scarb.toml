@@ -22,6 +22,7 @@ exit_first = true
 
 [[target.starknet-contract]]
 sierra = true
+casm = true
 
 [scripts]
 test = "snforge test"
