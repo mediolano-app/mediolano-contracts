@@ -1,4 +1,4 @@
-use contracts::ip_marketplace::IPublicProfileMarketPlaceDispatcherTrait;
+use ip_marketplace_public_profile::PublicProfileMarketplace::IPublicProfileMarketPlaceDispatcherTrait;
 use starknet::{ContractAddress, contract_address_const};
 
 use snforge_std::{
@@ -6,7 +6,7 @@ use snforge_std::{
     DeclareResultTrait, spy_events, EventSpyAssertionsTrait, get_class_hash
 };
 
-use contracts::ip_marketplace::{IPublicProfileMarketPlace, IPublicProfileMarketPlaceDispatcher, SellerPublicProfile};
+use ip_marketplace_public_profile::PublicProfileMarketplace::{IPublicProfileMarketPlace, IPublicProfileMarketPlaceDispatcher, SellerPublicProfile};
 
 fn USER() -> ContractAddress {
     'recipient'.try_into().unwrap()

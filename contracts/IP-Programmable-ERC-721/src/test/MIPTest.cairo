@@ -1,5 +1,5 @@
-use contracts::Mediolano::{IMediolanoDispatcher, IMediolanoDispatcherTrait};
-use contracts::components::ERC721Enumerable::{
+use ip_programmable_erc_721::Mediolano::{IMediolanoDispatcher, IMediolanoDispatcherTrait};
+use ip_programmable_erc_721::components::ERC721Enumerable::{
     IERC721EnumerableDispatcher, IERC721EnumerableDispatcherTrait
 };
 
