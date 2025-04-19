@@ -1,13 +1,13 @@
 use starknet::ContractAddress;
 
 #[starknet::interface]
-pub trait IMIPL<T> {
+pub trait IMIP<T> {
     fn mint_item(ref self: T, recipient: ContractAddress, uri: ByteArray) -> u256;
 }
 
 #[starknet::contract]
-mod MIPL {
-    use contracts::components::Counter::CounterComponent;
+mod MIP {
+    use ip_programmable_erc_721::components::Counter::CounterComponent;
     use core::num::traits::zero::Zero;
     use openzeppelin_access::ownable::OwnableComponent;
     use openzeppelin_introspection::src5::SRC5Component;
@@ -18,7 +18,7 @@ mod MIPL {
     };
     use starknet::storage::Map;
 
-    use super::{IMIPL, ContractAddress};
+    use super::{IMIP, ContractAddress};
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
@@ -78,8 +78,8 @@ mod MIPL {
 
     #[constructor]
     fn constructor(ref self: ContractState, owner: ContractAddress) {
-        let name: ByteArray = "MediolanoIntelctualPropertyLicensing";
-        let symbol: ByteArray = "MIPL";
+        let name: ByteArray = "MediolanoIntelctualProperty";
+        let symbol: ByteArray = "MIP";
         let base_uri: ByteArray = "https://ipfs.io/ipfs/";
 
         self.erc721.initializer(name, symbol, base_uri);
@@ -87,7 +87,7 @@ mod MIPL {
     }
 
     #[abi(embed_v0)]
-    impl MIPLImpl of IMIPL<ContractState> {
+    impl MIPImpl of IMIP<ContractState> {
         fn mint_item(ref self: ContractState, recipient: ContractAddress, uri: ByteArray) -> u256 {
             self.token_id_counter.increment();
             let token_id = self.token_id_counter.current();

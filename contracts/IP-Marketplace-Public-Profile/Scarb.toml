@@ -1,5 +1,5 @@
 [package]
-name = "contracts"
+name = "ip_marketplace_public_profile"
 version = "0.1.0"
 edition = "2024_07"
 
