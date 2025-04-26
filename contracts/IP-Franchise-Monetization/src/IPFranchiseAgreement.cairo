@@ -1,0 +1,359 @@
+use super::errors;
+use super::interfaces;
+use super::types;
+
+
+#[starknet::contract]
+pub mod IPFranchisingAgreement {
+    use OwnableComponent::InternalTrait;
+    use starknet::{ContractAddress, get_caller_address, get_contract_address, get_block_timestamp};
+
+    use core::array::{ArrayTrait, Array};
+    use core::felt252;
+    use core::option::{Option, OptionTrait};
+    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use openzeppelin::access::ownable::OwnableComponent;
+
+    use core::starknet::storage::{
+        StoragePointerReadAccess, StoragePointerWriteAccess, Map, StoragePathEntry,
+    };
+    use super::types::{
+        FranchiseTerms, RoyaltyPayment, FranchiseSaleRequest, PaymentModel, FranchiseSaleStatus,
+    };
+
+    use super::interfaces::{IIPFranchiseAgreement, FranchiseTermsTrait, RoyaltyFeesTrait};
+    use super::errors::FranchiseAgreementErrors;
+
+    // *************************************************************************
+    //                             COMPONENTS
+    // *************************************************************************
+    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+
+    // Ownable Mixin
+    #[abi(embed_v0)]
+    impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
+    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
+
+    #[storage]
+    struct Storage {
+        agreement_id: u256,
+        franchise_manager: ContractAddress,
+        franchisee: ContractAddress,
+        franchise_terms: FranchiseTerms,
+        sale_request: Option<FranchiseSaleRequest>,
+        payment_token: ContractAddress,
+        royalty_payments: Map<u32, RoyaltyPayment>,
+        is_active: bool,
+        is_revoked: bool,
+        is_defaulted: bool,
+        #[substorage(v0)]
+        ownable: OwnableComponent::Storage,
+    }
+
+    // *************************************************************************
+    //                             EVENTS
+    // *************************************************************************
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    enum Event {
+        #[flat]
+        OwnableEvent: OwnableComponent::Event,
+    }
+
+    // *************************************************************************
+    //                              CONSTRUCTOR
+    // *************************************************************************
+    #[constructor]
+    fn constructor(
+        ref self: ContractState,
+        agreement_id: u256,
+        franchise_manager: ContractAddress,
+        franchisee: ContractAddress,
+        franchise_terms: FranchiseTerms,
+    ) {
+        self.ownable.initializer(franchisee);
+        self.agreement_id.write(agreement_id);
+        self.franchise_manager.write(franchise_manager);
+        self.franchise_terms.write(franchise_terms);
+        self.franchisee.write(franchisee);
+        self.is_revoked.write(false);
+        self.is_active.write(false);
+        self.is_defaulted.write(false);
+    }
+
+    // *************************************************************************
+    //                             IMPLEMENTATIONS
+    // *************************************************************************
+    #[abi(embed_v0)]
+    impl IIPFranchiseAgreementImpl of IIPFranchiseAgreement<ContractState> {
+        // Pays the franchise fee to the franchise manager
+        fn activate_franchise(ref self: ContractState) {
+            self.ownable.assert_only_owner();
+            let caller = get_caller_address();
+
+            let franchise_terms = self.franchise_terms.read();
+            let total_fee_to_pay = franchise_terms.get_total_franchise_fee();
+
+            let dispatcher = IERC20Dispatcher { contract_address: franchise_terms.payment_token };
+            let result = dispatcher.transfer_from(caller, get_contract_address(), total_fee_to_pay);
+
+            assert(result, FranchiseAgreementErrors::Erc20TransferFailed);
+
+            self.is_active.write(true);
+        }
+
+        fn deactivate_franchise(ref self: ContractState) {
+            self.ownable.assert_only_owner();
+            self.is_active.write(false);
+        }
+
+        fn create_sale_request(ref self: ContractState, to: ContractAddress, sale_price: u256) {
+            self.ownable.assert_only_owner();
+
+            // Trigger Franchise manager function
+
+            let transfer_request = FranchiseSaleRequest {
+                from: self.franchisee.read(), to, sale_price, status: FranchiseSaleStatus::Pending,
+            };
+
+            self.sale_request.write(Option::Some(transfer_request));
+        }
+
+        fn approve_franchise_sale(ref self: ContractState) {
+            // Call from Franchise manager
+            let caller = get_caller_address();
+
+            assert(
+                caller == self.franchise_manager.read(),
+                FranchiseAgreementErrors::NotFranchiseManager,
+            );
+
+            let sale_request = self.sale_request.read();
+            assert(sale_request.is_some(), FranchiseAgreementErrors::SaleRequestNotFound);
+
+            let mut sale_request = sale_request.unwrap();
+            assert(
+                sale_request.status == FranchiseSaleStatus::Pending,
+                FranchiseAgreementErrors::InvalidSaleStatus,
+            );
+
+            sale_request.status = FranchiseSaleStatus::Approved;
+
+            self.sale_request.write(Option::Some(sale_request));
+        }
+
+        fn reject_franchise_sale(ref self: ContractState) {
+            // Call from Franchise manager
+            let caller = get_caller_address();
+
+            assert(
+                caller == self.franchise_manager.read(),
+                FranchiseAgreementErrors::NotFranchiseManager,
+            );
+
+            let sale_request = self.sale_request.read();
+            assert(sale_request.is_some(), FranchiseAgreementErrors::SaleRequestNotFound);
+
+            let mut sale_request = sale_request.unwrap();
+            assert(
+                sale_request.status == FranchiseSaleStatus::Pending,
+                FranchiseAgreementErrors::InvalidSaleStatus,
+            );
+
+            sale_request.status = FranchiseSaleStatus::Rejected;
+
+            self.sale_request.write(Option::Some(sale_request));
+        }
+
+        fn finalize_franchise_sale(ref self: ContractState) {
+            let caller = get_caller_address();
+
+            let maybe_sale_request = self.sale_request.read();
+            assert(maybe_sale_request.is_some(), FranchiseAgreementErrors::SaleRequestNotFound);
+
+            let mut sale_request = maybe_sale_request.unwrap();
+
+            let franchise_buyer = sale_request.to;
+
+            assert(caller == franchise_buyer, FranchiseAgreementErrors::OnlyBuyerCanFinalizeSale);
+
+            assert(
+                sale_request.status == FranchiseSaleStatus::Approved,
+                FranchiseAgreementErrors::InvalidSaleStatus,
+            );
+
+            let franchise_terms = self.franchise_terms.read();
+            let payment_token = franchise_terms.payment_token;
+
+            let franchise_fee = sale_request.sale_price * 20_u256 / 100_u256; // 20% fee
+            let seller_amount = sale_request.sale_price - franchise_fee; // 80% to seller
+
+            let dispatcher = IERC20Dispatcher { contract_address: payment_token };
+
+            // Pay 20% franchise fee to Franchise Manager
+            let fee_result = dispatcher
+                .transfer_from(caller, self.franchise_manager.read(), franchise_fee);
+            assert(fee_result, FranchiseAgreementErrors::Erc20TransferFailed);
+
+            // Pay 80% sale proceeds to current franchisee (seller)
+            let current_franchisee = self.franchisee.read();
+            let seller_result = dispatcher.transfer_from(caller, current_franchisee, seller_amount);
+            assert(seller_result, FranchiseAgreementErrors::Erc20TransferFailed);
+
+            // Transfer ownership of agreement to buyer
+            // TODO: hook into RoleManager or use ownable.transfer_ownership()
+            self.franchisee.write(franchise_buyer);
+
+            // Update Sale Request
+            sale_request.status = FranchiseSaleStatus::Completed;
+            self.sale_request.write(Option::Some(sale_request));
+        }
+
+
+        fn make_royalty_payments(ref self: ContractState, reported_revenues: Array<u256>) {
+            self.ownable.assert_only_owner();
+            let caller = get_caller_address();
+
+            let mut franchise_terms = self.franchise_terms.read();
+
+            if let PaymentModel::RoyaltyBased(mut royalty_fees) = franchise_terms
+                .payment_model
+                .clone() {
+                let block_timestamp = get_block_timestamp();
+
+                let last_payment_id = royalty_fees.last_payment_id;
+
+                let missed_payments = royalty_fees
+                    .calculate_missed_payments(franchise_terms.license_start, block_timestamp);
+
+                assert(
+                    reported_revenues.len() == missed_payments,
+                    FranchiseAgreementErrors::RevenueMismatch,
+                );
+
+                let mut total_royalty = 0_u256;
+
+                for index in 0..missed_payments {
+                    let revenue = match reported_revenues.get(index) {
+                        Option::Some(rev) => *rev.unbox(),
+                        Option::None => panic!("out of bounds"),
+                    };
+
+                    assert(revenue > 0_u256, FranchiseAgreementErrors::InvalidRevenueAmount);
+
+                    let royalty_amount = royalty_fees.get_royalty_due(revenue);
+
+                    assert(royalty_amount > 0_u256, FranchiseAgreementErrors::InvalidRoyaltyAmount);
+
+                    total_royalty += royalty_amount;
+
+                    let next_payment_id = last_payment_id + index;
+
+                    let royalty_payment = RoyaltyPayment {
+                        payment_id: next_payment_id,
+                        royalty_paid: royalty_amount,
+                        reported_revenue: revenue,
+                        timestamp: block_timestamp,
+                    };
+
+                    self.royalty_payments.entry(next_payment_id).write(royalty_payment);
+                };
+
+                let dispatcher = IERC20Dispatcher {
+                    contract_address: franchise_terms.payment_token,
+                };
+
+                let result = dispatcher
+                    .transfer_from(caller, self.franchise_manager.read(), total_royalty);
+                assert(result, FranchiseAgreementErrors::Erc20TransferFailed);
+
+                royalty_fees.last_payment_id = last_payment_id + missed_payments;
+                franchise_terms.payment_model = PaymentModel::RoyaltyBased(royalty_fees);
+            }
+
+            self.franchise_terms.write(franchise_terms);
+        }
+
+        fn revoke_franchise_license(ref self: ContractState) {
+            let caller = get_caller_address();
+
+            assert(
+                caller == self.franchise_manager.read(),
+                FranchiseAgreementErrors::NotFranchiseManager,
+            );
+
+            self.is_revoked.write(true);
+        }
+
+
+        fn reinstate_franchise_license(ref self: ContractState) {
+            let caller = get_caller_address();
+
+            assert(
+                caller == self.franchise_manager.read(),
+                FranchiseAgreementErrors::NotFranchiseManager,
+            );
+
+            self.is_revoked.write(false);
+        }
+
+        // *************************************************************************
+        //                              VIEW FUNCTIONS
+        // *************************************************************************
+
+        // ───────────── Core Fields
+        // ─────────────
+
+        fn get_agreement_id(self: @ContractState) -> u256 {
+            self.agreement_id.read()
+        }
+
+        fn get_franchise_manager(self: @ContractState) -> ContractAddress {
+            self.franchise_manager.read()
+        }
+
+        fn get_franchisee(self: @ContractState) -> ContractAddress {
+            self.franchisee.read()
+        }
+
+        fn get_payment_token(self: @ContractState) -> ContractAddress {
+            self.payment_token.read()
+        }
+
+        // ───────────── Franchise Terms
+        // ─────────────
+
+        fn get_franchise_terms(self: @ContractState) -> FranchiseTerms {
+            self.franchise_terms.read()
+        }
+
+        // ───────────── Sale Request
+        // ─────────────
+
+        fn get_sale_request(self: @ContractState) -> Option<FranchiseSaleRequest> {
+            self.sale_request.read()
+        }
+
+        // ───────────── Royalty Payments
+        // ─────────────
+
+        fn get_royalty_payment(self: @ContractState, payment_id: u32) -> RoyaltyPayment {
+            self.royalty_payments.entry(payment_id).read()
+        }
+
+        // ───────────── Status Flags
+        // ─────────────
+
+        fn is_active(self: @ContractState) -> bool {
+            self.is_active.read()
+        }
+
+        fn is_revoked(self: @ContractState) -> bool {
+            self.is_revoked.read()
+        }
+
+        fn is_defaulted(self: @ContractState) -> bool {
+            self.is_defaulted.read()
+        }
+    }
+}
