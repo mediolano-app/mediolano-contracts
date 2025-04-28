@@ -47,6 +47,35 @@ fn create_test_ip_data(
     (token_id, metadata_uri, owners, ownership_shares, royalty_rate, expiry_date, license_terms)
 }
 
+// Helper function to set up IP registration
+fn setup_ip(
+    dispatcher: ICollectiveIPDispatcher, address: ContractAddress, token_id: u256,
+) -> (ByteArray, Array<ContractAddress>, Array<u256>, u256, u64, ByteArray) {
+    let owner = contract_address_const::<OWNER>();
+    let (
+        token_id, metadata_uri, owners, ownership_shares, royalty_rate, expiry_date, license_terms,
+    ) =
+        create_test_ip_data(
+        token_id,
+    );
+
+    start_cheat_caller_address(address, owner);
+    dispatcher
+        .register_ip(
+            token_id,
+            metadata_uri.clone(),
+            owners.clone(),
+            ownership_shares.clone(),
+            royalty_rate,
+            expiry_date,
+            license_terms.clone(),
+        );
+    stop_cheat_caller_address(address);
+
+    (metadata_uri, owners, ownership_shares, royalty_rate, expiry_date, license_terms)
+}
+
+
 #[test]
 fn test_register_ip() {
     let (dispatcher, address) = setup();
@@ -187,6 +216,214 @@ fn test_distribute_royalties_not_owner() {
 }
 
 #[test]
+#[should_panic(expected: ('No IP data found',))]
+fn test_distribute_royalties_no_ip_data() {
+    let (dispatcher, address) = setup();
+    let owner = contract_address_const::<OWNER>();
+    let token_id: u256 = 1; // Not registered
+
+    start_cheat_caller_address(address, owner);
+    dispatcher.distribute_royalties(token_id, 1000);
+}
+
+#[test]
+#[should_panic(expected: ('Invalid metadata URI',))]
+fn test_register_ip_invalid_metadata_uri() {
+    let (dispatcher, address) = setup();
+    let owner = contract_address_const::<OWNER>();
+    let token_id: u256 = 1;
+    let (
+        token_id, _metadata_uri, owners, ownership_shares, royalty_rate, expiry_date, license_terms,
+    ) =
+        create_test_ip_data(
+        token_id,
+    );
+    let empty_metadata_uri: ByteArray = "";
+
+    start_cheat_caller_address(address, owner);
+    dispatcher
+        .register_ip(
+            token_id,
+            empty_metadata_uri,
+            owners,
+            ownership_shares,
+            royalty_rate,
+            expiry_date,
+            license_terms,
+        );
+}
+
+#[test]
+#[should_panic(expected: ('Mismatched owners and shares',))]
+fn test_register_ip_mismatched_owners_shares() {
+    let (dispatcher, address) = setup();
+    let owner = contract_address_const::<OWNER>();
+    let token_id: u256 = 1;
+    let (
+        token_id, metadata_uri, owners, _ownership_shares, royalty_rate, expiry_date, license_terms,
+    ) =
+        create_test_ip_data(
+        token_id,
+    );
+    let mismatched_shares = array![500_u256]; // Only one share
+
+    start_cheat_caller_address(address, owner);
+    dispatcher
+        .register_ip(
+            token_id,
+            metadata_uri,
+            owners,
+            mismatched_shares,
+            royalty_rate,
+            expiry_date,
+            license_terms,
+        );
+}
+
+#[test]
+#[should_panic(expected: ('At least one owner required',))]
+fn test_register_ip_no_owners() {
+    let (dispatcher, address) = setup();
+    let owner = contract_address_const::<OWNER>();
+    let token_id: u256 = 1;
+    let (
+        token_id,
+        metadata_uri,
+        _owners,
+        _ownership_shares,
+        royalty_rate,
+        expiry_date,
+        license_terms,
+    ) =
+        create_test_ip_data(
+        token_id,
+    );
+    let no_owners: Array<ContractAddress> = array![];
+    let no_shares: Array<u256> = array![];
+
+    start_cheat_caller_address(address, owner);
+    dispatcher
+        .register_ip(
+            token_id, metadata_uri, no_owners, no_shares, royalty_rate, expiry_date, license_terms,
+        );
+}
+
+#[test]
+#[should_panic(expected: ('Royalty rate exceeds 100%',))]
+fn test_register_ip_invalid_royalty_rate() {
+    let (dispatcher, address) = setup();
+    let owner = contract_address_const::<OWNER>();
+    let token_id: u256 = 1;
+    let (
+        token_id, metadata_uri, owners, ownership_shares, _royalty_rate, expiry_date, license_terms,
+    ) =
+        create_test_ip_data(
+        token_id,
+    );
+    let invalid_royalty_rate: u256 = 1001; // > 100%
+
+    start_cheat_caller_address(address, owner);
+    dispatcher
+        .register_ip(
+            token_id,
+            metadata_uri,
+            owners,
+            ownership_shares,
+            invalid_royalty_rate,
+            expiry_date,
+            license_terms,
+        );
+}
+
+#[test]
+#[should_panic(expected: ('Shares must sum to 100%',))]
+fn test_register_ip_invalid_shares_sum() {
+    let (dispatcher, address) = setup();
+    let owner = contract_address_const::<OWNER>();
+    let token_id: u256 = 1;
+    let (
+        token_id, metadata_uri, owners, _ownership_shares, royalty_rate, expiry_date, license_terms,
+    ) =
+        create_test_ip_data(
+        token_id,
+    );
+    let invalid_shares = array![400_u256, 400_u256]; // Sum = 800, not 1000
+
+    start_cheat_caller_address(address, owner);
+    dispatcher
+        .register_ip(
+            token_id,
+            metadata_uri,
+            owners,
+            invalid_shares,
+            royalty_rate,
+            expiry_date,
+            license_terms,
+        );
+}
+
+#[test]
+#[should_panic(expected: ('Not an owner',))]
+fn test_create_proposal_no_ip_data() {
+    let (dispatcher, address) = setup();
+    let user1 = contract_address_const::<USER1>();
+    let token_id: u256 = 1; // Not registered
+
+    let description: ByteArray = "Update license terms";
+    start_cheat_caller_address(address, user1);
+    dispatcher.create_proposal(token_id, description);
+}
+
+#[test]
+#[should_panic(expected: ('Not an owner',))]
+fn test_vote_not_owner() {
+    let (dispatcher, address) = setup();
+    let non_owner = contract_address_const::<0x999>();
+    let token_id: u256 = 1;
+    let proposal_id: u256 = 1;
+    setup_ip(dispatcher, address, token_id);
+
+    // Create proposal
+    let user1 = contract_address_const::<USER1>();
+    start_cheat_caller_address(address, user1);
+    dispatcher.create_proposal(token_id, "Update license terms");
+    stop_cheat_caller_address(address);
+
+    // Attempt to vote as non-owner
+    start_cheat_caller_address(address, non_owner);
+    dispatcher.vote(token_id, proposal_id, true);
+}
+
+#[test]
+#[should_panic(expected: ('Already voted',))]
+fn test_vote_already_voted() {
+    let (dispatcher, address) = setup();
+    let user1 = contract_address_const::<USER1>();
+    let token_id: u256 = 1;
+    let proposal_id: u256 = 1;
+    setup_ip(dispatcher, address, token_id);
+
+    // Create proposal and vote once
+    start_cheat_caller_address(address, user1);
+    dispatcher.create_proposal(token_id, "Update license terms");
+    dispatcher.vote(token_id, proposal_id, true);
+    // Attempt to vote again
+    dispatcher.vote(token_id, proposal_id, true);
+}
+
+#[test]
+#[should_panic(expected: ('Not an owner',))]
+fn test_vote_no_ip_data() {
+    let (dispatcher, address) = setup();
+    let user1 = contract_address_const::<USER1>();
+    let token_id: u256 = 1; // Not registered
+    let proposal_id: u256 = 1;
+
+    start_cheat_caller_address(address, user1);
+    dispatcher.vote(token_id, proposal_id, true);
+}
+
+#[test]
 fn test_create_proposal() {
     let (dispatcher, address) = setup();
     let owner = contract_address_const::<OWNER>();
@@ -226,6 +463,25 @@ fn test_create_proposal() {
     assert(proposal.vote_count == 0, 'Wrong vote count');
     assert(proposal.executed == false, 'Wrong executed status');
     assert(proposal.deadline == get_block_timestamp() + 604800, 'Wrong deadline');
+}
+
+#[test]
+#[should_panic(expected: ('Voting period not ended',))]
+fn test_execute_proposal_before_deadline() {
+    let (dispatcher, address) = setup();
+    let user1 = contract_address_const::<USER1>();
+    let token_id: u256 = 1;
+    let proposal_id: u256 = 1;
+    setup_ip(dispatcher, address, token_id);
+
+    // Create proposal
+    start_cheat_caller_address(address, user1);
+    dispatcher.create_proposal(token_id, "Update license terms");
+    dispatcher.vote(token_id, proposal_id, true); // 500 votes
+    stop_cheat_caller_address(address);
+
+    // Attempt to execute before deadline
+    dispatcher.execute_proposal(token_id, proposal_id);
 }
 
 #[test]
