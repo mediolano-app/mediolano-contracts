@@ -194,11 +194,6 @@ pub mod CollectiveIPAgreement {
                 let share = *ownership_shares.at(i);
                 self.owners.write((token_id, i), owner);
                 self.ownership_shares.write((token_id, owner), share);
-                self
-                    .erc1155
-                    .batch_mint_with_acceptance_check(
-                        owner, array![token_id].span(), array![share].span(), array![].span(),
-                    );
                 i += 1;
             };
 
@@ -219,13 +214,12 @@ pub mod CollectiveIPAgreement {
                 let owner = self.owners.read((token_id, i));
                 let share = self.ownership_shares.read((token_id, owner));
                 let owner_amount = (royalty_amount * share) / 1000;
-                // In a real implementation, transfer funds (e.g., via ERC-20)
+
                 self.emit(RoyaltyDistributed { token_id, amount: owner_amount, recipient: owner });
                 i += 1;
             }
         }
 
-        // Create a governance proposal
         // Create a governance proposal
         fn create_proposal(ref self: ContractState, token_id: u256, description: ByteArray) {
             let ip_data = self.ip_data.read(token_id);

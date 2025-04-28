@@ -4,8 +4,6 @@ use snforge_std::{
     stop_cheat_caller_address,
 };
 use ip_collective_agreement::interfaces::{ICollectiveIPDispatcher, ICollectiveIPDispatcherTrait};
-use ip_collective_agreement::types::{IPData, Proposal};
-use core::array::ArrayTrait;
 
 // Test constants
 const OWNER: felt252 = 0x123;
@@ -231,7 +229,7 @@ fn test_create_proposal() {
 }
 
 #[test]
-#[should_panic(expected: ('NOT_OWNER',))]
+#[should_panic(expected: ('Not an owner',))]
 fn test_create_proposal_not_owner() {
     let (dispatcher, address) = setup();
     let owner = contract_address_const::<OWNER>();
@@ -299,7 +297,7 @@ fn test_resolve_dispute() {
 }
 
 #[test]
-#[should_panic(expected: ('NOT_DISPUTE_RESOLVER',))]
+#[should_panic(expected: ('Not dispute resolver',))]
 fn test_resolve_dispute_not_resolver() {
     let (dispatcher, address) = setup();
     let owner = contract_address_const::<OWNER>();
