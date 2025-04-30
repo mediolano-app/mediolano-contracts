@@ -1,12 +1,14 @@
 use super::errors;
 use super::interfaces;
 use super::types;
+use super::events;
 
 #[starknet::contract]
 pub mod IPFranchiseManager {
     use starknet::{
         ContractAddress, get_caller_address, get_contract_address, get_block_timestamp, ClassHash,
     };
+    use starknet::event::EventEmitter;
     use starknet::syscalls::deploy_syscall;
 
     use core::array::ArrayTrait;
@@ -27,6 +29,13 @@ pub mod IPFranchiseManager {
     };
 
     use super::errors::Errors;
+    use super::events::{
+        IPAssetLinked, IPAssetUnLinked, FranchiseAgreementCreated, NewFranchiseApplication,
+        FranchiseApplicationRevised, FranchiseApplicationCanceled, FranchiseApplicationRejected,
+        FranchiseApplicationApproved, FranchiseSaleInitiated, FranchiseSaleApproved,
+        FranchiseSaleRejected, FranchiseAgreementReinstated, FranchiseAgreementRevoked,
+        ApplicationRevisionAccepted,
+    };
     use super::interfaces::{
         IIPFranchiseManager, FranchiseTermsTrait, IIPFranchiseAgreementDispatcher,
         IIPFranchiseAgreementDispatcherTrait,
@@ -109,6 +118,20 @@ pub mod IPFranchiseManager {
         OwnableEvent: OwnableComponent::Event,
         #[flat]
         UpgradeableEvent: UpgradeableComponent::Event,
+        IPAssetLinked: IPAssetLinked,
+        IPAssetUnLinked: IPAssetUnLinked,
+        FranchiseAgreementCreated: FranchiseAgreementCreated,
+        NewFranchiseApplication: NewFranchiseApplication,
+        FranchiseApplicationRevised: FranchiseApplicationRevised,
+        FranchiseApplicationCanceled: FranchiseApplicationCanceled,
+        FranchiseApplicationRejected: FranchiseApplicationRejected,
+        FranchiseApplicationApproved: FranchiseApplicationApproved,
+        FranchiseSaleInitiated: FranchiseSaleInitiated,
+        FranchiseSaleApproved: FranchiseSaleApproved,
+        FranchiseSaleRejected: FranchiseSaleRejected,
+        FranchiseAgreementReinstated: FranchiseAgreementReinstated,
+        FranchiseAgreementRevoked: FranchiseAgreementRevoked,
+        ApplicationRevisionAccepted: ApplicationRevisionAccepted,
     }
 
     // *************************************************************************
@@ -165,7 +188,17 @@ pub mod IPFranchiseManager {
                 .safe_transfer_from(caller, get_contract_address(), token_id, array![].span());
 
             self.ip_asset_linked.write(true);
+
             // Add nft link event
+            self
+                .emit(
+                    IPAssetLinked {
+                        ip_token_id: token_id,
+                        ip_token_address: ip_nft_address,
+                        owner: caller,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         // Unlink NFT from the franchise Manager Contract
@@ -176,8 +209,16 @@ pub mod IPFranchiseManager {
 
             assert(self.ip_asset_linked.read(), 'nft not linked');
 
-            // add check that all licenses are over
-            // todo
+            // check that all licenses are over
+            let total_agreements = self.franchise_agreement_count.read();
+
+            for id in 0..total_agreements {
+                let agreement_address = self.get_franchise_agreement_address(id);
+                let franchise_agreement = IIPFranchiseAgreementDispatcher {
+                    contract_address: agreement_address,
+                };
+                assert(!franchise_agreement.is_active(), Errors::AgreementLicenseNotOver);
+            };
 
             let token_id = self.ip_nft_id.read();
             let ip_nft_address = self.ip_nft_address.read();
@@ -190,7 +231,17 @@ pub mod IPFranchiseManager {
             erc721_dispatcher.safe_transfer_from(this_contract, caller, token_id, array![].span());
 
             self.ip_asset_linked.write(false);
+
             // Add nft unlink event
+            self
+                .emit(
+                    IPAssetUnLinked {
+                        ip_token_id: token_id,
+                        ip_token_address: ip_nft_address,
+                        owner: caller,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
 
@@ -206,8 +257,19 @@ pub mod IPFranchiseManager {
 
             franchise_terms.validate_terms_data(block_timestamp);
 
-            let _ = self._create_franchise_agreement(franchisee, franchise_terms);
-            // Emit an event for the new Franchise Agreement
+            let (agreement_id, agreement_address) = self
+                ._create_franchise_agreement(franchisee, franchise_terms);
+
+            // Add Franchise agreement created event
+            self
+                .emit(
+                    FranchiseAgreementCreated {
+                        agreement_id,
+                        agreement_address,
+                        franchisee,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         // Create Franchise Agreement from application
@@ -233,9 +295,19 @@ pub mod IPFranchiseManager {
 
             application.current_terms.validate_terms_data(block_timestamp);
 
-            let _ = self
+            let (agreement_id, agreement_address) = self
                 ._create_franchise_agreement(application.franchisee, application.current_terms);
+
             // Emit an event for the new Franchise Agreement
+            self
+                .emit(
+                    FranchiseAgreementCreated {
+                        agreement_id,
+                        agreement_address,
+                        franchisee: application.franchisee,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         // Apply for a Franchise Agreement
@@ -290,7 +362,14 @@ pub mod IPFranchiseManager {
                 .write(application_id);
 
             self.franchisee_application_count.entry(caller).write(franchisee_application_count + 1);
+
             // Emit an event for the new Franchise Application
+            self
+                .emit(
+                    NewFranchiseApplication {
+                        application_id, franchisee: caller, timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         // Revise franchise application
@@ -341,7 +420,17 @@ pub mod IPFranchiseManager {
                 .franchise_applications
                 .entry((application_id, new_application_version))
                 .write(application);
+
             // Emit an event for the revision Franchise Application
+            self
+                .emit(
+                    FranchiseApplicationRevised {
+                        application_id,
+                        reviser: caller,
+                        application_version: new_application_version,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         // Revise franchise application
@@ -368,7 +457,14 @@ pub mod IPFranchiseManager {
                 .franchise_applications
                 .entry((application_id, application_version))
                 .write(application);
+
             // Emit an event for the revision Franchise ACceptance
+            self
+                .emit(
+                    ApplicationRevisionAccepted {
+                        application_id, franchisee: caller, timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         // Cancel franchise application
@@ -393,8 +489,16 @@ pub mod IPFranchiseManager {
                 .franchise_applications
                 .entry((application_id, application_version))
                 .write(application);
+
             // Emit an event for the cancelled Franchise Application
+            self
+                .emit(
+                    FranchiseApplicationCanceled {
+                        application_id, franchisee: caller, timestamp: get_block_timestamp(),
+                    },
+                );
         }
+
 
         // Approve franchise application
         fn approve_franchise_application(ref self: ContractState, application_id: u256) {
@@ -420,7 +524,14 @@ pub mod IPFranchiseManager {
                 .franchise_applications
                 .entry((application_id, application_version))
                 .write(application);
+
             // Emit an event for the approved Franchise Application
+            self
+                .emit(
+                    FranchiseApplicationApproved {
+                        application_id, timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         fn reject_franchise_application(ref self: ContractState, application_id: u256) {
@@ -446,7 +557,14 @@ pub mod IPFranchiseManager {
                 .franchise_applications
                 .entry((application_id, application_version))
                 .write(application);
+
             // Emit an event for the rejected Franchise Application
+            self
+                .emit(
+                    FranchiseApplicationRejected {
+                        application_id, timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         // Approve Franchise Sale
@@ -464,13 +582,20 @@ pub mod IPFranchiseManager {
             self.franchise_sale_agreement_ids.entry(sale_id).write(agreement_id);
 
             self.franchise_sale_count.write(sale_id + 1);
+
+            self
+                .emit(
+                    FranchiseSaleInitiated {
+                        agreement_id, sale_id, timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         // Approve Franchise Sale
         fn approve_franchise_sale(ref self: ContractState, agreement_id: u256) {
             self.ownable.assert_only_owner();
 
-            let agreement_address = self.franchise_agreements.entry(agreement_id).read();
+            let agreement_address = self.get_franchise_agreement_address(agreement_id);
 
             let franchise_agreement = IIPFranchiseAgreementDispatcher {
                 contract_address: agreement_address,
@@ -478,7 +603,14 @@ pub mod IPFranchiseManager {
 
             // Approve the license sale
             franchise_agreement.approve_franchise_sale();
+
             // Emit an event for the approved Franchise License
+            self
+                .emit(
+                    FranchiseSaleApproved {
+                        agreement_id, agreement_address, timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
 
@@ -486,7 +618,7 @@ pub mod IPFranchiseManager {
         fn reject_franchise_sale(ref self: ContractState, agreement_id: u256) {
             self.ownable.assert_only_owner();
 
-            let agreement_address = self.franchise_agreements.entry(agreement_id).read();
+            let agreement_address = self.get_franchise_agreement_address(agreement_id);
 
             let franchise_agreement = IIPFranchiseAgreementDispatcher {
                 contract_address: agreement_address,
@@ -494,13 +626,20 @@ pub mod IPFranchiseManager {
 
             // Reject the license sale
             franchise_agreement.reject_franchise_sale();
+
             // Emit an event for the approved Rejected License sale
+            self
+                .emit(
+                    FranchiseSaleRejected {
+                        agreement_id, agreement_address, timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         fn revoke_franchise_license(ref self: ContractState, agreement_id: u256) {
             self.ownable.assert_only_owner();
 
-            let agreement_address = self.franchise_agreements.entry(agreement_id).read();
+            let agreement_address = self.get_franchise_agreement_address(agreement_id);
 
             let franchise_agreement = IIPFranchiseAgreementDispatcher {
                 contract_address: agreement_address,
@@ -508,13 +647,20 @@ pub mod IPFranchiseManager {
 
             // Revoke the license
             franchise_agreement.revoke_franchise_license();
+
             // Emit an event for the revoked Franchise License
+            self
+                .emit(
+                    FranchiseAgreementRevoked {
+                        agreement_id, agreement_address, timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         fn reinstate_franchise_license(ref self: ContractState, agreement_id: u256) {
             self.ownable.assert_only_owner();
 
-            let agreement_address = self.franchise_agreements.entry(agreement_id).read();
+            let agreement_address = self.get_franchise_agreement_address(agreement_id);
 
             let franchise_agreement = IIPFranchiseAgreementDispatcher {
                 contract_address: agreement_address,
@@ -522,7 +668,14 @@ pub mod IPFranchiseManager {
 
             // ReinState the license
             franchise_agreement.reinstate_franchise_license();
+
             // Emit an event for the revoked Franchise License
+            self
+                .emit(
+                    FranchiseAgreementReinstated {
+                        agreement_id, agreement_address, timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
 
@@ -650,7 +803,7 @@ pub mod IPFranchiseManager {
     impl InternalFunctions of InternalFunctionsTrait {
         fn _create_franchise_agreement(
             ref self: ContractState, franchisee: ContractAddress, franchise_terms: FranchiseTerms,
-        ) -> ContractAddress {
+        ) -> (u256, ContractAddress) {
             self.ownable.assert_only_owner();
 
             assert(self.ip_asset_linked.read(), Errors::IP_ASSET_NOT_LINKED);
@@ -699,7 +852,7 @@ pub mod IPFranchiseManager {
 
             self.franchisee_agreement_count.entry(franchisee).write(franchisee_agreement_count + 1);
 
-            agreement_address
+            (agreement_id, agreement_address)
         }
     }
 }

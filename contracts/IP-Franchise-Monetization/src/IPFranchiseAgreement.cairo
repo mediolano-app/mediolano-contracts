@@ -1,11 +1,10 @@
 use super::errors;
 use super::interfaces;
 use super::types;
-
+use super::events;
 
 #[starknet::contract]
 pub mod IPFranchisingAgreement {
-    use OwnableComponent::InternalTrait;
     use starknet::{ContractAddress, get_caller_address, get_contract_address, get_block_timestamp};
 
     use core::array::{ArrayTrait, Array};
@@ -13,15 +12,29 @@ pub mod IPFranchisingAgreement {
     use core::option::{Option, OptionTrait};
     use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::access::ownable::OwnableComponent;
+    use OwnableComponent::InternalTrait;
+
 
     use core::starknet::storage::{
         StoragePointerReadAccess, StoragePointerWriteAccess, Map, StoragePathEntry,
     };
+
+    use starknet::event::EventEmitter;
+
     use super::types::{
         FranchiseTerms, RoyaltyPayment, FranchiseSaleRequest, PaymentModel, FranchiseSaleStatus,
     };
 
-    use super::interfaces::{IIPFranchiseAgreement, FranchiseTermsTrait, RoyaltyFeesTrait};
+    use super::events::{
+        FranchiseAgreementActivated, SaleRequestInitiated, SaleRequestApproved, SaleRequestRejected,
+        SaleRequestFinalized, RoyaltyPaymentMade, FranchiseLicenseRevoked,
+        FranchiseLicenseReinstated,
+    };
+
+    use super::interfaces::{
+        IIPFranchiseAgreement, FranchiseTermsTrait, IIPFranchiseManagerDispatcher,
+        IIPFranchiseManagerDispatcherTrait, RoyaltyFeesTrait,
+    };
     use super::errors::FranchiseAgreementErrors;
 
     // *************************************************************************
@@ -58,6 +71,14 @@ pub mod IPFranchisingAgreement {
     enum Event {
         #[flat]
         OwnableEvent: OwnableComponent::Event,
+        FranchiseAgreementActivated: FranchiseAgreementActivated,
+        SaleRequestInitiated: SaleRequestInitiated,
+        SaleRequestApproved: SaleRequestApproved,
+        SaleRequestRejected: SaleRequestRejected,
+        SaleRequestFinalized: SaleRequestFinalized,
+        RoyaltyPaymentMade: RoyaltyPaymentMade,
+        FranchiseLicenseRevoked: FranchiseLicenseRevoked,
+        FranchiseLicenseReinstated: FranchiseLicenseReinstated,
     }
 
     // *************************************************************************
@@ -91,6 +112,17 @@ pub mod IPFranchisingAgreement {
             self.ownable.assert_only_owner();
             let caller = get_caller_address();
 
+            let manager_address = self.franchise_manager.read();
+
+            // Check if Franchise IP is still linked
+            let franchise_manager = IIPFranchiseManagerDispatcher {
+                contract_address: manager_address,
+            };
+            assert(
+                !franchise_manager.is_ip_asset_linked(),
+                FranchiseAgreementErrors::FranchiseIpNotLinked,
+            );
+
             let franchise_terms = self.franchise_terms.read();
             let total_fee_to_pay = franchise_terms.get_total_franchise_fee();
 
@@ -100,23 +132,45 @@ pub mod IPFranchisingAgreement {
             assert(result, FranchiseAgreementErrors::Erc20TransferFailed);
 
             self.is_active.write(true);
-        }
 
-        fn deactivate_franchise(ref self: ContractState) {
-            self.ownable.assert_only_owner();
-            self.is_active.write(false);
+            let agreement_id = self.get_agreement_id();
+
+            self
+                .emit(
+                    FranchiseAgreementActivated { agreement_id, timestamp: get_block_timestamp() },
+                );
         }
 
         fn create_sale_request(ref self: ContractState, to: ContractAddress, sale_price: u256) {
             self.ownable.assert_only_owner();
 
+            let manager_address = self.franchise_manager.read();
+
+            assert(self.is_active(), FranchiseAgreementErrors::FranchiseAgreementNotActive);
+
             // Trigger Franchise manager function
+            let franchise_manager = IIPFranchiseManagerDispatcher {
+                contract_address: manager_address,
+            };
+            assert(
+                !franchise_manager.is_ip_asset_linked(),
+                FranchiseAgreementErrors::FranchiseIpNotLinked,
+            );
 
             let transfer_request = FranchiseSaleRequest {
                 from: self.franchisee.read(), to, sale_price, status: FranchiseSaleStatus::Pending,
             };
 
             self.sale_request.write(Option::Some(transfer_request));
+
+            let agreement_id = self.get_agreement_id();
+
+            self
+                .emit(
+                    SaleRequestInitiated {
+                        agreement_id, sale_price, to, timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         fn approve_franchise_sale(ref self: ContractState) {
@@ -140,6 +194,10 @@ pub mod IPFranchisingAgreement {
             sale_request.status = FranchiseSaleStatus::Approved;
 
             self.sale_request.write(Option::Some(sale_request));
+
+            let agreement_id = self.get_agreement_id();
+
+            self.emit(SaleRequestApproved { agreement_id, timestamp: get_block_timestamp() });
         }
 
         fn reject_franchise_sale(ref self: ContractState) {
@@ -163,6 +221,10 @@ pub mod IPFranchisingAgreement {
             sale_request.status = FranchiseSaleStatus::Rejected;
 
             self.sale_request.write(Option::Some(sale_request));
+
+            let agreement_id = self.get_agreement_id();
+
+            self.emit(SaleRequestRejected { agreement_id, timestamp: get_block_timestamp() });
         }
 
         fn finalize_franchise_sale(ref self: ContractState) {
@@ -207,14 +269,25 @@ pub mod IPFranchisingAgreement {
             // Update Sale Request
             sale_request.status = FranchiseSaleStatus::Completed;
             self.sale_request.write(Option::Some(sale_request));
-        }
 
+            let agreement_id = self.get_agreement_id();
+
+            self
+                .emit(
+                    SaleRequestFinalized {
+                        agreement_id, new_franchisee: caller, timestamp: get_block_timestamp(),
+                    },
+                );
+        }
 
         fn make_royalty_payments(ref self: ContractState, reported_revenues: Array<u256>) {
             self.ownable.assert_only_owner();
             let caller = get_caller_address();
 
             let mut franchise_terms = self.franchise_terms.read();
+
+            let mut total_royalty: u256 = 0_u256;
+            let mut total_revenue: u256 = 0_256;
 
             if let PaymentModel::RoyaltyBased(mut royalty_fees) = franchise_terms
                 .payment_model
@@ -231,8 +304,6 @@ pub mod IPFranchisingAgreement {
                     FranchiseAgreementErrors::RevenueMismatch,
                 );
 
-                let mut total_royalty = 0_u256;
-
                 for index in 0..missed_payments {
                     let revenue = match reported_revenues.get(index) {
                         Option::Some(rev) => *rev.unbox(),
@@ -246,6 +317,8 @@ pub mod IPFranchisingAgreement {
                     assert(royalty_amount > 0_u256, FranchiseAgreementErrors::InvalidRoyaltyAmount);
 
                     total_royalty += royalty_amount;
+
+                    total_revenue += revenue;
 
                     let next_payment_id = last_payment_id + index;
 
@@ -272,6 +345,18 @@ pub mod IPFranchisingAgreement {
             }
 
             self.franchise_terms.write(franchise_terms);
+
+            let agreement_id = self.get_agreement_id();
+
+            self
+                .emit(
+                    RoyaltyPaymentMade {
+                        agreement_id,
+                        total_revenue,
+                        total_royalty,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         fn revoke_franchise_license(ref self: ContractState) {
@@ -282,7 +367,27 @@ pub mod IPFranchisingAgreement {
                 FranchiseAgreementErrors::NotFranchiseManager,
             );
 
+            let franchise_terms = self.get_franchise_terms();
+
+            if let PaymentModel::RoyaltyBased(royalty_fees) = franchise_terms
+                .payment_model
+                .clone() {
+                let block_timestamp = get_block_timestamp();
+
+                let missed_payments = royalty_fees
+                    .calculate_missed_payments(franchise_terms.license_start, block_timestamp);
+
+                assert(
+                    missed_payments > royalty_fees.max_missed_payments,
+                    FranchiseAgreementErrors::MaxMissedPaymentsNotReached,
+                );
+            }
+
             self.is_revoked.write(true);
+
+            let agreement_id = self.get_agreement_id();
+
+            self.emit(FranchiseLicenseRevoked { agreement_id, timestamp: get_block_timestamp() });
         }
 
 
@@ -294,7 +399,30 @@ pub mod IPFranchisingAgreement {
                 FranchiseAgreementErrors::NotFranchiseManager,
             );
 
+            let franchise_terms = self.get_franchise_terms();
+
+            if let PaymentModel::RoyaltyBased(royalty_fees) = franchise_terms
+                .payment_model
+                .clone() {
+                let block_timestamp = get_block_timestamp();
+
+                let missed_payments = royalty_fees
+                    .calculate_missed_payments(franchise_terms.license_start, block_timestamp);
+
+                assert(
+                    royalty_fees.max_missed_payments > missed_payments,
+                    FranchiseAgreementErrors::MissedPaymentsExceedsMax,
+                );
+            }
+
             self.is_revoked.write(false);
+
+            let agreement_id = self.get_agreement_id();
+
+            self
+                .emit(
+                    FranchiseLicenseReinstated { agreement_id, timestamp: get_block_timestamp() },
+                );
         }
 
         // *************************************************************************
@@ -345,7 +473,14 @@ pub mod IPFranchisingAgreement {
         // ─────────────
 
         fn is_active(self: @ContractState) -> bool {
-            self.is_active.read()
+            let franchise_terms = self.get_franchise_terms();
+            let current_time = get_block_timestamp();
+
+            if franchise_terms.license_end > current_time {
+                self.is_active.read()
+            } else {
+                false
+            }
         }
 
         fn is_revoked(self: @ContractState) -> bool {

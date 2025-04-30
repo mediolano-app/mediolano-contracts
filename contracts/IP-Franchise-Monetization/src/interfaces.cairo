@@ -83,7 +83,6 @@ pub trait IIPFranchiseManager<TContractState> {
 #[starknet::interface]
 pub trait IIPFranchiseAgreement<TContractState> {
     fn activate_franchise(ref self: TContractState);
-    fn deactivate_franchise(ref self: TContractState);
 
     fn create_sale_request(ref self: TContractState, to: ContractAddress, sale_price: u256);
     fn approve_franchise_sale(ref self: TContractState);

@@ -50,6 +50,7 @@ pub struct RoyaltyFees {
     pub payment_schedule: PaymentSchedule,
     pub custom_interval: Option<u64>,
     pub last_payment_id: u32,
+    pub max_missed_payments: u32,
 }
 
 impl RoyaltyFeesTraitImpl of RoyaltyFeesTrait<RoyaltyFees> {
@@ -313,6 +314,7 @@ impl PaymentModelIntoFelt252 of Into<PaymentModel, Array<felt252>> {
                     Option::None => { serialized.append(0); },
                 }
                 serialized.append(royalty_fee.last_payment_id.into());
+                serialized.append(royalty_fee.max_missed_payments.into());
                 serialized
             },
         }
@@ -353,11 +355,14 @@ impl Felt252ArrayTryIntoPaymentModel of TryInto<Array<felt252>, PaymentModel> {
 
                 let last_payment_id: felt252 = *it.next().unwrap();
 
+                let max_missed_payments: felt252 = *it.next().unwrap();
+
                 let royalty_fees = RoyaltyFees {
                     royalty_percent: royalty_percent.try_into().unwrap(),
                     payment_schedule,
                     custom_interval,
                     last_payment_id: last_payment_id.try_into().unwrap(),
+                    max_missed_payments: max_missed_payments.try_into().unwrap(),
                 };
 
                 Option::Some(PaymentModel::RoyaltyBased(royalty_fees))

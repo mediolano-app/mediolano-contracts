@@ -16,6 +16,7 @@ pub mod Errors {
     pub const CannotCancelApplication: felt252 = 'Cannot cancel application';
     pub const NotAuthorized: felt252 = 'Caller not authorized';
     pub const InvalidApplicationStatus: felt252 = 'invalid application status';
+    pub const AgreementLicenseNotOver: felt252 = 'agreement license not over';
 }
 
 pub mod FranchiseAgreementErrors {
@@ -27,6 +28,10 @@ pub mod FranchiseAgreementErrors {
     pub const RevenueMismatch: felt252 = 'Revenue mismatch';
     pub const InvalidRevenueAmount: felt252 = 'Invalid revenue amount';
     pub const InvalidRoyaltyAmount: felt252 = 'Invalid royalty amount';
+    pub const FranchiseIpNotLinked: felt252 = 'Franchise IP not linked';
+    pub const FranchiseAgreementNotActive: felt252 = 'Franchise Agreement no active';
+    pub const MaxMissedPaymentsNotReached: felt252 = 'Max missed payments not reached';
+    pub const MissedPaymentsExceedsMax: felt252 = 'Missed payments exceed max';
 }
 
 pub mod FranchiseTermsErrors {
