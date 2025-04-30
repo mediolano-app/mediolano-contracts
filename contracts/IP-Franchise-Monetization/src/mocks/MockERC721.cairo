@@ -1,17 +1,17 @@
 use starknet::ContractAddress;
 
 #[starknet::interface]
-pub trait IMediolano<TContractState> {
+pub trait IERC721Mint<TContractState> {
     fn mint(ref self: TContractState, recipient: ContractAddress, token_id: u256);
 }
 
 
 #[starknet::contract]
-mod Mediolano {
+mod MockERC721 {
     use starknet::ContractAddress;
-    use openzeppelin::introspection::src5::SRC5Component;
-    use openzeppelin::token::erc721::{ERC721Component, ERC721HooksEmptyImpl};
-
+    use openzeppelin_introspection::src5::SRC5Component;
+    use openzeppelin_token::erc721::{ERC721Component, ERC721HooksEmptyImpl};
+    use super::IERC721Mint;
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
 
@@ -43,7 +43,7 @@ mod Mediolano {
     impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
 
     #[abi(embed_v0)]
-    impl MediolanoImpl of super::IMediolano<ContractState> {
+    impl ImplERC721Mint of IERC721Mint<ContractState> {
         fn mint(ref self: ContractState, recipient: ContractAddress, token_id: u256) {
             self.erc721.mint(recipient, token_id);
         }

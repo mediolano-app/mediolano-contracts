@@ -164,3 +164,17 @@ pub struct FranchiseLicenseReinstated {
     pub timestamp: u64,
 }
 
+
+#[derive(Drop, starknet::Event)]
+pub struct NewTerritoryAdded {
+    pub territory_id: u256,
+    pub name: ByteArray,
+    pub timestamp: u64,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct TerritoryDeactivated {
+    pub territory_id: u256,
+    pub timestamp: u64,
+}
+

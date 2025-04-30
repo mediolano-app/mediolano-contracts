@@ -12,10 +12,11 @@ pub mod IPFranchisingAgreement {
     use core::array::{ArrayTrait, Array};
     use core::felt252;
     use core::option::{Option, OptionTrait};
-    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use openzeppelin::access::accesscontrol::{AccessControlComponent, DEFAULT_ADMIN_ROLE};
-    use openzeppelin::access::accesscontrol::AccessControlComponent::InternalTrait;
-    use openzeppelin::introspection::src5::SRC5Component;
+    use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use openzeppelin_access::ownable::OwnableComponent;
+    use openzeppelin_access::accesscontrol::{AccessControlComponent, DEFAULT_ADMIN_ROLE};
+    use openzeppelin_access::accesscontrol::AccessControlComponent::InternalTrait;
+    use openzeppelin_introspection::src5::SRC5Component;
 
     use super::{FRANCHISEE_ROLE, APPROVED_BUYER_ROLE};
     use core::starknet::storage::{
@@ -24,6 +25,7 @@ pub mod IPFranchisingAgreement {
     use starknet::event::EventEmitter;
     use super::types::{
         FranchiseTerms, RoyaltyPayment, FranchiseSaleRequest, PaymentModel, FranchiseSaleStatus,
+        ExclusivityType,
     };
     use super::events::{
         FranchiseAgreementActivated, SaleRequestInitiated, SaleRequestApproved, SaleRequestRejected,
@@ -40,14 +42,32 @@ pub mod IPFranchisingAgreement {
     //                             COMPONENTS
     // *************************************************************************
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
+    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
 
+    // External
     #[abi(embed_v0)]
-    impl AccessControlMixinImpl =
-        AccessControlComponent::AccessControlMixinImpl<ContractState>;
+    impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
+
+    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
+
+    #[abi(embed_v0)]
+    impl SRC5Impl = SRC5Component::SRC5Impl<ContractState>;
+
+
+    #[abi(embed_v0)]
+    impl AccessControlImpl =
+        AccessControlComponent::AccessControlImpl<ContractState>;
+    impl AccessControlInternalImpl = AccessControlComponent::InternalImpl<ContractState>;
 
     #[storage]
     struct Storage {
+        #[substorage(v0)]
+        ownable: OwnableComponent::Storage,
+        #[substorage(v0)]
+        src5: SRC5Component::Storage,
+        #[substorage(v0)]
+        accesscontrol: AccessControlComponent::Storage,
         agreement_id: u256,
         franchise_manager: ContractAddress,
         franchisee: ContractAddress,
@@ -57,11 +77,6 @@ pub mod IPFranchisingAgreement {
         royalty_payments: Map<u32, RoyaltyPayment>,
         is_active: bool,
         is_revoked: bool,
-        is_defaulted: bool,
-        #[substorage(v0)]
-        accesscontrol: AccessControlComponent::Storage,
-        #[substorage(v0)]
-        src5: SRC5Component::Storage,
     }
 
     // *************************************************************************
@@ -71,9 +86,11 @@ pub mod IPFranchisingAgreement {
     #[derive(Drop, starknet::Event)]
     enum Event {
         #[flat]
-        AccessControlEvent: AccessControlComponent::Event,
-        #[flat]
         SRC5Event: SRC5Component::Event,
+        #[flat]
+        OwnableEvent: OwnableComponent::Event,
+        #[flat]
+        AccessControlEvent: AccessControlComponent::Event,
         FranchiseAgreementActivated: FranchiseAgreementActivated,
         SaleRequestInitiated: SaleRequestInitiated,
         SaleRequestApproved: SaleRequestApproved,
@@ -93,12 +110,30 @@ pub mod IPFranchisingAgreement {
         agreement_id: u256,
         franchise_manager: ContractAddress,
         franchisee: ContractAddress,
-        franchise_terms: FranchiseTerms,
+        payment_model: PaymentModel,
+        payment_token: ContractAddress,
+        franchise_fee: u256,
+        license_start: u64,
+        license_end: u64,
+        exclusivity: ExclusivityType,
+        territory_id: u256,
     ) {
-        self.accesscontrol.initializer();
+        self.ownable.initializer(franchise_manager);
 
-        self.accesscontrol.grant_role(DEFAULT_ADMIN_ROLE, franchise_manager);
-        self.accesscontrol.grant_role(FRANCHISEE_ROLE, franchisee);
+        self.accesscontrol.initializer();
+        self.accesscontrol._grant_role(DEFAULT_ADMIN_ROLE, franchise_manager);
+        self.accesscontrol._grant_role(FRANCHISEE_ROLE, franchisee);
+
+        // construct franchise terms
+        let franchise_terms = FranchiseTerms {
+            payment_model,
+            payment_token,
+            franchise_fee,
+            license_start,
+            license_end,
+            exclusivity,
+            territory_id,
+        };
 
         self.agreement_id.write(agreement_id);
         self.franchise_manager.write(franchise_manager);
@@ -106,7 +141,6 @@ pub mod IPFranchisingAgreement {
         self.franchisee.write(franchisee);
         self.is_revoked.write(false);
         self.is_active.write(false);
-        self.is_defaulted.write(false);
     }
 
     // *************************************************************************
@@ -196,7 +230,7 @@ pub mod IPFranchisingAgreement {
 
             sale_request.status = FranchiseSaleStatus::Approved;
 
-            self.accesscontrol._grant_role(APPROVED_BUYER_ROLE, sale_request.to);
+            self.accesscontrol.grant_role(APPROVED_BUYER_ROLE, sale_request.to);
 
             self.sale_request.write(Option::Some(sale_request));
 
@@ -478,10 +512,6 @@ pub mod IPFranchisingAgreement {
 
         fn is_revoked(self: @ContractState) -> bool {
             self.is_revoked.read()
-        }
-
-        fn is_defaulted(self: @ContractState) -> bool {
-            self.is_defaulted.read()
         }
     }
 }

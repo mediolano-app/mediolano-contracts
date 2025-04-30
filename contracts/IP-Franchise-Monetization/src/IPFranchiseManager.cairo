@@ -14,10 +14,10 @@ pub mod IPFranchiseManager {
     use core::array::ArrayTrait;
     use core::felt252;
 
-    use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
-    use openzeppelin::upgrades::UpgradeableComponent;
-    use openzeppelin::access::ownable::OwnableComponent;
-    use openzeppelin::introspection::src5::SRC5Component;
+    use openzeppelin_token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
+    use openzeppelin_upgrades::UpgradeableComponent;
+    use openzeppelin_access::ownable::OwnableComponent;
+    use openzeppelin_introspection::src5::SRC5Component;
 
     use core::starknet::storage::{
         StoragePointerReadAccess, StoragePointerWriteAccess, Map, StoragePathEntry,
@@ -34,7 +34,7 @@ pub mod IPFranchiseManager {
         FranchiseApplicationRevised, FranchiseApplicationCanceled, FranchiseApplicationRejected,
         FranchiseApplicationApproved, FranchiseSaleInitiated, FranchiseSaleApproved,
         FranchiseSaleRejected, FranchiseAgreementReinstated, FranchiseAgreementRevoked,
-        ApplicationRevisionAccepted,
+        ApplicationRevisionAccepted, TerritoryDeactivated, NewTerritoryAdded,
     };
     use super::interfaces::{
         IIPFranchiseManager, FranchiseTermsTrait, IIPFranchiseAgreementDispatcher,
@@ -70,6 +70,7 @@ pub mod IPFranchiseManager {
         ip_nft_address: ContractAddress,
         // Territory ID to Territory mapping
         territories: Map<u256, Territory>,
+        territories_count: u256,
         // Class hash of the IP Licensing Agreement contract
         franchise_agreement_class_hash: ClassHash,
         // Mapping from agreement ID to agreement contract address
@@ -94,10 +95,8 @@ pub mod IPFranchiseManager {
         franchisee_application_count: Map<ContractAddress, u256>,
         // Mapping from Agreement Id to sale status
         franchise_sale_requested: Map<u256, bool>,
-        // Mapping from Agreement ID to sales Ids
-        franchise_sale_agreement_ids: Map<u256, u256>,
         // Counts of agreements listed for sale
-        franchise_sale_count: u256,
+        franchise_sale_requests_count: u256,
         // Preferred payment Models:
         preferred_payment_model: PaymentModel,
         // Default franchise fee
@@ -132,6 +131,8 @@ pub mod IPFranchiseManager {
         FranchiseAgreementReinstated: FranchiseAgreementReinstated,
         FranchiseAgreementRevoked: FranchiseAgreementRevoked,
         ApplicationRevisionAccepted: ApplicationRevisionAccepted,
+        TerritoryDeactivated: TerritoryDeactivated,
+        NewTerritoryAdded: NewTerritoryAdded,
     }
 
     // *************************************************************************
@@ -140,14 +141,14 @@ pub mod IPFranchiseManager {
     #[constructor]
     fn constructor(
         ref self: ContractState,
-        admin: ContractAddress,
+        owner: ContractAddress,
         ip_id: u256,
         ip_nft_address: ContractAddress,
         agreement_class_hash: ClassHash,
         default_franchise_fee: u256,
         preferred_payment_model: PaymentModel,
     ) {
-        self.ownable.initializer(admin);
+        self.ownable.initializer(owner);
         self.ip_nft_id.write(ip_id);
         self.ip_nft_address.write(ip_nft_address);
         self.franchise_agreement_class_hash.write(agreement_class_hash);
@@ -168,7 +169,7 @@ pub mod IPFranchiseManager {
             self.ownable.assert_only_owner();
             let caller = get_caller_address();
 
-            assert(!self.ip_asset_linked.read(), 'nft already linked');
+            assert(!self.ip_asset_linked.read(), Errors::IpAssetAlreadyLinked);
 
             let token_id = self.ip_nft_id.read();
             let ip_nft_address = self.ip_nft_address.read();
@@ -176,16 +177,15 @@ pub mod IPFranchiseManager {
             let erc721_dispatcher = IERC721Dispatcher { contract_address: ip_nft_address };
 
             // check whether asset is caller asset
-            assert(erc721_dispatcher.owner_of(token_id) == caller, Errors::NOT_OWNER);
+            assert(erc721_dispatcher.owner_of(token_id) == caller, Errors::NotOwner);
 
             // check whether contract has approval to move asset
             assert(
                 erc721_dispatcher.is_approved_for_all(caller, get_contract_address()),
-                Errors::NOT_APPROVED,
+                Errors::NotApproved,
             );
 
-            erc721_dispatcher
-                .safe_transfer_from(caller, get_contract_address(), token_id, array![].span());
+            erc721_dispatcher.transfer_from(caller, get_contract_address(), token_id);
 
             self.ip_asset_linked.write(true);
 
@@ -226,9 +226,9 @@ pub mod IPFranchiseManager {
             let erc721_dispatcher = IERC721Dispatcher { contract_address: ip_nft_address };
 
             // check whether asset is caller asset
-            assert(erc721_dispatcher.owner_of(token_id) == this_contract, Errors::NOT_OWNER);
+            assert(erc721_dispatcher.owner_of(token_id) == this_contract, Errors::NotOwner);
 
-            erc721_dispatcher.safe_transfer_from(this_contract, caller, token_id, array![].span());
+            erc721_dispatcher.transfer_from(this_contract, caller, token_id);
 
             self.ip_asset_linked.write(false);
 
@@ -244,14 +244,41 @@ pub mod IPFranchiseManager {
                 );
         }
 
+        fn add_franchise_territory(ref self: ContractState, name: ByteArray) {
+            self.ownable.assert_only_owner();
+
+            let territory_id = self.territories_count.read();
+            let territory = Territory {
+                id: 0, name: name.clone(), exclusive_to_agreement: Option::None, active: true,
+            };
+
+            self.territories.entry(territory_id).write(territory);
+
+            self.territories_count.write(territory_id + 1);
+
+            // Emit an event for the new territory added
+            self.emit(NewTerritoryAdded { territory_id, name, timestamp: get_block_timestamp() });
+        }
+
+        fn deactivate_franchise_territory(ref self: ContractState, territory_id: u256) {
+            self.ownable.assert_only_owner();
+
+            let mut territory = self.territories.entry(territory_id).read();
+
+            territory.active = false;
+
+            self.territories.entry(territory_id).write(territory);
+
+            // Emit an event for the territory deactivated
+            self.emit(TerritoryDeactivated { territory_id, timestamp: get_block_timestamp() });
+        }
 
         // Create a direct Franchise Agreement
         fn create_direct_franchise_agreement(
             ref self: ContractState, franchisee: ContractAddress, franchise_terms: FranchiseTerms,
         ) {
             self.ownable.assert_only_owner();
-
-            assert(self.ip_asset_linked.read(), Errors::IP_ASSET_NOT_LINKED);
+            assert(self.ip_asset_linked.read(), Errors::IpAssetNotLinked);
 
             let block_timestamp = get_block_timestamp();
 
@@ -278,7 +305,7 @@ pub mod IPFranchiseManager {
         ) {
             self.ownable.assert_only_owner();
 
-            assert(self.ip_asset_linked.read(), Errors::IP_ASSET_NOT_LINKED);
+            assert(self.ip_asset_linked.read(), Errors::IpAssetNotLinked);
 
             let application_version = self
                 .francise_application_version
@@ -312,7 +339,7 @@ pub mod IPFranchiseManager {
 
         // Apply for a Franchise Agreement
         fn apply_for_franchise(ref self: ContractState, franchise_terms: FranchiseTerms) {
-            assert(self.ip_asset_linked.read(), Errors::IP_ASSET_NOT_LINKED);
+            assert(self.ip_asset_linked.read(), Errors::IpAssetNotLinked);
 
             let caller = get_caller_address();
 
@@ -322,11 +349,9 @@ pub mod IPFranchiseManager {
 
             let territory_info = self.get_territory_info(franchise_terms.territory_id);
 
-            if (territory_info.exclusivity == ExclusivityType::Exclusive) {
-                assert(
-                    territory_info.exclusive_to_agreement.is_none(), Errors::TerritoryAlreadyLinked,
-                );
-            }
+            // Check territory information
+            assert(territory_info.exclusive_to_agreement.is_none(), Errors::TerritoryAlreadyLinked);
+            assert(territory_info.active, Errors::TerritoryNotActive);
 
             let application_id = self.franchise_applications_count.read();
 
@@ -403,13 +428,13 @@ pub mod IPFranchiseManager {
 
             let territory_info = self.get_territory_info(new_terms.territory_id);
 
-            if (territory_info.exclusivity == ExclusivityType::Exclusive) {
-                assert(
-                    territory_info.exclusive_to_agreement.is_none(), Errors::TerritoryAlreadyLinked,
-                );
-            }
+            // Check territory information
+            assert(territory_info.exclusive_to_agreement.is_none(), Errors::TerritoryAlreadyLinked);
+            assert(territory_info.active, Errors::TerritoryNotActive);
+
             application.current_terms = new_terms;
             application.last_proposed_by = caller;
+            application.status = ApplicationStatus::Revised;
 
             // Update the application version
             let new_application_version = application_version + 1;
@@ -577,11 +602,9 @@ pub mod IPFranchiseManager {
 
             self.franchise_sale_requested.entry(agreement_id).write(true);
 
-            let sale_id = self.get_total_franchise_sales();
+            let sale_id = self.get_total_franchise_sale_requests();
 
-            self.franchise_sale_agreement_ids.entry(sale_id).write(agreement_id);
-
-            self.franchise_sale_count.write(sale_id + 1);
+            self.franchise_sale_requests_count.write(sale_id + 1);
 
             self
                 .emit(
@@ -594,6 +617,10 @@ pub mod IPFranchiseManager {
         // Approve Franchise Sale
         fn approve_franchise_sale(ref self: ContractState, agreement_id: u256) {
             self.ownable.assert_only_owner();
+
+            assert(
+                self.is_franchise_sale_requested(agreement_id), Errors::FranchiseAgreementNotListed,
+            );
 
             let agreement_address = self.get_franchise_agreement_address(agreement_id);
 
@@ -617,6 +644,10 @@ pub mod IPFranchiseManager {
         // Reject Franchise Sale
         fn reject_franchise_sale(ref self: ContractState, agreement_id: u256) {
             self.ownable.assert_only_owner();
+
+            assert(
+                self.is_franchise_sale_requested(agreement_id), Errors::FranchiseAgreementNotListed,
+            );
 
             let agreement_address = self.get_franchise_agreement_address(agreement_id);
 
@@ -696,6 +727,10 @@ pub mod IPFranchiseManager {
         // Get Territory Information
         fn get_territory_info(self: @ContractState, territory_id: u256) -> Territory {
             self.territories.entry(territory_id).read()
+        }
+
+        fn get_total_territories(self: @ContractState) -> u256 {
+            self.territories_count.read()
         }
 
         // Get Franchise Agreement Address by ID
@@ -782,14 +817,9 @@ pub mod IPFranchiseManager {
             self.franchise_sale_requested.entry(agreement_id).read()
         }
 
-        /// Get the Agreement ID associated with a given Sale ID
-        fn get_franchise_sale_agreement_id(self: @ContractState, sale_id: u256) -> u256 {
-            self.franchise_sale_agreement_ids.entry(sale_id).read()
-        }
-
         /// Get the total number of franchise sales listed
-        fn get_total_franchise_sales(self: @ContractState) -> u256 {
-            self.franchise_sale_count.read()
+        fn get_total_franchise_sale_requests(self: @ContractState) -> u256 {
+            self.franchise_sale_requests_count.read()
         }
 
         // UPGRADE
@@ -806,25 +836,36 @@ pub mod IPFranchiseManager {
         ) -> (u256, ContractAddress) {
             self.ownable.assert_only_owner();
 
-            assert(self.ip_asset_linked.read(), Errors::IP_ASSET_NOT_LINKED);
+            assert(self.ip_asset_linked.read(), Errors::IpAssetNotLinked);
 
             let territory_info = self.get_territory_info(franchise_terms.territory_id);
 
-            if (territory_info.exclusivity == ExclusivityType::Exclusive) {
-                assert(
-                    territory_info.exclusive_to_agreement.is_none(), Errors::TerritoryAlreadyLinked,
-                );
-            }
+            // Check territory information
+            assert(territory_info.exclusive_to_agreement.is_none(), Errors::TerritoryAlreadyLinked);
+            assert(territory_info.active, Errors::TerritoryNotActive);
+
+            let territory_id = franchise_terms.territory_id.clone();
+            let exclusivity = franchise_terms.exclusivity.clone();
 
             let agreement_id = self.franchise_agreement_count.read();
-            let mut constructor_calldata = ArrayTrait::<felt252>::new();
-            constructor_calldata.append(agreement_id.try_into().unwrap());
-            let franchise_manager: felt252 = get_contract_address().into();
-            constructor_calldata.append(franchise_manager);
-            let franchisee_felt: felt252 = franchisee.into();
-            constructor_calldata.append(franchisee_felt);
-            let franchise_terms: Array<felt252> = franchise_terms.into();
-            constructor_calldata.append_span(franchise_terms.span());
+
+            let mut constructor_calldata: Array::<felt252> = array![];
+
+            let franchise_manager = get_contract_address();
+
+            (
+                agreement_id,
+                franchise_manager,
+                franchisee,
+                franchise_terms.payment_model,
+                franchise_terms.payment_token,
+                franchise_terms.franchise_fee,
+                franchise_terms.license_start,
+                franchise_terms.license_end,
+                franchise_terms.exclusivity,
+                franchise_terms.territory_id,
+            )
+                .serialize(ref constructor_calldata);
 
             let (agreement_address, _) = deploy_syscall(
                 self.franchise_agreement_class_hash.read(), 0, constructor_calldata.span(), false,
@@ -851,6 +892,14 @@ pub mod IPFranchiseManager {
                 .write(agreement_id);
 
             self.franchisee_agreement_count.entry(franchisee).write(franchisee_agreement_count + 1);
+
+            // Add territory information
+
+            if exclusivity == ExclusivityType::Exclusive {
+                let mut territory = self.territories.entry(territory_id).read();
+                territory.exclusive_to_agreement = Option::Some(agreement_id.clone());
+                self.territories.entry(territory_id).write(territory);
+            }
 
             (agreement_id, agreement_address)
         }

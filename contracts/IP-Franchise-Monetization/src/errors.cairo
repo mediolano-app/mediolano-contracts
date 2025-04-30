@@ -1,15 +1,15 @@
 pub mod Errors {
-    pub const INVALID_IP_ASSET: felt252 = 'invalid ip asset';
-    pub const NOT_OWNER: felt252 = 'Caller not asset owner';
-    pub const NOT_APPROVED: felt252 = 'ip asset not approved by owner';
-    pub const IP_ASSET_NOT_LINKED: felt252 = 'ip asset not linked';
-    pub const IP_ASSET_ALREADY_LINKED: felt252 = 'ip asset already linked';
-    pub const INVALID_IP_ID: felt252 = 'invalid ip id';
-    pub const INVALID_IP_NFT_ID: felt252 = 'invalid ip nft id';
-    pub const INVALID_IP_NFT_ADDRESS: felt252 = 'invalid ip nft address';
+    pub const InvalidIpAsset: felt252 = 'invalid ip asset';
+    pub const NotOwner: felt252 = 'Caller not asset owner';
+    pub const NotApproved: felt252 = 'ip asset not approved by owner';
+    pub const IpAssetNotLinked: felt252 = 'ip asset not linked';
+    pub const IpAssetAlreadyLinked: felt252 = 'ip asset already linked';
+    pub const InvalidIpId: felt252 = 'invalid ip id';
+    pub const InvalidIpNftId: felt252 = 'invalid ip nft id';
+    pub const InvalidIpNftAddress: felt252 = 'invalid ip nft address';
 
-    pub const INVALID_TERRITORY_ID: felt252 = 'invalid territory id';
-    pub const ROYALTY_FEES_NOT_ALLOWED: felt252 = 'royalty fees not allowed';
+    pub const invalidTerritoryId: felt252 = 'invalid territory id';
+    pub const royaltyFeesNotAllowed: felt252 = 'royalty fees not allowed';
     pub const TerritoryAlreadyLinked: felt252 = 'territory already linked';
     pub const ApplicationNotApproved: felt252 = 'application not approved';
     pub const NotApplicationOwner: felt252 = 'Caller not application owner';
@@ -17,6 +17,8 @@ pub mod Errors {
     pub const NotAuthorized: felt252 = 'Caller not authorized';
     pub const InvalidApplicationStatus: felt252 = 'invalid application status';
     pub const AgreementLicenseNotOver: felt252 = 'agreement license not over';
+    pub const TerritoryNotActive: felt252 = 'Territory inactive';
+    pub const FranchiseAgreementNotListed: felt252 = 'Franchise not listed for sale';
 }
 
 pub mod FranchiseAgreementErrors {
@@ -49,4 +51,6 @@ pub mod FranchiseTermsErrors {
     pub const CustomInvervalBelowMinimum: felt252 = 'Custom interval below minimum';
     pub const InvalidTokenAddress: felt252 = 'Invalid token address';
     pub const InvalidPaymentInterval: felt252 = 'Invalid payment interval';
+    pub const MaxMissedPaymentsRequired: felt252 = 'Max missed payments required';
+    pub const LastPaymentIdMustBeZero: felt252 = 'Last payment id must be zero';
 }

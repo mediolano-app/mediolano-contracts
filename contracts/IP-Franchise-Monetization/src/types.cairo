@@ -1,6 +1,4 @@
 use core::starknet::{contract_address_const, ContractAddress};
-use core::array::{ArrayTrait, Array};
-use core::iter::{Iterator, IntoIterator};
 use core::option::{Option, OptionTrait};
 use core::felt252;
 use core::traits::Into;
@@ -13,9 +11,9 @@ use super::errors::FranchiseTermsErrors;
 #[derive(Debug, Drop, Serde, starknet::Store, PartialEq)]
 pub struct Territory {
     pub id: felt252,
-    pub name: felt252, // human-readable label
-    pub exclusivity: ExclusivityType,
+    pub name: ByteArray, // human-readable label
     pub exclusive_to_agreement: Option<u256>,
+    pub active: bool,
 }
 
 #[derive(Drop, Serde, starknet::Store)]
@@ -44,7 +42,7 @@ pub struct RoyaltyPayment {
     pub timestamp: u64,
 }
 
-#[derive(Drop, Serde, starknet::Store, Clone)]
+#[derive(Drop, Serde, starknet::Store, Clone, PartialEq)]
 pub struct RoyaltyFees {
     pub royalty_percent: u8,
     pub payment_schedule: PaymentSchedule,
@@ -132,7 +130,7 @@ impl RoyaltyFeesTraitImpl of RoyaltyFeesTrait<RoyaltyFees> {
     }
 }
 
-#[derive(Drop, Serde, starknet::Store)]
+#[derive(Drop, Serde, Clone, starknet::Store)]
 pub struct FranchiseTerms {
     pub payment_model: PaymentModel,
     pub payment_token: ContractAddress,
@@ -176,16 +174,26 @@ impl FranchiseTermsTraitImpl of FranchiseTermsTrait<FranchiseTerms> {
                 assert(royalty_percent > 0_u8, FranchiseTermsErrors::RoyaltyPercentRequired);
                 assert(royalty_percent <= 100_u8, FranchiseTermsErrors::RoyaltyPercentTooHigh);
 
+                assert(
+                    royalty_fees.max_missed_payments > @0_u32,
+                    FranchiseTermsErrors::MaxMissedPaymentsRequired,
+                );
+
+                assert(
+                    royalty_fees.last_payment_id == @0_u32,
+                    FranchiseTermsErrors::LastPaymentIdMustBeZero,
+                );
+
                 let payment_schedule = royalty_fees.payment_schedule;
                 if payment_schedule == @PaymentSchedule::Custom {
                     let custom_interval = royalty_fees.custom_interval;
                     assert(custom_interval.is_some(), FranchiseTermsErrors::CustomIntervalRequired);
                     // min custom interval is daily payments
                     let min_custom_interval = 24 * 60 * 60;
-                    let amunt = *custom_interval;
-                    let unew = amunt.unwrap();
+                    let amount = *custom_interval;
+                    let amount = amount.unwrap();
                     assert(
-                        unew >= min_custom_interval,
+                        amount >= min_custom_interval,
                         FranchiseTermsErrors::CustomInvervalBelowMinimum,
                     );
                 }
@@ -208,192 +216,35 @@ impl FranchiseTermsTraitImpl of FranchiseTermsTrait<FranchiseTerms> {
     }
 }
 
-impl FranchiseTermsIntoFelt252 of Into<FranchiseTerms, Array<felt252>> {
-    fn into(self: FranchiseTerms) -> Array<felt252> {
-        let mut serialized: Array<felt252> = ArrayTrait::new();
-        let payment_model_felt: Array<felt252> = self.payment_model.into();
-        serialized.append_span(payment_model_felt.span());
-        serialized.append(self.payment_token.into());
-        serialized.append(self.franchise_fee.try_into().unwrap());
-        serialized.append(self.license_start.into());
-        serialized.append(self.license_end.into());
-        serialized.append(self.exclusivity.into());
-        serialized.append(self.territory_id.try_into().unwrap());
-
-        serialized
-    }
-}
-
-impl Felt252ArrayTryIntoFranchiseTerms of TryInto<Array<felt252>, FranchiseTerms> {
-    fn try_into(self: Array<felt252>) -> Option<FranchiseTerms> {
-        let mut it = self.span().into_iter();
-        let variant_index = *it.next().unwrap();
-        let mut payment_model_data: Array<felt252> = ArrayTrait::new();
-
-        match variant_index {
-            0 => {
-                payment_model_data.append(variant_index);
-                payment_model_data.append(*it.next().unwrap());
-                payment_model_data.append(*it.next().unwrap());
-            },
-            1 => {
-                payment_model_data.append(variant_index);
-                payment_model_data.append(*it.next().unwrap());
-                payment_model_data.append(*it.next().unwrap());
-                let has_custom = *it.next().unwrap();
-                payment_model_data.append(has_custom);
-                if has_custom == 1 {
-                    payment_model_data.append(*it.next().unwrap());
-                }
-                payment_model_data.append(*it.next().unwrap());
-            },
-            _ => { return Option::None; },
-        }
-
-        let payment_model: PaymentModel = payment_model_data.try_into()?;
-
-        let payment_token: felt252 = *it.next().unwrap();
-
-        let low = *it.next().unwrap();
-        let high = *it.next().unwrap();
-        let franchise_fee = u256 { low: low.try_into().unwrap(), high: high.try_into().unwrap() };
-
-        let license_start = *it.next().unwrap();
-        let license_end = *it.next().unwrap();
-
-        let exclusivity_felt = *it.next().unwrap();
-        let exclusivity = exclusivity_felt.try_into()?;
-
-        let territory_low = *it.next().unwrap();
-        let territory_high = *it.next().unwrap();
-        let territory_id = u256 {
-            low: territory_low.try_into().unwrap(), high: territory_high.try_into().unwrap(),
-        };
-
-        Option::Some(
-            FranchiseTerms {
-                payment_model,
-                payment_token: payment_token.try_into().unwrap(),
-                franchise_fee,
-                license_start: license_start.try_into().unwrap(),
-                license_end: license_end.try_into().unwrap(),
-                exclusivity,
-                territory_id,
-            },
-        )
-    }
-}
-
-
-#[derive(Drop, Serde, starknet::Store, Clone)]
+#[derive(Drop, Serde, starknet::Store, Clone, PartialEq)]
 pub enum PaymentModel {
     #[default]
     OneTime: u256,
     RoyaltyBased: RoyaltyFees,
 }
 
-impl PaymentModelIntoFelt252 of Into<PaymentModel, Array<felt252>> {
-    fn into(self: PaymentModel) -> Array<felt252> {
-        match self {
-            PaymentModel::OneTime(one_time_fee) => {
-                let mut serialized: Array<felt252> = ArrayTrait::new();
-                serialized.append(0); // OneTime
-                serialized.append(one_time_fee.try_into().unwrap());
-                serialized
-            },
-            PaymentModel::RoyaltyBased(royalty_fee) => {
-                let mut serialized: Array<felt252> = ArrayTrait::new();
-                serialized.append(1); // RoyaltyBased
-                serialized.append(royalty_fee.royalty_percent.into());
-                serialized.append(royalty_fee.payment_schedule.into());
-                match royalty_fee.custom_interval {
-                    Option::Some(custom) => {
-                        serialized.append(1);
-                        serialized.append(custom.into());
-                    },
-                    Option::None => { serialized.append(0); },
-                }
-                serialized.append(royalty_fee.last_payment_id.into());
-                serialized.append(royalty_fee.max_missed_payments.into());
-                serialized
-            },
-        }
-    }
-}
 
-impl Felt252ArrayTryIntoPaymentModel of TryInto<Array<felt252>, PaymentModel> {
-    fn try_into(self: Array<felt252>) -> Option<PaymentModel> {
-        let mut it = self.span().into_iter();
-
-        let variant_index = *it.next().unwrap(); // 0 = OneTime, 1 = RoyaltyBased
-
-        match variant_index {
-            0 => {
-                let low: felt252 = *it.next().unwrap();
-                let high: felt252 = *it.next().unwrap();
-                // Store the two u128 parts separately
-                let one_time_fee: u256 = u256 {
-                    low: low.try_into().unwrap(), high: high.try_into().unwrap(),
-                };
-                Option::Some(PaymentModel::OneTime(one_time_fee))
-            },
-            1 => {
-                let royalty_percent: felt252 = *it.next().unwrap();
-                let payment_schedule_felt: felt252 = *it.next().unwrap();
-                let payment_schedule: PaymentSchedule = payment_schedule_felt.try_into().unwrap();
-
-                let has_custom = *it.next().unwrap();
-                let custom_interval: Option<u64> = match has_custom {
-                    0 => Option::None,
-                    1 => {
-                        let custom_interval_felt: felt252 = *it.next().unwrap();
-                        let interval: u64 = custom_interval_felt.try_into().unwrap();
-                        Option::Some(interval)
-                    },
-                    _ => Option::None,
-                };
-
-                let last_payment_id: felt252 = *it.next().unwrap();
-
-                let max_missed_payments: felt252 = *it.next().unwrap();
-
-                let royalty_fees = RoyaltyFees {
-                    royalty_percent: royalty_percent.try_into().unwrap(),
-                    payment_schedule,
-                    custom_interval,
-                    last_payment_id: last_payment_id.try_into().unwrap(),
-                    max_missed_payments: max_missed_payments.try_into().unwrap(),
-                };
-
-                Option::Some(PaymentModel::RoyaltyBased(royalty_fees))
-            },
-            _ => Option::None,
-        }
-    }
-}
-
-
-#[derive(Debug, Drop, Serde, starknet::Store, PartialEq)]
+#[derive(Debug, Drop, Serde, starknet::Store, Clone, PartialEq)]
 pub enum ExclusivityType {
-    #[default]
     Exclusive,
+    #[default]
     NonExclusive,
 }
 
 impl ExclusivityTypeIntoFelt252 of Into<ExclusivityType, felt252> {
     fn into(self: ExclusivityType) -> felt252 {
         match self {
-            ExclusivityType::Exclusive => 0,
-            ExclusivityType::NonExclusive => 1,
+            ExclusivityType::Exclusive => 'EXCLUSIVE',
+            ExclusivityType::NonExclusive => 'NONEXCLUSIVE',
         }
     }
 }
 
 impl Felt252TryIntoExclusivityType of TryInto<felt252, ExclusivityType> {
     fn try_into(self: felt252) -> Option<ExclusivityType> {
-        if self == 0 {
+        if self == 'EXCLUSIVE' {
             Option::Some(ExclusivityType::Exclusive)
-        } else if self == 1 {
+        } else if self == 'NONEXCLUSIVE' {
             Option::Some(ExclusivityType::NonExclusive)
         } else {
             Option::None
@@ -414,26 +265,26 @@ pub enum PaymentSchedule {
 impl PaymentScheduleIntoFelt252 of Into<PaymentSchedule, felt252> {
     fn into(self: PaymentSchedule) -> felt252 {
         match self {
-            PaymentSchedule::Monthly => 0,
-            PaymentSchedule::Quarterly => 1,
-            PaymentSchedule::SemiAnnually => 2,
-            PaymentSchedule::Annually => 3,
-            PaymentSchedule::Custom => 4,
+            PaymentSchedule::Monthly => 'MONTHLY',
+            PaymentSchedule::Quarterly => 'QUARTERLY',
+            PaymentSchedule::SemiAnnually => 'SEMIANNUALLY',
+            PaymentSchedule::Annually => 'ANNUALLY',
+            PaymentSchedule::Custom => 'CUSTOM',
         }
     }
 }
 
 impl Felt252TryIntoPaymentSchedule of TryInto<felt252, PaymentSchedule> {
     fn try_into(self: felt252) -> Option<PaymentSchedule> {
-        if self == 0 {
+        if self == 'MONTHLY' {
             Option::Some(PaymentSchedule::Monthly)
-        } else if self == 1 {
+        } else if self == 'QUARTERLY' {
             Option::Some(PaymentSchedule::Quarterly)
-        } else if self == 2 {
+        } else if self == 'SEMIANNUALLY' {
             Option::Some(PaymentSchedule::SemiAnnually)
-        } else if self == 3 {
+        } else if self == 'ANNYALLY' {
             Option::Some(PaymentSchedule::Annually)
-        } else if self == 4 {
+        } else if self == 'CUSTOM' {
             Option::Some(PaymentSchedule::Custom)
         } else {
             Option::None

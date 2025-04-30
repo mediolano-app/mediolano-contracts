@@ -9,6 +9,10 @@ use starknet::ClassHash;
 pub trait IIPFranchiseManager<TContractState> {
     fn link_ip_asset(ref self: TContractState);
     fn unlink_ip_asset(ref self: TContractState);
+
+    fn add_franchise_territory(ref self: TContractState, name: ByteArray);
+    fn deactivate_franchise_territory(ref self: TContractState, territory_id: u256);
+
     fn create_direct_franchise_agreement(
         ref self: TContractState, franchisee: ContractAddress, franchise_terms: FranchiseTerms,
     );
@@ -40,6 +44,7 @@ pub trait IIPFranchiseManager<TContractState> {
     // ───────────── Territory Info
     // ─────────────
     fn get_territory_info(self: @TContractState, territory_id: u256) -> Territory;
+    fn get_total_territories(self: @TContractState) -> u256;
 
     // ───────────── Franchise Agreements
     // ─────────────
@@ -70,8 +75,7 @@ pub trait IIPFranchiseManager<TContractState> {
     // Franchise Sales
 
     fn is_franchise_sale_requested(self: @TContractState, agreement_id: u256) -> bool;
-    fn get_franchise_sale_agreement_id(self: @TContractState, sale_id: u256) -> u256;
-    fn get_total_franchise_sales(self: @TContractState) -> u256;
+    fn get_total_franchise_sale_requests(self: @TContractState) -> u256;
 
     // ───────────── Config / Defaults
     // ─────────────
@@ -114,7 +118,6 @@ pub trait IIPFranchiseAgreement<TContractState> {
     // ───────────── Status Flags ─────────────
     fn is_active(self: @TContractState) -> bool;
     fn is_revoked(self: @TContractState) -> bool;
-    fn is_defaulted(self: @TContractState) -> bool;
 }
 
 /// A trait to describe order capability.
