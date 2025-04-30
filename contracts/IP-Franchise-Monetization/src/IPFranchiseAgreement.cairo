@@ -3,34 +3,33 @@ use super::interfaces;
 use super::types;
 use super::events;
 
+pub const FRANCHISEE_ROLE: felt252 = selector!("FRANCHISER_ROLE");
+pub const APPROVED_BUYER_ROLE: felt252 = selector!("APPROVED_BUYER");
+
 #[starknet::contract]
 pub mod IPFranchisingAgreement {
     use starknet::{ContractAddress, get_caller_address, get_contract_address, get_block_timestamp};
-
     use core::array::{ArrayTrait, Array};
     use core::felt252;
     use core::option::{Option, OptionTrait};
     use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use openzeppelin::access::ownable::OwnableComponent;
-    use OwnableComponent::InternalTrait;
+    use openzeppelin::access::accesscontrol::{AccessControlComponent, DEFAULT_ADMIN_ROLE};
+    use openzeppelin::access::accesscontrol::AccessControlComponent::InternalTrait;
+    use openzeppelin::introspection::src5::SRC5Component;
 
-
+    use super::{FRANCHISEE_ROLE, APPROVED_BUYER_ROLE};
     use core::starknet::storage::{
         StoragePointerReadAccess, StoragePointerWriteAccess, Map, StoragePathEntry,
     };
-
     use starknet::event::EventEmitter;
-
     use super::types::{
         FranchiseTerms, RoyaltyPayment, FranchiseSaleRequest, PaymentModel, FranchiseSaleStatus,
     };
-
     use super::events::{
         FranchiseAgreementActivated, SaleRequestInitiated, SaleRequestApproved, SaleRequestRejected,
         SaleRequestFinalized, RoyaltyPaymentMade, FranchiseLicenseRevoked,
         FranchiseLicenseReinstated,
     };
-
     use super::interfaces::{
         IIPFranchiseAgreement, FranchiseTermsTrait, IIPFranchiseManagerDispatcher,
         IIPFranchiseManagerDispatcherTrait, RoyaltyFeesTrait,
@@ -40,12 +39,12 @@ pub mod IPFranchisingAgreement {
     // *************************************************************************
     //                             COMPONENTS
     // *************************************************************************
-    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+    component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
+    component!(path: SRC5Component, storage: src5, event: SRC5Event);
 
-    // Ownable Mixin
     #[abi(embed_v0)]
-    impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
-    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
+    impl AccessControlMixinImpl =
+        AccessControlComponent::AccessControlMixinImpl<ContractState>;
 
     #[storage]
     struct Storage {
@@ -60,7 +59,9 @@ pub mod IPFranchisingAgreement {
         is_revoked: bool,
         is_defaulted: bool,
         #[substorage(v0)]
-        ownable: OwnableComponent::Storage,
+        accesscontrol: AccessControlComponent::Storage,
+        #[substorage(v0)]
+        src5: SRC5Component::Storage,
     }
 
     // *************************************************************************
@@ -70,7 +71,9 @@ pub mod IPFranchisingAgreement {
     #[derive(Drop, starknet::Event)]
     enum Event {
         #[flat]
-        OwnableEvent: OwnableComponent::Event,
+        AccessControlEvent: AccessControlComponent::Event,
+        #[flat]
+        SRC5Event: SRC5Component::Event,
         FranchiseAgreementActivated: FranchiseAgreementActivated,
         SaleRequestInitiated: SaleRequestInitiated,
         SaleRequestApproved: SaleRequestApproved,
@@ -92,7 +95,11 @@ pub mod IPFranchisingAgreement {
         franchisee: ContractAddress,
         franchise_terms: FranchiseTerms,
     ) {
-        self.ownable.initializer(franchisee);
+        self.accesscontrol.initializer();
+
+        self.accesscontrol.grant_role(DEFAULT_ADMIN_ROLE, franchise_manager);
+        self.accesscontrol.grant_role(FRANCHISEE_ROLE, franchisee);
+
         self.agreement_id.write(agreement_id);
         self.franchise_manager.write(franchise_manager);
         self.franchise_terms.write(franchise_terms);
@@ -109,7 +116,8 @@ pub mod IPFranchisingAgreement {
     impl IIPFranchiseAgreementImpl of IIPFranchiseAgreement<ContractState> {
         // Pays the franchise fee to the franchise manager
         fn activate_franchise(ref self: ContractState) {
-            self.ownable.assert_only_owner();
+            self.accesscontrol.assert_only_role(FRANCHISEE_ROLE);
+
             let caller = get_caller_address();
 
             let manager_address = self.franchise_manager.read();
@@ -142,7 +150,7 @@ pub mod IPFranchisingAgreement {
         }
 
         fn create_sale_request(ref self: ContractState, to: ContractAddress, sale_price: u256) {
-            self.ownable.assert_only_owner();
+            self.accesscontrol.assert_only_role(FRANCHISEE_ROLE);
 
             let manager_address = self.franchise_manager.read();
 
@@ -175,12 +183,7 @@ pub mod IPFranchisingAgreement {
 
         fn approve_franchise_sale(ref self: ContractState) {
             // Call from Franchise manager
-            let caller = get_caller_address();
-
-            assert(
-                caller == self.franchise_manager.read(),
-                FranchiseAgreementErrors::NotFranchiseManager,
-            );
+            self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
 
             let sale_request = self.sale_request.read();
             assert(sale_request.is_some(), FranchiseAgreementErrors::SaleRequestNotFound);
@@ -193,6 +196,8 @@ pub mod IPFranchisingAgreement {
 
             sale_request.status = FranchiseSaleStatus::Approved;
 
+            self.accesscontrol._grant_role(APPROVED_BUYER_ROLE, sale_request.to);
+
             self.sale_request.write(Option::Some(sale_request));
 
             let agreement_id = self.get_agreement_id();
@@ -201,13 +206,7 @@ pub mod IPFranchisingAgreement {
         }
 
         fn reject_franchise_sale(ref self: ContractState) {
-            // Call from Franchise manager
-            let caller = get_caller_address();
-
-            assert(
-                caller == self.franchise_manager.read(),
-                FranchiseAgreementErrors::NotFranchiseManager,
-            );
+            self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
 
             let sale_request = self.sale_request.read();
             assert(sale_request.is_some(), FranchiseAgreementErrors::SaleRequestNotFound);
@@ -228,6 +227,8 @@ pub mod IPFranchisingAgreement {
         }
 
         fn finalize_franchise_sale(ref self: ContractState) {
+            self.accesscontrol.assert_only_role(APPROVED_BUYER_ROLE);
+
             let caller = get_caller_address();
 
             let maybe_sale_request = self.sale_request.read();
@@ -262,8 +263,11 @@ pub mod IPFranchisingAgreement {
             let seller_result = dispatcher.transfer_from(caller, current_franchisee, seller_amount);
             assert(seller_result, FranchiseAgreementErrors::Erc20TransferFailed);
 
-            // Transfer ownership of agreement to buyer
-            // TODO: hook into RoleManager or use ownable.transfer_ownership()
+            // Transfer access of agreement to buyer
+            self.accesscontrol._revoke_role(FRANCHISEE_ROLE, current_franchisee);
+            self.accesscontrol._revoke_role(APPROVED_BUYER_ROLE, franchise_buyer);
+            self.accesscontrol._grant_role(FRANCHISEE_ROLE, franchise_buyer);
+
             self.franchisee.write(franchise_buyer);
 
             // Update Sale Request
@@ -281,7 +285,6 @@ pub mod IPFranchisingAgreement {
         }
 
         fn make_royalty_payments(ref self: ContractState, reported_revenues: Array<u256>) {
-            self.ownable.assert_only_owner();
             let caller = get_caller_address();
 
             let mut franchise_terms = self.franchise_terms.read();
@@ -360,12 +363,7 @@ pub mod IPFranchisingAgreement {
         }
 
         fn revoke_franchise_license(ref self: ContractState) {
-            let caller = get_caller_address();
-
-            assert(
-                caller == self.franchise_manager.read(),
-                FranchiseAgreementErrors::NotFranchiseManager,
-            );
+            self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
 
             let franchise_terms = self.get_franchise_terms();
 
@@ -392,12 +390,7 @@ pub mod IPFranchisingAgreement {
 
 
         fn reinstate_franchise_license(ref self: ContractState) {
-            let caller = get_caller_address();
-
-            assert(
-                caller == self.franchise_manager.read(),
-                FranchiseAgreementErrors::NotFranchiseManager,
-            );
+            self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
 
             let franchise_terms = self.get_franchise_terms();
 
