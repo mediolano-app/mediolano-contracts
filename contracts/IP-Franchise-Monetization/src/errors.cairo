@@ -53,4 +53,5 @@ pub mod FranchiseTermsErrors {
     pub const InvalidPaymentInterval: felt252 = 'Invalid payment interval';
     pub const MaxMissedPaymentsRequired: felt252 = 'Max missed payments required';
     pub const LastPaymentIdMustBeZero: felt252 = 'Last payment id must be zero';
+    pub const ActiveSaleRequestInProgress: felt252 = 'Active sale request in progress';
 }

@@ -160,6 +160,7 @@ pub mod IPFranchisingAgreement {
             let franchise_manager = IIPFranchiseManagerDispatcher {
                 contract_address: manager_address,
             };
+
             assert(
                 !franchise_manager.is_ip_asset_linked(),
                 FranchiseAgreementErrors::FranchiseIpNotLinked,
@@ -199,13 +200,23 @@ pub mod IPFranchisingAgreement {
                 FranchiseAgreementErrors::FranchiseIpNotLinked,
             );
 
+            if let Option::Some(request) = self.get_sale_request() {
+                assert(
+                    request.status == FranchiseSaleRequest::REJECTED
+                        || request.status == FranchiseSaleRequest::COMPLETED,
+                    FranchiseAgreementErrors::ActiveSaleRequestInProgress,
+                );
+            }
+
+            let agreement_id = self.get_agreement_id();
+
+            franchise_manager.initiate_franchise_sale(agreement_id.clone);
+
             let transfer_request = FranchiseSaleRequest {
                 from: self.franchisee.read(), to, sale_price, status: FranchiseSaleStatus::Pending,
             };
 
             self.sale_request.write(Option::Some(transfer_request));
-
-            let agreement_id = self.get_agreement_id();
 
             self
                 .emit(

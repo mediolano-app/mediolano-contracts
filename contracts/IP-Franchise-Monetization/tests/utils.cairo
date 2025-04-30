@@ -2,10 +2,10 @@ use snforge_std::DeclareResultTrait;
 use starknet::{ContractAddress, contract_address_const, ClassHash};
 
 use openzeppelin_utils::serde::SerializedAppend;
-use snforge_std::{declare, ContractClassTrait};
+use snforge_std::{declare, ContractClassTrait, cheat_caller_address, CheatSpan, mock_call};
 
 use ip_franchise_monetization::interfaces::{
-    IIPFranchiseAgreementDispatcher, IIPFranchiseManagerDispatcher,
+    IIPFranchiseAgreementDispatcher, IIPFranchiseManagerDispatcher, IIPFranchiseAgreementDispatcher
 };
 use openzeppelin_token::erc20::interface::{IERC20Dispatcher};
 use openzeppelin_token::erc721::interface::{IERC721Dispatcher};
@@ -13,7 +13,7 @@ use ip_franchise_monetization::mocks::MockERC20::{IERC20MintDispatcher, IERC20Mi
 use ip_franchise_monetization::mocks::MockERC721::{
     IERC721MintDispatcher, IERC721MintDispatcherTrait,
 };
-use ip_franchise_monetization::types::{FranchiseTerms, PaymentModel, ExclusivityType};
+use ip_franchise_monetization::types::{FranchiseTerms, PaymentModel, ExclusivityType, RoyaltyFees};
 
 pub const ONE_E18: u256 = 1000000000000000000_u256;
 
@@ -104,7 +104,7 @@ pub fn deploy_manager_contract(
     IIPFranchiseManagerDispatcher { contract_address: manager_contract }
 }
 
-#[derive(Drop)]
+#[derive(Drop, Clone)]
 pub struct TestContracts {
     pub manager_contract: IIPFranchiseManagerDispatcher,
     pub erc20_token: IERC20Dispatcher,
@@ -142,8 +142,70 @@ pub fn dummy_franchise_terms(token: ContractAddress) -> FranchiseTerms {
         payment_token: token,
         franchise_fee: 100,
         license_start: 1000,
-        license_end: 4000,
+        license_end: 365 * 24 * 60 * 60,
         exclusivity: ExclusivityType::NonExclusive,
         territory_id: 0,
     }
+}
+
+
+pub fn deploy_agreement_contract_fixed_fee(test_contracts: TestContracts) -> IIPFranchiseAgreementDispatcher {
+    let  { manager_contract, erc20_token, erc721_token } = test_contracts;
+
+    cheat_caller_address(erc721_token.contract_address, OWNER(), CheatSpan::TargetCalls(1));
+    erc721_token.set_approval_for_all(manager_contract.contract_address, true);
+
+    cheat_caller_address(manager_contract.contract_address, OWNER(), CheatSpan::TargetCalls(3));
+    manager_contract.link_ip_asset();
+    manager_contract.add_franchise_territory("Lagos");
+
+    let franchise_terms = dummy_franchise_terms(erc20_token.contract_address);
+
+    manager_contract.create_direct_franchise_agreement(FRANCHISEE(), franchise_terms);
+
+    let total_agreeements = manager_contract.get_total_franchise_agreements();
+
+    assert!(total_agreeements == 1, "franchise agreements should match");
+
+    let agreement_id = total_agreeements - 1;
+    let franchise_address = manager_contract.get_franchise_agreement_address(agreement_id);
+
+    IIPFranchiseAgreementDispatcher {
+        contract_address: franchise_address,
+    }    
+}
+
+pub fn deploy_agreement_contract_royalty_based(test_contracts: TestContracts) -> IIPFranchiseAgreementDispatcher {
+    let  { manager_contract, erc20_token, erc721_token } = test_contracts;
+
+    cheat_caller_address(erc721_token.contract_address, OWNER(), CheatSpan::TargetCalls(1));
+    erc721_token.set_approval_for_all(manager_contract.contract_address, true);
+
+    cheat_caller_address(manager_contract.contract_address, OWNER(), CheatSpan::TargetCalls(3));
+    manager_contract.link_ip_asset();
+    manager_contract.add_franchise_territory("Lagos");
+
+    let mut franchise_terms = dummy_franchise_terms(erc20_token.contract_address);
+    let royalty_fees = RoyaltyFees {
+        royalty_percent: 10_u8,
+        payment_schedule: PaymentSchedule::Monthly,
+        custom_interval: Option::None,
+        last_payment_id: 0,
+        max_missed_payments: 5,
+    };
+
+    franchise_terms.payment_model = PaymentModel::RoyaltyBased(royalty_fees);
+
+    manager_contract.create_direct_franchise_agreement(FRANCHISEE(), franchise_terms);
+
+    let total_agreeements = manager_contract.get_total_franchise_agreements();
+
+    assert!(total_agreeements == 1, "franchise agreements should match");
+
+    let agreement_id = total_agreeements - 1;
+    let franchise_address = manager_contract.get_franchise_agreement_address(agreement_id);
+
+    IIPFranchiseAgreementDispatcher {
+        contract_address: franchise_address,
+    }    
 }

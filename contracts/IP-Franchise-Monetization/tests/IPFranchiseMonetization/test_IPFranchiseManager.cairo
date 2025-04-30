@@ -12,6 +12,32 @@ use snforge_std::{cheat_caller_address, CheatSpan, mock_call};
 
 use openzeppelin_token::erc721::interface::IERC721DispatcherTrait;
 
+fn deploy_agreement_contract(test_contracts: TestContracts) -> IIPFranchiseAgreementDispatcher {
+    let  { manager_contract, erc20_token, erc721_token } = test_contracts;
+
+    cheat_caller_address(erc721_token.contract_address, OWNER(), CheatSpan::TargetCalls(1));
+    erc721_token.set_approval_for_all(manager_contract.contract_address, true);
+
+    cheat_caller_address(manager_contract.contract_address, OWNER(), CheatSpan::TargetCalls(3));
+    manager_contract.link_ip_asset();
+    manager_contract.add_franchise_territory("Lagos");
+
+    let franchise_terms = dummy_franchise_terms(erc20_token.contract_address);
+
+    manager_contract.create_direct_franchise_agreement(FRANCHISEE(), franchise_terms.clone());
+
+    let total_agreeements = manager_contract.get_total_franchise_agreements();
+
+    assert!(total_agreeements == 1, "franchise agreements should match");
+
+    let agreement_id = total_agreeements - 1;
+    let franchise_address = manager_contract.get_franchise_agreement_address(agreement_id);
+
+    IIPFranchiseAgreementDispatcher {
+        contract_address: franchise_address,
+    }    
+}
+
 #[test]
 fn test_initialization_succesful() {
     let TestContracts { manager_contract, erc20_token: _, erc721_token } = initialize_contracts();
