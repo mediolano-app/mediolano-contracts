@@ -45,7 +45,7 @@ mod medialane {
         ERC1155,
     }
 
-    #[derive(Drop, Copy, Serde, starknet::Store)]
+    #[derive(Drop, Copy, Serde)]
     pub struct OfferItem {
         item_type: ItemType,
         token: ContractAddress, // Contract address of the token (0 for NATIVE STRK)    
@@ -54,7 +54,7 @@ mod medialane {
         end_amount: u256 // Usually same as start_amount for fixed price
     }
 
-    #[derive(Drop, Copy, Serde, starknet::Store)]
+    #[derive(Drop, Copy, Serde)]
     pub struct ConsiderationItem {
         item_type: ItemType,
         token: ContractAddress, // Contract address of the token (0 for NATIVE STRK)
@@ -64,7 +64,7 @@ mod medialane {
         recipient: ContractAddress // Address that receives this consideration item
     }
 
-    #[derive(Drop, Clone, Serde, starknet::storage_node)]
+    #[derive(Drop, Clone, Serde)]
     pub struct OrderParameters {
         offerer: ContractAddress,
         offer: Array<OfferItem>,
@@ -78,7 +78,7 @@ mod medialane {
     }
 
     // Order structure including signature
-    #[derive(Drop, Clone, Serde, starknet::storage_node)]
+    #[derive(Drop, Clone, Serde)]
     pub struct Order {
         parameters: OrderParameters,
         signature: Array<felt252> // ECDSA sig [r, s, pub_key]
@@ -91,13 +91,6 @@ mod medialane {
         Filled,
         Cancelled,
         // PartiallyFilled, // Could add for partial fills
-    }
-
-    // Item type Variants
-    #[derive(Drop, Copy, Serde, starknet::Store, PartialEq)]
-    pub enum TradeType {
-        Offer,
-        Consideration,
     }
 
     #[event]
