@@ -2,7 +2,6 @@ use starknet::ContractAddress;
 use ip_leasing::types::{Lease, LeaseOffer};
 
 #[starknet::interface]
-#[starknet::interface]
 pub trait IIPLeasing<TContractState> {
     fn create_lease_offer(
         ref self: TContractState,
