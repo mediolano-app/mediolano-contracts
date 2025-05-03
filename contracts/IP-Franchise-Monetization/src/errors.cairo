@@ -34,6 +34,8 @@ pub mod FranchiseAgreementErrors {
     pub const FranchiseAgreementNotActive: felt252 = 'Franchise Agreement no active';
     pub const MaxMissedPaymentsNotReached: felt252 = 'Max missed payments not reached';
     pub const MissedPaymentsExceedsMax: felt252 = 'Missed payments exceed max';
+    pub const ActiveSaleRequestInProgress: felt252 = 'Active sale request in progress';
+    pub const OnlyRoyaltyPayments: felt252 = 'Only royalty payment models';
 }
 
 pub mod FranchiseTermsErrors {
@@ -53,5 +55,4 @@ pub mod FranchiseTermsErrors {
     pub const InvalidPaymentInterval: felt252 = 'Invalid payment interval';
     pub const MaxMissedPaymentsRequired: felt252 = 'Max missed payments required';
     pub const LastPaymentIdMustBeZero: felt252 = 'Last payment id must be zero';
-    pub const ActiveSaleRequestInProgress: felt252 = 'Active sale request in progress';
 }

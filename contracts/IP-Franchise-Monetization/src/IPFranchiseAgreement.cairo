@@ -11,6 +11,7 @@ pub mod IPFranchisingAgreement {
     use starknet::{ContractAddress, get_caller_address, get_contract_address, get_block_timestamp};
     use core::array::{ArrayTrait, Array};
     use core::felt252;
+    use core::panic_with_felt252;
     use core::option::{Option, OptionTrait};
     use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin_access::ownable::OwnableComponent;
@@ -72,7 +73,7 @@ pub mod IPFranchisingAgreement {
         franchise_manager: ContractAddress,
         franchisee: ContractAddress,
         franchise_terms: FranchiseTerms,
-        sale_request: Option<FranchiseSaleRequest>,
+        sale_request: Option<FranchiseSa2l VeRequest>,
         payment_token: ContractAddress,
         royalty_payments: Map<u32, RoyaltyPayment>,
         is_active: bool,
@@ -162,7 +163,7 @@ pub mod IPFranchisingAgreement {
             };
 
             assert(
-                !franchise_manager.is_ip_asset_linked(),
+                franchise_manager.is_ip_asset_linked(),
                 FranchiseAgreementErrors::FranchiseIpNotLinked,
             );
 
@@ -170,7 +171,9 @@ pub mod IPFranchisingAgreement {
             let total_fee_to_pay = franchise_terms.get_total_franchise_fee();
 
             let dispatcher = IERC20Dispatcher { contract_address: franchise_terms.payment_token };
-            let result = dispatcher.transfer_from(caller, get_contract_address(), total_fee_to_pay);
+
+            let result = dispatcher
+                .transfer_from(caller, franchise_manager.contract_address, total_fee_to_pay);
 
             assert(result, FranchiseAgreementErrors::Erc20TransferFailed);
 
@@ -196,21 +199,21 @@ pub mod IPFranchisingAgreement {
                 contract_address: manager_address,
             };
             assert(
-                !franchise_manager.is_ip_asset_linked(),
+                franchise_manager.is_ip_asset_linked(),
                 FranchiseAgreementErrors::FranchiseIpNotLinked,
             );
 
             if let Option::Some(request) = self.get_sale_request() {
                 assert(
-                    request.status == FranchiseSaleRequest::REJECTED
-                        || request.status == FranchiseSaleRequest::COMPLETED,
+                    request.status == FranchiseSaleStatus::Rejected
+                        || request.status == FranchiseSaleStatus::Rejected,
                     FranchiseAgreementErrors::ActiveSaleRequestInProgress,
                 );
             }
 
             let agreement_id = self.get_agreement_id();
 
-            franchise_manager.initiate_franchise_sale(agreement_id.clone);
+            franchise_manager.initiate_franchise_sale(agreement_id);
 
             let transfer_request = FranchiseSaleRequest {
                 from: self.franchisee.read(), to, sale_price, status: FranchiseSaleStatus::Pending,
@@ -390,6 +393,8 @@ pub mod IPFranchisingAgreement {
 
                 royalty_fees.last_payment_id = last_payment_id + missed_payments;
                 franchise_terms.payment_model = PaymentModel::RoyaltyBased(royalty_fees);
+            } else {
+                panic_with_felt252(FranchiseAgreementErrors::OnlyRoyaltyPayments)
             }
 
             self.franchise_terms.write(franchise_terms);
@@ -503,7 +508,7 @@ pub mod IPFranchisingAgreement {
         // ───────────── Royalty Payments
         // ─────────────
 
-        fn get_royalty_payment(self: @ContractState, payment_id: u32) -> RoyaltyPayment {
+        fn get_royalty_payment_info(self: @ContractState, payment_id: u32) -> RoyaltyPayment {
             self.royalty_payments.entry(payment_id).read()
         }
 
@@ -523,6 +528,24 @@ pub mod IPFranchisingAgreement {
 
         fn is_revoked(self: @ContractState) -> bool {
             self.is_revoked.read()
+        }
+
+        fn get_activation_fee(self: @ContractState) -> u256 {
+            let franchise_terms = self.get_franchise_terms();
+
+            franchise_terms.get_total_franchise_fee()
+        }
+
+        fn get_total_missed_payments(self: @ContractState) -> u32 {
+            let franchise_terms = self.get_franchise_terms();
+            match franchise_terms.payment_model {
+                PaymentModel::OneTime(_) => 0,
+                PaymentModel::RoyaltyBased(royalty_fees) => {
+                    let block_timestamp = get_block_timestamp();
+                    royalty_fees
+                        .calculate_missed_payments(franchise_terms.license_start, block_timestamp)
+                },
+            }
         }
     }
 }

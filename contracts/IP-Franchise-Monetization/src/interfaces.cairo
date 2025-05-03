@@ -113,17 +113,24 @@ pub trait IIPFranchiseAgreement<TContractState> {
 
     // ───────────── Royalty Payments
     // ─────────────
-    fn get_royalty_payment(self: @TContractState, payment_id: u32) -> RoyaltyPayment;
+    fn get_royalty_payment_info(self: @TContractState, payment_id: u32) -> RoyaltyPayment;
 
     // ───────────── Status Flags ─────────────
     fn is_active(self: @TContractState) -> bool;
     fn is_revoked(self: @TContractState) -> bool;
+
+    // ____________ Activation Fee ____________
+    fn get_activation_fee(self: @TContractState) -> u256;
+
+    // ___________ Missed Payments ____________
+    fn get_total_missed_payments(self: @TContractState) -> u32;
 }
 
 /// A trait to describe order capability.
 pub trait FranchiseTermsTrait<T, +Serde<T>, +Drop<T>> {
     fn validate_terms_data(self: @T, block_timestamp: u64);
     fn get_total_franchise_fee(self: @T) -> u256;
+    fn get_last_payment_id(self: @T) -> u32;
 }
 
 pub trait RoyaltyFeesTrait<T, +Serde<T>, +Drop<T>> {

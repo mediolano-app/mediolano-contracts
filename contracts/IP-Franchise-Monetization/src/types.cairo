@@ -214,6 +214,13 @@ impl FranchiseTermsTraitImpl of FranchiseTermsTrait<FranchiseTerms> {
             PaymentModel::RoyaltyBased(_) => *self.franchise_fee,
         }
     }
+
+    fn get_last_payment_id(self: @FranchiseTerms) -> u32 {
+        match self.payment_model {
+            PaymentModel::OneTime(_) => 0,
+            PaymentModel::RoyaltyBased(royalty) => royalty.last_payment_id,
+        }
+    }
 }
 
 #[derive(Drop, Serde, starknet::Store, Clone, PartialEq)]

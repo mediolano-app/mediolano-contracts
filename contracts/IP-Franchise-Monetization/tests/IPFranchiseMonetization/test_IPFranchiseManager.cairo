@@ -13,7 +13,7 @@ use snforge_std::{cheat_caller_address, CheatSpan, mock_call};
 use openzeppelin_token::erc721::interface::IERC721DispatcherTrait;
 
 fn deploy_agreement_contract(test_contracts: TestContracts) -> IIPFranchiseAgreementDispatcher {
-    let  { manager_contract, erc20_token, erc721_token } = test_contracts;
+    let TestContracts { manager_contract, erc20_token, erc721_token } = test_contracts;
 
     cheat_caller_address(erc721_token.contract_address, OWNER(), CheatSpan::TargetCalls(1));
     erc721_token.set_approval_for_all(manager_contract.contract_address, true);
@@ -33,9 +33,7 @@ fn deploy_agreement_contract(test_contracts: TestContracts) -> IIPFranchiseAgree
     let agreement_id = total_agreeements - 1;
     let franchise_address = manager_contract.get_franchise_agreement_address(agreement_id);
 
-    IIPFranchiseAgreementDispatcher {
-        contract_address: franchise_address,
-    }    
+    IIPFranchiseAgreementDispatcher { contract_address: franchise_address }
 }
 
 #[test]

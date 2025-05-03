@@ -2,18 +2,21 @@ use snforge_std::DeclareResultTrait;
 use starknet::{ContractAddress, contract_address_const, ClassHash};
 
 use openzeppelin_utils::serde::SerializedAppend;
-use snforge_std::{declare, ContractClassTrait, cheat_caller_address, CheatSpan, mock_call};
+use snforge_std::{declare, ContractClassTrait, cheat_caller_address, CheatSpan};
 
 use ip_franchise_monetization::interfaces::{
-    IIPFranchiseAgreementDispatcher, IIPFranchiseManagerDispatcher, IIPFranchiseAgreementDispatcher
+    IIPFranchiseAgreementDispatcher, IIPFranchiseManagerDispatcher,
+    IIPFranchiseManagerDispatcherTrait,
 };
 use openzeppelin_token::erc20::interface::{IERC20Dispatcher};
-use openzeppelin_token::erc721::interface::{IERC721Dispatcher};
+use openzeppelin_token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
 use ip_franchise_monetization::mocks::MockERC20::{IERC20MintDispatcher, IERC20MintDispatcherTrait};
 use ip_franchise_monetization::mocks::MockERC721::{
     IERC721MintDispatcher, IERC721MintDispatcherTrait,
 };
-use ip_franchise_monetization::types::{FranchiseTerms, PaymentModel, ExclusivityType, RoyaltyFees};
+use ip_franchise_monetization::types::{
+    FranchiseTerms, PaymentModel, ExclusivityType, RoyaltyFees, PaymentSchedule,
+};
 
 pub const ONE_E18: u256 = 1000000000000000000_u256;
 
@@ -149,8 +152,10 @@ pub fn dummy_franchise_terms(token: ContractAddress) -> FranchiseTerms {
 }
 
 
-pub fn deploy_agreement_contract_fixed_fee(test_contracts: TestContracts) -> IIPFranchiseAgreementDispatcher {
-    let  { manager_contract, erc20_token, erc721_token } = test_contracts;
+pub fn deploy_agreement_contract_fixed_fee(
+    test_contracts: TestContracts,
+) -> IIPFranchiseAgreementDispatcher {
+    let TestContracts { manager_contract, erc20_token, erc721_token } = test_contracts;
 
     cheat_caller_address(erc721_token.contract_address, OWNER(), CheatSpan::TargetCalls(1));
     erc721_token.set_approval_for_all(manager_contract.contract_address, true);
@@ -158,10 +163,11 @@ pub fn deploy_agreement_contract_fixed_fee(test_contracts: TestContracts) -> IIP
     cheat_caller_address(manager_contract.contract_address, OWNER(), CheatSpan::TargetCalls(3));
     manager_contract.link_ip_asset();
     manager_contract.add_franchise_territory("Lagos");
-
     let franchise_terms = dummy_franchise_terms(erc20_token.contract_address);
 
     manager_contract.create_direct_franchise_agreement(FRANCHISEE(), franchise_terms);
+
+    assert!(manager_contract.is_ip_asset_linked(), "asset should be linked");
 
     let total_agreeements = manager_contract.get_total_franchise_agreements();
 
@@ -169,14 +175,13 @@ pub fn deploy_agreement_contract_fixed_fee(test_contracts: TestContracts) -> IIP
 
     let agreement_id = total_agreeements - 1;
     let franchise_address = manager_contract.get_franchise_agreement_address(agreement_id);
-
-    IIPFranchiseAgreementDispatcher {
-        contract_address: franchise_address,
-    }    
+    IIPFranchiseAgreementDispatcher { contract_address: franchise_address }
 }
 
-pub fn deploy_agreement_contract_royalty_based(test_contracts: TestContracts) -> IIPFranchiseAgreementDispatcher {
-    let  { manager_contract, erc20_token, erc721_token } = test_contracts;
+pub fn deploy_agreement_contract_royalty_based(
+    test_contracts: TestContracts,
+) -> IIPFranchiseAgreementDispatcher {
+    let TestContracts { manager_contract, erc20_token, erc721_token } = test_contracts;
 
     cheat_caller_address(erc721_token.contract_address, OWNER(), CheatSpan::TargetCalls(1));
     erc721_token.set_approval_for_all(manager_contract.contract_address, true);
@@ -205,7 +210,5 @@ pub fn deploy_agreement_contract_royalty_based(test_contracts: TestContracts) ->
     let agreement_id = total_agreeements - 1;
     let franchise_address = manager_contract.get_franchise_agreement_address(agreement_id);
 
-    IIPFranchiseAgreementDispatcher {
-        contract_address: franchise_address,
-    }    
+    IIPFranchiseAgreementDispatcher { contract_address: franchise_address }
 }
