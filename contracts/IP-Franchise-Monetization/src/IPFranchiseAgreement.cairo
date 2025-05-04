@@ -8,7 +8,7 @@ pub const APPROVED_BUYER_ROLE: felt252 = selector!("APPROVED_BUYER");
 
 #[starknet::contract]
 pub mod IPFranchisingAgreement {
-    use starknet::{ContractAddress, get_caller_address, get_contract_address, get_block_timestamp};
+    use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
     use core::array::{ArrayTrait, Array};
     use core::felt252;
     use core::panic_with_felt252;
@@ -73,7 +73,7 @@ pub mod IPFranchisingAgreement {
         franchise_manager: ContractAddress,
         franchisee: ContractAddress,
         franchise_terms: FranchiseTerms,
-        sale_request: Option<FranchiseSa2l VeRequest>,
+        sale_request: Option<FranchiseSaleRequest>,
         payment_token: ContractAddress,
         royalty_payments: Map<u32, RoyaltyPayment>,
         is_active: bool,

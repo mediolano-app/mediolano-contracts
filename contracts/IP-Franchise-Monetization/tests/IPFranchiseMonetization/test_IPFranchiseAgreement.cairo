@@ -1,9 +1,10 @@
 use crate::utils::*;
 
 use ip_franchise_monetization::interfaces::{IIPFranchiseAgreementDispatcherTrait};
-use snforge_std::{cheat_caller_address, CheatSpan, mock_call, cheat_block_timestamp};
+use snforge_std::{cheat_caller_address, CheatSpan, mock_call, start_cheat_block_timestamp_global};
 
 use ip_franchise_monetization::types::{FranchiseSaleStatus};
+use ip_franchise_monetization::interfaces::{FranchiseTermsTrait};
 use openzeppelin_token::erc20::interface::{IERC20DispatcherTrait};
 
 #[test]
@@ -288,7 +289,9 @@ fn test_pay_royalty() {
 
     let one_day = 24 * 60 * 60;
 
-    cheat_block_timestamp(one_month + one_day);
+    // Increase block timestamps
+
+    start_cheat_block_timestamp_global(one_month + one_day);
 
     // Should be time for first royalty payment
 
@@ -299,13 +302,13 @@ fn test_pay_royalty() {
 
     let last_month_revenue = 10_000_000;
 
-    let expected_payment = revenue * 10 / 100; // 10% according to payment model
+    let expected_payment = last_month_revenue * 10 / 100; // 10% according to payment model
 
     // mint tokens to franchisee
     mint_erc20(erc20_token.contract_address, FRANCHISEE(), expected_payment);
 
     cheat_caller_address(erc20_token.contract_address, FRANCHISEE(), CheatSpan::TargetCalls(1));
-    
+
     // approve tokens
     erc20_token.approve(franchise_agreement.contract_address, expected_payment);
 
@@ -314,8 +317,8 @@ fn test_pay_royalty() {
     );
 
     // structure revenue
-    let revenues = ArrayTrait<u256>::new();
-    
+    let mut revenues = ArrayTrait::<u256>::new();
+
     revenues.append(last_month_revenue);
 
     let prev_last_payment_id = franchise_terms.get_last_payment_id();
@@ -323,12 +326,16 @@ fn test_pay_royalty() {
     // trigger function call
     franchise_agreement.make_royalty_payments(revenues);
 
-    let manager_balance = erc20_token.balance_of(manager_contract.contract_address);
-    assert!(manager_balance == activation_fee + expected_payment, "manager balance should be incremented");
+    let updated_franchise_terms = franchise_agreement.get_franchise_terms();
 
-    let curr_last_payment_id = franchise_terms.get_last_payment_id();
+    let manager_balance = erc20_token.balance_of(manager_contract.contract_address);
+    assert!(
+        manager_balance == activation_fee + expected_payment,
+        "manager balance should be incremented",
+    );
+
+    let curr_last_payment_id = updated_franchise_terms.get_last_payment_id();
 
     assert!(curr_last_payment_id == prev_last_payment_id + 1, "payment id should increase");
-
 }
 
