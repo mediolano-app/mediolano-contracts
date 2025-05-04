@@ -164,32 +164,46 @@ pub mod IPFranchiseManager {
 
     #[abi(embed_v0)]
     impl IPFranchiseManagerImpl of IIPFranchiseManager<ContractState> {
-        // Send NFT to the franchise Manager Contract
+        /// Links an IP asset (NFT) to the franchise manager contract
+        /// The NFT will be held by the contract and used to prove IP ownership
+        /// # Arguments
+        /// None - NFT must be pre-approved for transfer to this contract
+        /// # Access Control
+        /// Only IP asset owner can link their NFT
+        /// # Effects
+        /// * Transfers NFT from caller to this contract
+        /// * Records IP asset details in contract storage
         fn link_ip_asset(ref self: ContractState) {
+            // Only contract owner can link IP asset
             self.ownable.assert_only_owner();
             let caller = get_caller_address();
 
+            // Verify asset isn't already linked
             assert(!self.ip_asset_linked.read(), Errors::IpAssetAlreadyLinked);
 
+            // Get NFT details from storage
             let token_id = self.ip_nft_id.read();
             let ip_nft_address = self.ip_nft_address.read();
 
+            // Create dispatcher to interact with ERC721 contract
             let erc721_dispatcher = IERC721Dispatcher { contract_address: ip_nft_address };
 
-            // check whether asset is caller asset
+            // Verify caller owns the NFT
             assert(erc721_dispatcher.owner_of(token_id) == caller, Errors::NotOwner);
 
-            // check whether contract has approval to move asset
+            // Check this contract has approval to transfer the NFT
             assert(
                 erc721_dispatcher.is_approved_for_all(caller, get_contract_address()),
                 Errors::NotApproved,
             );
 
+            // Transfer NFT from caller to this contract
             erc721_dispatcher.transfer_from(caller, get_contract_address(), token_id);
 
+            // Update linked status
             self.ip_asset_linked.write(true);
 
-            // Add nft link event
+            // Emit event for NFT link
             self
                 .emit(
                     IPAssetLinked {
@@ -201,17 +215,23 @@ pub mod IPFranchiseManager {
                 );
         }
 
-        // Unlink NFT from the franchise Manager Contract
+        /// Unlinks an IP asset (NFT) from the franchise manager contract
+        /// The NFT will be returned to the original owner
+        /// # Arguments
+        /// None
+        /// # Access Control
+        /// Only contract owner can unlink their NFT
         fn unlink_ip_asset(ref self: ContractState) {
+            // Only contract owner can unlink IP asset
             self.ownable.assert_only_owner();
             let caller = get_caller_address();
             let this_contract = get_contract_address();
 
+            // Verify asset is currently linked
             assert(self.ip_asset_linked.read(), 'nft not linked');
 
-            // check that all licenses are over
+            // Check that all franchise agreements are inactive/expired
             let total_agreements = self.franchise_agreement_count.read();
-
             for id in 0..total_agreements {
                 let agreement_address = self.get_franchise_agreement_address(id);
                 let franchise_agreement = IIPFranchiseAgreementDispatcher {
@@ -220,19 +240,22 @@ pub mod IPFranchiseManager {
                 assert(!franchise_agreement.is_active(), Errors::AgreementLicenseNotOver);
             };
 
+            // Get NFT details from storage
             let token_id = self.ip_nft_id.read();
             let ip_nft_address = self.ip_nft_address.read();
 
             let erc721_dispatcher = IERC721Dispatcher { contract_address: ip_nft_address };
 
-            // check whether asset is caller asset
+            // Verify this contract still owns the NFT
             assert(erc721_dispatcher.owner_of(token_id) == this_contract, Errors::NotOwner);
 
+            // Transfer NFT back to owner
             erc721_dispatcher.transfer_from(this_contract, caller, token_id);
 
+            // Update linked status
             self.ip_asset_linked.write(false);
 
-            // Add nft unlink event
+            // Emit event for NFT unlink
             self
                 .emit(
                     IPAssetUnLinked {
@@ -244,27 +267,48 @@ pub mod IPFranchiseManager {
                 );
         }
 
+        /// Adds a new franchise territory to be available for franchisees
+        /// # Arguments
+        /// * `name` - Name of the territory to add
+        /// # Access Control
+        /// Only contract owner can add territories
         fn add_franchise_territory(ref self: ContractState, name: ByteArray) {
+            // Check caller is contract owner
             self.ownable.assert_only_owner();
 
+            // Get next territory ID from count
             let territory_id = self.territories_count.read();
+
+            // Create new territory struct
             let territory = Territory {
-                id: 0, name: name.clone(), exclusive_to_agreement: Option::None, active: true,
+                id: 0, // ID is set to 0 since it's stored in mapping key
+                name: name.clone(),
+                exclusive_to_agreement: Option::None, // No exclusive agreement initially
+                active: true // Territory starts as active
             };
 
+            // Store territory in mapping
             self.territories.entry(territory_id).write(territory);
 
+            // Increment territory count
             self.territories_count.write(territory_id + 1);
 
-            // Emit an event for the new territory added
+            // Emit event for territory creation
             self.emit(NewTerritoryAdded { territory_id, name, timestamp: get_block_timestamp() });
         }
 
+        /// Deactivates a franchise territory, making it inactive
+        /// # Arguments
+        /// * `self` - Contract state
+        /// * `territory_id` - Unique identifier of the territory to deactivate
+        /// # Access
+        /// * Only contract owner can call this function
         fn deactivate_franchise_territory(ref self: ContractState, territory_id: u256) {
             self.ownable.assert_only_owner();
 
             let mut territory = self.territories.entry(territory_id).read();
 
+            // Sets territory's active status to false
             territory.active = false;
 
             self.territories.entry(territory_id).write(territory);
@@ -273,21 +317,31 @@ pub mod IPFranchiseManager {
             self.emit(TerritoryDeactivated { territory_id, timestamp: get_block_timestamp() });
         }
 
-        // Create a direct Franchise Agreement
+        /// Creates a direct franchise agreement without going through application process
+        /// # Arguments
+        /// * `franchisee` - Address of the franchisee
+        /// * `franchise_terms` - Terms of the franchise agreement
+        /// # Access Control
+        /// Only contract owner can create direct agreements
         fn create_direct_franchise_agreement(
             ref self: ContractState, franchisee: ContractAddress, franchise_terms: FranchiseTerms,
         ) {
+            // Verify caller is contract owner
             self.ownable.assert_only_owner();
+
+            // Check IP NFT is linked
             assert(self.ip_asset_linked.read(), Errors::IpAssetNotLinked);
 
             let block_timestamp = get_block_timestamp();
 
+            // Validate the franchise terms
             franchise_terms.validate_terms_data(block_timestamp);
 
+            // Create the franchise agreement contract
             let (agreement_id, agreement_address) = self
                 ._create_franchise_agreement(franchisee, franchise_terms);
 
-            // Add Franchise agreement created event
+            // Emit event for agreement creation
             self
                 .emit(
                     FranchiseAgreementCreated {
@@ -299,33 +353,44 @@ pub mod IPFranchiseManager {
                 );
         }
 
-        // Create Franchise Agreement from application
+        /// Creates a franchise agreement from an approved application
+        /// # Arguments
+        /// * `application_id` - ID of the approved franchise application
+        /// # Access Control
+        /// Only contract owner can create agreements
         fn create_franchise_agreement_from_application(
             ref self: ContractState, application_id: u256,
         ) {
+            // Verify caller is contract owner
             self.ownable.assert_only_owner();
 
+            // Check IP NFT is linked
             assert(self.ip_asset_linked.read(), Errors::IpAssetNotLinked);
 
+            // Get latest version of application
             let application_version = self
                 .francise_application_version
                 .entry(application_id)
                 .read();
 
+            // Get application details
             let application = self.get_franchise_application(application_id, application_version);
 
+            // Verify application is approved
             assert(
                 application.status == ApplicationStatus::Approved, Errors::ApplicationNotApproved,
             );
 
             let block_timestamp = get_block_timestamp();
 
+            // Validate terms are still valid
             application.current_terms.validate_terms_data(block_timestamp);
 
+            // Create franchise agreement contract
             let (agreement_id, agreement_address) = self
                 ._create_franchise_agreement(application.franchisee, application.current_terms);
 
-            // Emit an event for the new Franchise Agreement
+            // Emit event for agreement creation
             self
                 .emit(
                     FranchiseAgreementCreated {
@@ -337,29 +402,37 @@ pub mod IPFranchiseManager {
                 );
         }
 
-        // Apply for a Franchise Agreement
+        /// Allows a potential franchisee to apply for a franchise agreement
+        /// # Arguments
+        /// * `franchise_terms` - Terms of the proposed franchise agreement including territory,
+        /// exclusivity, etc # Access Control
+        /// Any address can submit an application
         fn apply_for_franchise(ref self: ContractState, franchise_terms: FranchiseTerms) {
+            // Verify IP asset is linked before accepting applications
             assert(self.ip_asset_linked.read(), Errors::IpAssetNotLinked);
 
             let caller = get_caller_address();
 
             let block_timestamp = get_block_timestamp();
 
+            // Validate the franchise terms data
             franchise_terms.validate_terms_data(block_timestamp);
 
+            // Get territory info and validate it's available
             let territory_info = self.get_territory_info(franchise_terms.territory_id);
-
-            // Check territory information
             assert(territory_info.exclusive_to_agreement.is_none(), Errors::TerritoryAlreadyLinked);
             assert(territory_info.active, Errors::TerritoryNotActive);
 
+            // Get next application ID
             let application_id = self.franchise_applications_count.read();
 
+            // Get current application version (should be 0 for new application)
             let application_version = self
                 .francise_application_version
                 .entry(application_id)
                 .read();
 
+            // Create new application record
             let application = FranchiseApplication {
                 application_id: application_id,
                 franchisee: caller,
@@ -369,13 +442,16 @@ pub mod IPFranchiseManager {
                 version: application_version,
             };
 
+            // Store application in mapping
             self
                 .franchise_applications
                 .entry((application_id, application_version))
                 .write(application);
 
+            // Increment total application count
             self.franchise_applications_count.write(self.franchise_applications_count.read() + 1);
 
+            // Add application to franchisee's list
             let franchisee_application_count = self
                 .franchisee_application_count
                 .entry(caller)
@@ -386,9 +462,10 @@ pub mod IPFranchiseManager {
                 .entry((caller, franchisee_application_count))
                 .write(application_id);
 
+            // Increment franchisee's application count
             self.franchisee_application_count.entry(caller).write(franchisee_application_count + 1);
 
-            // Emit an event for the new Franchise Application
+            // Emit event for new application
             self
                 .emit(
                     NewFranchiseApplication {
@@ -397,7 +474,12 @@ pub mod IPFranchiseManager {
                 );
         }
 
-        // Revise franchise application
+        /// Revises the terms of an existing franchise application
+        /// # Arguments
+        /// * `application_id` - ID of the application to revise
+        /// * `new_terms` - New proposed franchise terms
+        /// # Access Control
+        /// Only the original applicant or contract owner can revise terms
         fn revise_franchise_application(
             ref self: ContractState, application_id: u256, new_terms: FranchiseTerms,
         ) {
@@ -405,48 +487,53 @@ pub mod IPFranchiseManager {
 
             let block_timestamp = get_block_timestamp();
 
+            // Validate the proposed new terms
             new_terms.validate_terms_data(block_timestamp);
 
+            // Get current version of application
             let application_version = self
                 .francise_application_version
                 .entry(application_id)
                 .read();
 
+            // Get current application details
             let mut application = self
                 .get_franchise_application(application_id, application_version);
 
+            // Verify caller is either applicant or contract owner
             assert(
                 application.franchisee == caller || self.ownable.owner() == caller,
                 Errors::NotAuthorized,
             );
 
+            // Can only revise pending or previously revised applications
             assert(
                 application.status == ApplicationStatus::Pending
                     || application.status == ApplicationStatus::Revised,
                 Errors::InvalidApplicationStatus,
             );
 
+            // Verify territory is available
             let territory_info = self.get_territory_info(new_terms.territory_id);
-
-            // Check territory information
             assert(territory_info.exclusive_to_agreement.is_none(), Errors::TerritoryAlreadyLinked);
             assert(territory_info.active, Errors::TerritoryNotActive);
 
+            // Update application with new terms
             application.current_terms = new_terms;
             application.last_proposed_by = caller;
             application.status = ApplicationStatus::Revised;
 
-            // Update the application version
+            // Increment and update version number
             let new_application_version = application_version + 1;
             self.francise_application_version.entry(application_id).write(new_application_version);
 
-            // Update the application in the mapping
+            // Store updated application
             self
                 .franchise_applications
                 .entry((application_id, new_application_version))
                 .write(application);
 
-            // Emit an event for the revision Franchise Application
+            // Emit event for revision
             self
                 .emit(
                     FranchiseApplicationRevised {
@@ -458,32 +545,42 @@ pub mod IPFranchiseManager {
                 );
         }
 
-        // Revise franchise application
+        /// Allows a franchisee to accept a revision made to their franchise application
+        /// # Arguments
+        /// * `application_id` - ID of the application to accept revision for
+        /// # Access Control
+        /// Only the original applicant/franchisee can accept revisions
         fn accept_franchise_application_revision(ref self: ContractState, application_id: u256) {
             let caller = get_caller_address();
 
+            // Get current version of the application
             let application_version = self
                 .francise_application_version
                 .entry(application_id)
                 .read();
 
+            // Get application details
             let mut application = self
                 .get_franchise_application(application_id, application_version);
 
+            // Verify caller is the original applicant
             assert(application.franchisee == caller, Errors::NotAuthorized);
 
+            // Can only accept applications in Revised status
             assert(
                 application.status == ApplicationStatus::Revised, Errors::InvalidApplicationStatus,
             );
 
+            // Update status to RevisionAccepted
             application.status = ApplicationStatus::RevisionAccepted;
 
+            // Save updated application
             self
                 .franchise_applications
                 .entry((application_id, application_version))
                 .write(application);
 
-            // Emit an event for the revision Franchise ACceptance
+            // Emit event for revision acceptance
             self
                 .emit(
                     ApplicationRevisionAccepted {
@@ -492,30 +589,42 @@ pub mod IPFranchiseManager {
                 );
         }
 
-        // Cancel franchise application
+        /// Cancels a pending franchise application
+        /// # Arguments
+        /// * `application_id` - ID of the application to cancel
+        /// # Access Control
+        /// Only the original applicant/franchisee can cancel their application
         fn cancel_franchise_application(ref self: ContractState, application_id: u256) {
             let caller = get_caller_address();
 
+            // Get current version of the application
             let application_version = self
                 .francise_application_version
                 .entry(application_id)
                 .read();
 
+            // Get application details
             let mut application = self
                 .get_franchise_application(application_id, application_version);
+
+            // Verify caller is the original applicant
             assert(application.franchisee == caller, Errors::NotApplicationOwner);
+
+            // Can only cancel applications in Pending status
             assert(
                 application.status == ApplicationStatus::Pending, Errors::CannotCancelApplication,
             );
 
+            // Update status to Cancelled
             application.status = ApplicationStatus::Cancelled;
 
+            // Save updated application
             self
                 .franchise_applications
                 .entry((application_id, application_version))
                 .write(application);
 
-            // Emit an event for the cancelled Franchise Application
+            // Emit event for cancellation
             self
                 .emit(
                     FranchiseApplicationCanceled {
@@ -525,32 +634,42 @@ pub mod IPFranchiseManager {
         }
 
 
-        // Approve franchise application
+        /// Approve a franchise application for a potential franchisee
+        /// # Arguments
+        /// * `application_id` - ID of the application to approve
+        /// # Access Control
+        /// * Only contract owner can approve applications
         fn approve_franchise_application(ref self: ContractState, application_id: u256) {
+            // Verify caller is contract owner
             self.ownable.assert_only_owner();
 
+            // Get current version of the application
             let application_version = self
                 .francise_application_version
                 .entry(application_id)
                 .read();
 
+            // Retrieve application details from storage
             let mut application = self
                 .get_franchise_application(application_id, application_version);
 
+            // Can only approve applications that are Pending or RevisionAccepted
             assert(
                 application.status == ApplicationStatus::Pending
                     || application.status == ApplicationStatus::RevisionAccepted,
                 Errors::InvalidApplicationStatus,
             );
 
+            // Update application status to Approved
             application.status = ApplicationStatus::Approved;
 
+            // Save updated application back to storage
             self
                 .franchise_applications
                 .entry((application_id, application_version))
                 .write(application);
 
-            // Emit an event for the approved Franchise Application
+            // Emit event for application approval
             self
                 .emit(
                     FranchiseApplicationApproved {
@@ -559,31 +678,42 @@ pub mod IPFranchiseManager {
                 );
         }
 
+        /// Rejects a franchise application
+        /// # Arguments
+        /// * `application_id` - ID of the application to reject
+        /// # Access Control
+        /// * Only contract owner can reject applications
         fn reject_franchise_application(ref self: ContractState, application_id: u256) {
+            // Verify caller is contract owner
             self.ownable.assert_only_owner();
 
+            // Get current version of the application
             let application_version = self
                 .francise_application_version
                 .entry(application_id)
                 .read();
 
+            // Get application details from storage
             let mut application = self
                 .get_franchise_application(application_id, application_version);
 
+            // Can only reject applications that are Pending or RevisionAccepted
             assert(
                 application.status == ApplicationStatus::Pending
                     || application.status == ApplicationStatus::RevisionAccepted,
                 Errors::InvalidApplicationStatus,
             );
 
+            // Update application status to Rejected
             application.status = ApplicationStatus::Rejected;
 
+            // Save updated application back to storage
             self
                 .franchise_applications
                 .entry((application_id, application_version))
                 .write(application);
 
-            // Emit an event for the rejected Franchise Application
+            // Emit event for application rejection
             self
                 .emit(
                     FranchiseApplicationRejected {
@@ -592,20 +722,30 @@ pub mod IPFranchiseManager {
                 );
         }
 
-        // Approve Franchise Sale
+        /// Initiates a sale request for a franchise agreement
+        /// # Arguments
+        /// * `agreement_id` - ID of the agreement to list for sale
+        /// # Access Control
+        /// Only the agreement contract can initiate a sale
         fn initiate_franchise_sale(ref self: ContractState, agreement_id: u256) {
             let caller = get_caller_address();
 
+            // Get agreement address from storage
             let agreement_address = self.franchise_agreements.entry(agreement_id).read();
 
+            // Verify caller is the agreement contract
             assert(caller == agreement_address, Errors::NotAuthorized);
 
+            // Mark agreement as listed for sale
             self.franchise_sale_requested.entry(agreement_id).write(true);
 
+            // Get next sale ID from total count
             let sale_id = self.get_total_franchise_sale_requests();
 
+            // Increment total sale requests count
             self.franchise_sale_requests_count.write(sale_id + 1);
 
+            // Emit sale initiation event
             self
                 .emit(
                     FranchiseSaleInitiated {
@@ -614,24 +754,32 @@ pub mod IPFranchiseManager {
                 );
         }
 
-        // Approve Franchise Sale
+        /// Approves a franchise sale request
+        /// # Arguments
+        /// * `agreement_id` - ID of the agreement to approve sale for
+        /// # Access Control
+        /// Only contract owner can approve sales
         fn approve_franchise_sale(ref self: ContractState, agreement_id: u256) {
+            // Verify caller is contract owner
             self.ownable.assert_only_owner();
 
+            // Check agreement is actually listed for sale
             assert(
                 self.is_franchise_sale_requested(agreement_id), Errors::FranchiseAgreementNotListed,
             );
 
+            // Get agreement contract address
             let agreement_address = self.get_franchise_agreement_address(agreement_id);
 
+            // Create dispatcher to interact with agreement contract
             let franchise_agreement = IIPFranchiseAgreementDispatcher {
                 contract_address: agreement_address,
             };
 
-            // Approve the license sale
+            // Call approve sale on agreement contract
             franchise_agreement.approve_franchise_sale();
 
-            // Emit an event for the approved Franchise License
+            // Emit approval event
             self
                 .emit(
                     FranchiseSaleApproved {
@@ -640,25 +788,32 @@ pub mod IPFranchiseManager {
                 );
         }
 
-
-        // Reject Franchise Sale
+        /// Rejects a franchise sale request
+        /// # Arguments
+        /// * `agreement_id` - ID of the agreement to reject sale for
+        /// # Access Control
+        /// Only contract owner can reject sales
         fn reject_franchise_sale(ref self: ContractState, agreement_id: u256) {
+            // Verify caller is contract owner
             self.ownable.assert_only_owner();
 
+            // Check agreement is actually listed for sale
             assert(
                 self.is_franchise_sale_requested(agreement_id), Errors::FranchiseAgreementNotListed,
             );
 
+            // Get agreement contract address
             let agreement_address = self.get_franchise_agreement_address(agreement_id);
 
+            // Create dispatcher to interact with agreement contract
             let franchise_agreement = IIPFranchiseAgreementDispatcher {
                 contract_address: agreement_address,
             };
 
-            // Reject the license sale
+            // Call reject sale on agreement contract
             franchise_agreement.reject_franchise_sale();
 
-            // Emit an event for the approved Rejected License sale
+            // Emit rejection event
             self
                 .emit(
                     FranchiseSaleRejected {
@@ -667,19 +822,27 @@ pub mod IPFranchiseManager {
                 );
         }
 
+        /// Revokes a franchise license agreement
+        /// # Arguments
+        /// * `agreement_id` - ID of the agreement to revoke
+        /// # Access Control
+        /// Only contract owner can revoke licenses
         fn revoke_franchise_license(ref self: ContractState, agreement_id: u256) {
+            // Verify caller is contract owner
             self.ownable.assert_only_owner();
 
+            // Get agreement contract address
             let agreement_address = self.get_franchise_agreement_address(agreement_id);
 
+            // Create dispatcher to interact with agreement contract
             let franchise_agreement = IIPFranchiseAgreementDispatcher {
                 contract_address: agreement_address,
             };
 
-            // Revoke the license
+            // Call revoke on agreement contract
             franchise_agreement.revoke_franchise_license();
 
-            // Emit an event for the revoked Franchise License
+            // Emit revocation event
             self
                 .emit(
                     FranchiseAgreementRevoked {
@@ -688,19 +851,27 @@ pub mod IPFranchiseManager {
                 );
         }
 
+        /// Reinstates a previously revoked franchise license
+        /// # Arguments
+        /// * `agreement_id` - ID of the agreement to reinstate
+        /// # Access Control
+        /// Only contract owner can reinstate licenses
         fn reinstate_franchise_license(ref self: ContractState, agreement_id: u256) {
+            // Verify caller is contract owner
             self.ownable.assert_only_owner();
 
+            // Get agreement contract address
             let agreement_address = self.get_franchise_agreement_address(agreement_id);
 
+            // Create dispatcher to interact with agreement contract
             let franchise_agreement = IIPFranchiseAgreementDispatcher {
                 contract_address: agreement_address,
             };
 
-            // ReinState the license
+            // Call reinstate on agreement contract
             franchise_agreement.reinstate_franchise_license();
 
-            // Emit an event for the revoked Franchise License
+            // Emit reinstatement event
             self
                 .emit(
                     FranchiseAgreementReinstated {
