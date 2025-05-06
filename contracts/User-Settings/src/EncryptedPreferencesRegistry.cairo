@@ -114,7 +114,7 @@ mod EncryptedPreferencesRegistry {
             pub_key: felt252
         ) {
             let caller = get_caller_address();
-            self.assert_authorized(caller);
+            // self.assert_authorized(caller);
             self.verify_signature(caller, wallet_signature.span(), pub_key);
 
             let version = self._get_next_version(caller);
@@ -145,7 +145,7 @@ mod EncryptedPreferencesRegistry {
 
         fn remove_setting(ref self: ContractState, key: felt252) {
             let caller = get_caller_address();
-            self.assert_authorized(caller);
+            // self.assert_authorized(caller);
 
             let empty_setting = EncryptedSetting {
                 data: 0,
@@ -167,7 +167,7 @@ mod EncryptedPreferencesRegistry {
             signature: Array<felt252>
         ) {
             let caller = get_caller_address();
-            self.assert_authorized(caller);
+            // self.assert_authorized(caller);
 
             let current_data = self.wallet_data.read(caller);
             self.verify_signature(caller, signature.span(), current_data.pub_key);
