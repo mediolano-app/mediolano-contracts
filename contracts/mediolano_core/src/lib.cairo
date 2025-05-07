@@ -1,10 +1,12 @@
+pub mod mocks;
+
 use core::array::ArrayTrait;
 use core::ecdsa::check_ecdsa_signature;
 use core::option::OptionTrait;
 use core::poseidon::poseidon_hash_span;
-use openzeppelin::token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
-use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
+use openzeppelin_token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
+use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+use openzeppelin_token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
 use starknet::secp_trait::*;
 use starknet::storage::{
     Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
@@ -12,8 +14,9 @@ use starknet::storage::{
 };
 use starknet::{ContractAddress, get_block_timestamp, get_caller_address, get_contract_address};
 
+
 #[starknet::contract]
-mod medialane {
+pub mod Medialane {
     use super::*;
     mod errors {
         pub const INVALID_SIGNATURE: felt252 = 'Invalid signature';
@@ -37,7 +40,7 @@ mod medialane {
 
     const CHAIN_ID: felt252 = 0x534e5f4d41494e;
     const STRK_TOKEN_ADDRESS: felt252 = 0xCa14007Eff0dB1f8135f4C25B34De49AB0d42766;
-    #[derive(Drop, Copy, Serde, starknet::Store, PartialEq)]
+    #[derive(Drop, Copy, Serde, PartialEq)]
     pub enum ItemType {
         NATIVE, // STRK
         ERC20,
@@ -47,50 +50,50 @@ mod medialane {
 
     #[derive(Drop, Copy, Serde)]
     pub struct OfferItem {
-        item_type: ItemType,
-        token: ContractAddress, // Contract address of the token (0 for NATIVE STRK)    
-        identifier_or_criteria: u256, // Token ID for ERC721/ERC1155, 0 for NATIVE/ERC20
-        start_amount: u256, // Amount for NATIVE/ERC20/ERC1155, 1 for ERC721
-        end_amount: u256 // Usually same as start_amount for fixed price
+        pub item_type: ItemType,
+        pub token: ContractAddress, // Contract address of the token (0 for NATIVE STRK)    
+        pub identifier_or_criteria: u256, // Token ID for ERC721/ERC1155, 0 for NATIVE/ERC20
+        pub start_amount: u256, // Amount for NATIVE/ERC20/ERC1155, 1 for ERC721
+        pub end_amount: u256,
     }
 
     #[derive(Drop, Copy, Serde)]
     pub struct ConsiderationItem {
-        item_type: ItemType,
-        token: ContractAddress, // Contract address of the token (0 for NATIVE STRK)
-        identifier_or_criteria: u256, // Token ID for ERC721/ERC1155, 0 for NATIVE/ERC20
-        start_amount: u256, // Amount for NATIVE/ERC20/ERC1155, 1 for ERC721
-        end_amount: u256, // Usually same as start_amount for fixed price
-        recipient: ContractAddress // Address that receives this consideration item
+        pub item_type: ItemType,
+        pub token: ContractAddress, // Contract address of the token (0 for NATIVE STRK)
+        pub identifier_or_criteria: u256, // Token ID for ERC721/ERC1155, 0 for NATIVE/ERC20
+        pub start_amount: u256, // Amount for NATIVE/ERC20/ERC1155, 1 for ERC721
+        pub end_amount: u256, // Usually same as start_amount for fixed price
+        pub recipient: ContractAddress // Address that receives this consideration item
     }
 
     #[derive(Drop, Clone, Serde)]
     pub struct OrderParameters {
-        offerer: ContractAddress,
-        offer: Array<OfferItem>,
-        consideration: Array<ConsiderationItem>,
-        start_time: u64, // Unix timestamp
-        end_time: u64, // Unix timestamp, 0 for no expiry
-        zone: ContractAddress, // Optional zone for advanced features (e.g., validation), 0 if unused
-        zone_hash: felt252, // Optional hash for zone data, 0 if unused
-        salt: felt252, // Random salt for uniqueness
-        nonce: u128 // Offerer's nonce for this order
+        pub offerer: ContractAddress,
+        pub offer: Array<OfferItem>,
+        pub consideration: Array<ConsiderationItem>,
+        pub start_time: u64, // Unix timestamp
+        pub end_time: u64, // Unix timestamp, 0 for no expiry
+        pub zone: ContractAddress, // Optional zone for advanced features (e.g., validation), 0 if unused
+        pub zone_hash: felt252, // Optional hash for zone data, 0 if unused
+        pub salt: felt252, // Random salt for uniqueness
+        pub nonce: u128 // Offerer's nonce for this order
     }
 
     // Order structure including signature
     #[derive(Drop, Clone, Serde)]
     pub struct Order {
-        parameters: OrderParameters,
-        signature: Array<felt252> // ECDSA sig [r, s, pub_key]
+        pub parameters: OrderParameters,
+        pub signature: Array<felt252> // ECDSA sig [r, s, pub_key]
     }
 
     // Status of an order hash
-    #[derive(Drop, Copy, Serde, starknet::Store, PartialEq)]
+    #[derive(Drop, Debug, Copy, Serde, starknet::Store, PartialEq)]
     pub enum OrderFillStatus {
         Unfilled,
         Filled,
         Cancelled,
-        // PartiallyFilled, // Could add for partial fills
+        // PartiallyFilled, // TODO: add for partial fills ??
     }
 
     #[event]
@@ -102,30 +105,30 @@ mod medialane {
     }
 
     #[derive(Drop, starknet::Event)]
-    struct OrderFulfilled {
+    pub struct OrderFulfilled {
         #[key]
-        order_hash: felt252,
+        pub order_hash: felt252,
         #[key]
-        offerer: ContractAddress,
+        pub offerer: ContractAddress,
         #[key]
-        fulfiller: ContractAddress,
-        zone: ContractAddress,
+        pub fulfiller: ContractAddress,
+        pub zone: ContractAddress,
     }
 
     #[derive(Drop, starknet::Event)]
-    struct OrderCancelled {
+    pub struct OrderCancelled {
         #[key]
-        order_hash: felt252,
+        pub order_hash: felt252,
         #[key]
-        offerer: ContractAddress,
-        zone: ContractAddress,
+        pub offerer: ContractAddress,
+        pub zone: ContractAddress,
     }
 
     #[derive(Drop, starknet::Event)]
-    struct NonceIncremented {
+    pub struct NonceIncremented {
         #[key]
-        offerer: ContractAddress,
-        new_nonce: u128,
+        pub offerer: ContractAddress,
+        pub new_nonce: u128,
     }
 
     #[storage]
@@ -185,7 +188,6 @@ mod medialane {
             // 5. Execute Transfers (Interaction)
             self._execute_transfers(order_parameters.clone(), caller);
 
-            // 6. Emit Event
             self
                 .emit(
                     Event::OrderFulfilled(
@@ -475,11 +477,11 @@ mod medialane {
 }
 
 #[starknet::interface]
-trait IMedialane<TState> {
-    fn fulfill_order(ref self: TState, order: medialane::Order);
-    fn cancel_orders(ref self: TState, orders_to_cancel: Array<medialane::OrderParameters>);
+pub trait IMedialane<TState> {
+    fn fulfill_order(ref self: TState, order: Medialane::Order);
+    fn cancel_orders(ref self: TState, orders_to_cancel: Array<Medialane::OrderParameters>);
     fn increment_nonce(ref self: TState);
     fn get_nonce(self: @TState, offerer: starknet::ContractAddress) -> u128;
-    fn get_order_status(self: @TState, order_hash: felt252) -> medialane::OrderFillStatus;
-    fn get_order_hash(self: @TState, parameters: medialane::OrderParameters) -> felt252;
+    fn get_order_status(self: @TState, order_hash: felt252) -> Medialane::OrderFillStatus;
+    fn get_order_hash(self: @TState, parameters: Medialane::OrderParameters) -> felt252;
 }
