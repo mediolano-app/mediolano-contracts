@@ -1,1 +1,1 @@
-pub mod ip_marketplace;
+pub mod PublicProfileMarketplace;
