@@ -1,5 +1,4 @@
-
-mod IPCollection;
+pub mod IPCollection;
 
 #[cfg(test)]
 mod test {
