@@ -2,7 +2,7 @@
 version = 1
 
 [[package]]
-name = "ip_collection"
+name = "ip_collection_erc_721"
 version = "0.1.0"
 dependencies = [
  "openzeppelin",

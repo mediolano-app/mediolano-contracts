@@ -14,6 +14,8 @@ pub trait IIPCollection<ContractState> {
     fn list_user_collections(self: @ContractState, owner: ContractAddress) -> Array<u256>;
     fn get_collection(self: @ContractState, collection_id: u256) -> Collection;
     fn get_token(self: @ContractState, token_id: u256) -> Token;
+    fn list_all_tokens(self: @ContractState) -> Array<u256>;
+    fn list_collection_tokens(self: @ContractState, collection_id: u256) -> Array<u256>;
 }
 
 #[derive(Drop, Serde, starknet::Store)]
@@ -91,6 +93,10 @@ pub mod IPCollection {
         token_id_count: u256,
         user_tokens: Map<(ContractAddress, u256), u256>, // (owner, index) -> token_id
         user_token_count: Map<ContractAddress, u256>,
+        all_tokens: Map<u256, u256>, // index -> token_id
+        all_token_count: u256, // total number of tokens
+        collection_tokens: Map<(u256, u256), u256>, // (collection_id, index) -> token_id
+        collection_token_count: Map<u256, u256>, // collection_id -> number of tokens
         #[substorage(v0)]
         erc721: ERC721Component::Storage,
         #[substorage(v0)]
@@ -235,6 +241,16 @@ pub mod IPCollection {
             self.user_tokens.entry((recipient, user_token_count)).write(token_id);
             self.user_token_count.entry(recipient).write(user_token_count + 1);
 
+            // NEW: Index token globally
+            let all_token_count = self.all_token_count.read();
+            self.all_tokens.entry(all_token_count).write(token_id);
+            self.all_token_count.write(all_token_count + 1);
+
+            // NEW: Index token for collection
+            let collection_token_count = self.collection_token_count.read(collection_id);
+            self.collection_tokens.entry((collection_id, collection_token_count)).write(token_id);
+            self.collection_token_count.entry(collection_id).write(collection_token_count + 1);
+
             self
                 .emit(
                     TokenMinted {
@@ -288,13 +304,37 @@ pub mod IPCollection {
         }
 
         fn get_collection(self: @ContractState, collection_id: u256) -> Collection {
-            // self.collections.read(collection_id).expect('Collection not active')
             self.collections.entry(collection_id).read()
         }
 
         fn get_token(self: @ContractState, token_id: u256) -> Token {
-            // self.tokens.read(token_id).expect('Token not found')
             self.tokens.read(token_id)
+        }
+
+        // NEW: Function to list all tokens in the contract
+        fn list_all_tokens(self: @ContractState) -> Array<u256> {
+            let mut token_ids: Array<u256> = array![];
+            let count = self.all_token_count.read();
+            let mut i: u256 = 0;
+            while i < count {
+                let token_id = self.all_tokens.read(i);
+                token_ids.append(token_id);
+                i += 1;
+            };
+            token_ids
+        }
+
+        // NEW: Function to list all tokens in a specific collection
+        fn list_collection_tokens(self: @ContractState, collection_id: u256) -> Array<u256> {
+            let mut token_ids: Array<u256> = array![];
+            let count = self.collection_token_count.read(collection_id);
+            let mut i: u256 = 0;
+            while i < count {
+                let token_id = self.collection_tokens.read((collection_id, i));
+                token_ids.append(token_id);
+                i += 1;
+            };
+            token_ids
         }
     }
 }
