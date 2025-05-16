@@ -1,11 +1,12 @@
+use starknet::ContractAddress;
+
 // https://wizard.openzeppelin.com/cairo#erc721
 #[starknet::contract]
-mod MockERC721 {
-    use core::num::traits::Zero;
+pub mod MockERC721 {
     use openzeppelin_access::ownable::OwnableComponent;
     use openzeppelin_introspection::src5::SRC5Component;
     use openzeppelin_token::erc721::{ERC721Component, ERC721HooksEmptyImpl};
-    use starknet::{ContractAddress, get_caller_address};
+    use super::*;
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
@@ -48,33 +49,27 @@ mod MockERC721 {
         self.ownable.initializer(owner);
     }
 
-    #[generate_trait]
-    #[abi(per_item)]
-    impl ExternalImpl of ExternalTrait {
+    pub impl MockERC721Impl of super::IMockERC721<ContractState> {
         #[external(v0)]
-        fn burn(ref self: ContractState, token_id: u256) {
-            self.erc721.update(Zero::zero(), token_id, get_caller_address());
-        }
-
-        #[external(v0)]
-        fn safe_mint(
-            ref self: ContractState,
-            recipient: ContractAddress,
-            token_id: u256,
-            data: Span<felt252>,
-        ) {
+        fn mint(ref self: ContractState, recepient: ContractAddress, token_id: u256) {
             self.ownable.assert_only_owner();
-            self.erc721.safe_mint(recipient, token_id, data);
+            self.erc721.safe_mint(recepient, token_id, array![].span());
+        }
+        #[external(v0)]
+        fn approve(ref self: ContractState, to: ContractAddress, token_id: u256) {
+            self.erc721.approve(to, token_id);
         }
 
         #[external(v0)]
-        fn safeMint(
-            ref self: ContractState,
-            recipient: ContractAddress,
-            tokenId: u256,
-            data: Span<felt252>,
-        ) {
-            self.safe_mint(recipient, tokenId, data);
+        fn owner_of(ref self: ContractState, token_id: u256) -> ContractAddress {
+            self.erc721.owner_of(token_id)
         }
     }
+}
+
+#[starknet::interface]
+pub trait IMockERC721<TContractState> {
+    fn mint(ref self: TContractState, recepient: ContractAddress, token_id: u256);
+    fn approve(ref self: TContractState, to: ContractAddress, token_id: u256);
+    fn owner_of(ref self: TContractState, token_id: u256) -> ContractAddress;
 }

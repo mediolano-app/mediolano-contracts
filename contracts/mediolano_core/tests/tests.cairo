@@ -1,16 +1,22 @@
-use mediolano_core::mocks::erc721::MockERC721::{IMockERC721Dispatcher, IMockERC721DispatcherTrait};
-use mediolano_core::mocks::erc20::MockERC20::{IMockERC20Dispatcher, IMockERC20DispatcherTrait};
-use mediolano_core::mocks::erc1155::MockERC1155::{IMockERC1155Dispatcher, IMockERC1155DispatcherTrait};
+//use mediolano_core::mocks::erc20::{IExternalTraitDispatcher as IERC20ExternalTraitDispatcher, IExternalTraitDispatcherTrait as IERC20ExternalTraitDispatcherTrait};
+//use mediolano_core::mocks::erc721::{IExternalTraitDispatcher as IERC721ExternalTraitDispatcher, IExternalTraitDispatcherTrait as IERC721ExternalTraitDispatcherTrait};
+//use mediolano_core::mocks::erc1155::{IExternalTraitDispatcher as IERC1155ExternalTraitDispatcher, IExternalTraitDispatcherTrait as IERC1155ExternalTraitDispatcherTrait};
+use mediolano_core::mocks::erc20::{IMockERC20Dispatcher, IMockERC20DispatcherTrait};
+use mediolano_core::mocks::erc721::{IMockERC721Dispatcher, IMockERC721DispatcherTrait};
+use mediolano_core::mocks::erc1155::{IMockERC1155Dispatcher, IMockERC1155DispatcherTrait};
 use mediolano_core::Medialane::{
     ConsiderationItem, ItemType, Medialane,
     OfferItem, Order, OrderFillStatus, OrderParameters,
 };
-use mediolano_core::{IMedialaneDispatcher, IMedialaneDispatcherTrait,};
+use mediolano_core::{IMedialaneDispatcher, IMedialaneDispatcherTrait};
+//use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+//use openzeppelin_token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
+//use openzeppelin_token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use core::array::ArrayTrait;
+    //use core::array::ArrayTrait;
     use core::option::OptionTrait;
     use core::result::ResultTrait;
     use core::traits::{Into, TryInto};
@@ -20,7 +26,9 @@ mod test {
         spy_events, start_cheat_block_timestamp, stop_cheat_block_timestamp,
         stop_cheat_caller_address,
     };
-    use snforge_std::signature::{KeyPair, KeyPairTrait, SignerTrait,};
+    use snforge_std::signature::{KeyPair, KeyPairTrait, SignerTrait};
+    use snforge_std::signature::stark_curve::{StarkCurveKeyPairImpl, StarkCurveSignerImpl};
+
     use starknet::{
         ContractAddress, EthAddress, contract_address_const,
          get_block_timestamp, get_caller_address,
@@ -54,7 +62,7 @@ mod test {
         erc721: IMockERC721Dispatcher,
         erc1155: IMockERC1155Dispatcher,
     }
-
+    #[derive(Clone, Drop)]
     struct Accounts {
         owner: ContractAddress,
         offerer: ContractAddress,
@@ -87,7 +95,7 @@ mod test {
 
      fn deploy_erc20(recipient: ContractAddress) -> IMockERC20Dispatcher {
          let mut constructor_calldata = array![];
-         recepient.serialize(ref constructor_calldata);
+         recipient.serialize(ref constructor_calldata);
          // constructor_calldata.append('Mock ERC20'.into());
          // constructor_calldata.append('MERC'.into());
          // constructor_calldata.append(18.into());
@@ -124,7 +132,7 @@ mod test {
         (
             DeployedContracts {
                 medialane: medialane_contract,
-                erc20: erc20_contract.contract,
+                erc20: erc20_contract,
                 erc721: erc721_contract,
                 erc1155: erc1155_contract,
             },
@@ -156,7 +164,7 @@ mod test {
     fn sign_order(
         medialane: IMedialaneDispatcher, parameters: OrderParameters, signer_pk: felt252,
     ) -> Order {
-        let key_pair = KeyPair::<felt252, felt252>::from_secret_key(signer_pk);
+        let key_pair = StarkCurveKeyPairImpl::from_secret_key(signer_pk);
         let order_hash = medialane.get_order_hash(parameters.clone());
         let signature_tuple: (felt252, felt252) = key_pair.sign(order_hash).unwrap();
         let (r, s) = signature_tuple;
@@ -195,7 +203,7 @@ mod test {
         amount: u256,
     ) {
         cheat_caller_address(contract.contract_address, minter, CheatSpan::TargetCalls(1));
-        contract.mint_with_acceptance_check(recipient, token_id, amount, array![].span());
+        contract.mint(recipient, token_id, amount, array![].span());
     }
 
     fn approve_erc20(
@@ -220,7 +228,7 @@ mod test {
         contract: IMockERC1155Dispatcher, owner: ContractAddress, spender: ContractAddress,
     ) {
         cheat_caller_address(contract.contract_address, owner, CheatSpan::TargetCalls(1));
-        contract.set_approval_for_all(spender, true);
+        contract.approve(spender, true);
     }
 
     #[test]
@@ -252,7 +260,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,
@@ -273,6 +281,7 @@ mod test {
         cheat_caller_address(
             contracts.medialane.contract_address, accounts.fulfiller, CheatSpan::TargetCalls(1),
         );
+
         contracts.medialane.fulfill_order(signed_order);
         stop_cheat_block_timestamp(contracts.medialane.contract_address);
 
@@ -303,7 +312,7 @@ mod test {
 
 
     #[test]
-    #[should_panic(expected: ('Medialane: Invalid signature',))]
+    #[should_panic(expected: ('Invalid signature',))]
     fn test_fulfill_revert_invalid_signature() {
         let (mut contracts, accounts) = setup_contracts_and_accounts();
         let offer = array![
@@ -319,7 +328,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,
@@ -345,7 +354,7 @@ mod test {
 
 
     #[test]
-    #[should_panic(expected: ('Medialane: Order expired',))]
+    #[should_panic(expected: ('Order expired',))]
     fn test_fulfill_revert_expired() {
         let (mut contracts, accounts) = setup_contracts_and_accounts();
         let offer = array![
@@ -361,7 +370,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,
@@ -384,7 +393,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected: ('Medialane: Order not yet valid',))]
+    #[should_panic(expected: ('Order not yet valid',))]
     fn test_fulfill_revert_not_yet_valid() {
         let (mut contracts, accounts) = setup_contracts_and_accounts();
         let offer = array![
@@ -400,7 +409,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,
@@ -426,7 +435,7 @@ mod test {
 
 
     #[test]
-    #[should_panic(expected: ('Medialane: Invalid nonce',))]
+    #[should_panic(expected: ('Invalid nonce',))]
     fn test_fulfill_revert_invalid_nonce_wrong() {
         let (mut contracts, accounts) = setup_contracts_and_accounts();
         let offer = array![
@@ -442,7 +451,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,
@@ -467,7 +476,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected: ('Medialane: Order already filled',))]
+    #[should_panic(expected: ('Order already filled',))]
     fn test_fulfill_revert_already_filled() {
         let (mut contracts, accounts) = setup_contracts_and_accounts();
 
@@ -479,7 +488,7 @@ mod test {
         approve_erc20(
             contracts.erc20, accounts.fulfiller, contracts.medialane.contract_address, ERC20_AMOUNT,
         );
-
+        println!("ERC20: {:x}", contracts.erc20.contract_address);
         let offer = array![
             OfferItem {
                 item_type: ItemType::ERC721,
@@ -493,7 +502,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,
@@ -522,7 +531,7 @@ mod test {
     }
 
     #[test]
-    #[should_panic(expected: ('Medialane: Transfer failed',))]
+    #[should_panic(expected: ('Transfer failed',))]
     fn test_fulfill_revert_offerer_insufficient_nft() {
         let (contracts, accounts) = setup_contracts_and_accounts();
 
@@ -544,7 +553,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,
@@ -569,7 +578,7 @@ mod test {
 
 
     #[test]
-    #[should_panic(expected: ('Medialane: Transfer failed',))]
+    #[should_panic(expected: ('Transfer failed',))]
     fn test_fulfill_revert_fulfiller_insufficient_erc20() {
         let (mut contracts, accounts) = setup_contracts_and_accounts();
 
@@ -591,7 +600,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,
@@ -632,7 +641,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,
@@ -674,7 +683,7 @@ mod test {
 
 
     #[test]
-    #[should_panic(expected: ('Medialane: Caller not offerer',))]
+    #[should_panic(expected: ('Caller not offerer',))]
     fn test_cancel_revert_not_offerer() {
         let (mut contracts, accounts) = setup_contracts_and_accounts();
 
@@ -691,7 +700,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,
@@ -711,7 +720,7 @@ mod test {
 
 
     #[test]
-    #[should_panic(expected: ('Medialane: Order already filled',))]
+    #[should_panic(expected: ('Order already filled',))]
     fn test_cancel_revert_already_filled() {
         let (mut contracts, accounts) = setup_contracts_and_accounts();
 
@@ -737,7 +746,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,
@@ -764,7 +773,6 @@ mod test {
         contracts.medialane.cancel_orders(array![parameters]);
         stop_cheat_block_timestamp(contracts.medialane.contract_address);
     }
-
 
     #[test]
     fn test_increment_nonce_success() {
@@ -800,7 +808,7 @@ mod test {
 
 
     #[test]
-    #[should_panic(expected: ('Medialane: Invalid nonce',))]
+    #[should_panic(expected: ('Invalid nonce',))]
     fn test_fulfill_order_after_nonce_increment() {
         let (mut contracts, accounts) = setup_contracts_and_accounts();
 
@@ -817,7 +825,7 @@ mod test {
             ConsiderationItem {
                 item_type: ItemType::ERC20,
                 token: contracts.erc20.contract_address,
-                identifier_or_criteria: 0.into(),
+                identifier_or_criteria: 0,
                 start_amount: ERC20_AMOUNT,
                 end_amount: ERC20_AMOUNT,
                 recipient: accounts.offerer,

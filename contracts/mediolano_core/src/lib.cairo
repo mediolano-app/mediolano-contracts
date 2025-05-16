@@ -7,7 +7,6 @@ use core::poseidon::poseidon_hash_span;
 use openzeppelin_token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
 use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use openzeppelin_token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
-use starknet::secp_trait::*;
 use starknet::storage::{
     Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
     StoragePointerWriteAccess,
@@ -39,7 +38,8 @@ pub mod Medialane {
     }
 
     const CHAIN_ID: felt252 = 0x534e5f4d41494e;
-    const STRK_TOKEN_ADDRESS: felt252 = 0xCa14007Eff0dB1f8135f4C25B34De49AB0d42766;
+    const STRK_TOKEN_ADDRESS: felt252 = 0x04718f5a0fc34cc1af16a1cdee98ffb20c31f5cd61d6ab07201858f4287c938d;
+
     #[derive(Drop, Copy, Serde, PartialEq)]
     pub enum ItemType {
         NATIVE, // STRK
@@ -72,8 +72,8 @@ pub mod Medialane {
         pub offerer: ContractAddress,
         pub offer: Array<OfferItem>,
         pub consideration: Array<ConsiderationItem>,
-        pub start_time: u64, // Unix timestamp
-        pub end_time: u64, // Unix timestamp, 0 for no expiry
+        pub start_time: u64,
+        pub end_time: u64,
         pub zone: ContractAddress, // Optional zone for advanced features (e.g., validation), 0 if unused
         pub zone_hash: felt252, // Optional hash for zone data, 0 if unused
         pub salt: felt252, // Random salt for uniqueness
@@ -93,7 +93,7 @@ pub mod Medialane {
         Unfilled,
         Filled,
         Cancelled,
-        // PartiallyFilled, // TODO: add for partial fills ??
+        // PartiallyFilled, // TODO: add for partial fills??
     }
 
     #[event]
@@ -148,14 +148,29 @@ pub mod Medialane {
         self._contract_address_felt.write(get_contract_address().into());
     }
 
-
     #[abi(embed_v0)]
     impl MedialaneImpl of IMedialane<ContractState> {
-        /// @notice Fulfills an order, transferring items between offerer and fulfiller.
-        /// @param order The complete order struct including parameters and signature.
-        /// @dev The caller of this function is the fulfiller.
-        /// @dev Ensures validity, checks status, verifies signature, executes transfers, and marks
-        /// order as filled.
+
+        /// Fulfills a trade order, facilitating the exchange of assets between the offerer and the fulfiller.
+        ///
+        /// The caller of this function acts as the fulfiller of the order. The function performs
+        /// several steps:
+        /// 1. Computes the order hash.
+        /// 2. Validates the order's status (nonce, not already filled/cancelled) and timing (not expired, not premature).
+        /// 3. Verifies the offerer's ECDSA signature against the order hash.
+        /// 4. If all checks pass, updates the order's status to `Filled`.
+        /// 5. Executes the asset transfers specified in the order's offer and consideration items.
+        /// 6. Emits an `OrderFulfilled` event.
+        ///
+        /// # Arguments
+        /// * `ref self: ContractState` - The contract's state.
+        /// * `order: Order` - The complete order structure, including parameters and the offerer's signature.
+        ///
+        /// # Panics
+        /// * `errors::INVALID_SIGNATURE` if the provided signature array is malformed or the signature verification fails.
+        /// * If `_validate_order_status` panics (e.g., `errors::INVALID_NONCE`, `errors::ORDER_ALREADY_FILLED`, `errors::ORDER_CANCELLED`).
+        /// * If `_validate_order_timing` panics (e.g., `errors::ORDER_NOT_YET_VALID`, `errors::ORDER_EXPIRED`).
+        /// * If `_execute_transfers` panics (e.g., `errors::INVALID_ORDER_LENGTHS`, `errors::TRANSFER_FAILED`, `errors::NATIVE_TRANSFER_FAILED`, `errors::INVALID_AMOUNT`, or if a recipient is the zero address).
         fn fulfill_order(ref self: ContractState, order: Order) {
             let caller = get_caller_address(); // Fulfiller
             let order_parameters = order.parameters.clone(); // Clone needed for multiple uses
@@ -201,9 +216,20 @@ pub mod Medialane {
                 );
         }
 
-        /// @notice Cancels one or more orders created by the caller.
-        /// @param orders_to_cancel An array of OrderParameters structs to cancel.
-        /// @dev Only the offerer can cancel their own orders.
+        /// Cancels one or more specified orders.
+        ///
+        /// Only the original offerer of an order can cancel it. This function iterates through the
+        /// provided list of order parameters, verifies the caller's authority, checks the order's
+        /// current status, and if cancellable, marks the order as `Cancelled` and emits an
+        /// `OrderCancelled` event.
+        ///
+        /// # Arguments
+        /// * `orders_to_cancel: Array<OrderParameters>` - An array of `OrderParameters` for the orders to be cancelled.
+        ///
+        /// # Panics
+        /// * `errors::CALLER_NOT_OFFERER` if the function caller is not the offerer of one of the orders.
+        /// * `errors::ORDER_ALREADY_FILLED` if one of the orders has already been filled.
+        /// * `errors::INVALID_NONCE` if an order's nonce is less than the offerer's current nonce (making it an old, potentially already invalidated order).
         fn cancel_orders(ref self: ContractState, orders_to_cancel: Array<OrderParameters>) {
             let caller = get_caller_address();
             let mut i = 0;
@@ -247,9 +273,14 @@ pub mod Medialane {
             }
         }
 
-        /// @notice Increments the caller's nonce, effectively invalidating all orders signed with
-        /// previous nonces.
-        /// @dev Useful for bulk-invalidating outstanding orders.
+        /// Increments the caller's nonce by one.
+        ///
+        /// This action effectively invalidates all outstanding orders signed by the caller with
+        /// their previous nonce value(s). It is a way for an offerer to bulk-invalidate their
+        /// existing orders. Emits a `NonceIncremented` event.
+        ///
+        /// # Panics
+        /// * `'Nonce overflow'` if incrementing the current nonce would cause it to exceed the maximum value for `u128`.
         fn increment_nonce(ref self: ContractState) {
             let caller = get_caller_address();
             let current_nonce = self._nonces.read(caller);
@@ -261,23 +292,26 @@ pub mod Medialane {
             self.emit(Event::NonceIncremented(NonceIncremented { offerer: caller, new_nonce }));
         }
 
-        /// @notice Gets the current nonce for a given offerer.
-        /// @param offerer The address of the offerer.
-        /// @return The current nonce.
+        /// Gets the current nonce for a given offerer.
         fn get_nonce(self: @ContractState, offerer: ContractAddress) -> u128 {
             self._nonces.read(offerer)
         }
 
-        /// @notice Gets the status of an order given its hash.
-        /// @param order_hash The hash of the order.
-        /// @return The status (Unfilled, Filled, Cancelled).
+        /// Gets the status of an order given its hash.
         fn get_order_status(self: @ContractState, order_hash: felt252) -> OrderFillStatus {
             self._order_status.read(order_hash)
         }
 
-        /// @notice Computes the EIP-712 style hash for a given order's parameters.
-        /// @param parameters The OrderParameters struct.
-        /// @return The computed order hash.
+        /// Computes and returns the EIP-712 style hash for a given set of order parameters.
+        ///
+        /// This function calls the internal `_compute_order_hash` method. The resulting hash
+        /// is typically what an offerer would sign.
+        ///
+        /// # Arguments
+        /// * `OrderParameters` - The order parameters for which to compute the hash.
+        ///
+        /// # Returns
+        /// * `felt252` - The computed order hash.
         fn get_order_hash(self: @ContractState, parameters: OrderParameters) -> felt252 {
             self._compute_order_hash(parameters)
         }
@@ -285,20 +319,16 @@ pub mod Medialane {
 
     #[generate_trait]
     impl InternalFunctions of InternalFunctionsTrait {
-        /// @dev Computes the hash of the order parameters, including domain separation.
+        /// Computes the hash of the order parameters, including domain separation.
         fn _compute_order_hash(self: @ContractState, parameters: OrderParameters) -> felt252 {
             // 1. Hash the OrderParameters struct contents
             // Need to serialize the struct into a felt252 array first
             let mut parameters_felts: Array<felt252> = array![];
-            // Manual serialization or use derived Serde trait if hashing supports it directly
             parameters.serialize(ref parameters_felts);
             let parameters_hash = poseidon_hash_span(parameters_felts.span());
 
             // 2. Define Domain Separator components
             // EIP-712 style domain separator hash
-            // This requires hashing specific fields like name, version, chainId, verifyingContract
-            // For simplicity here, we'll use chain_id and contract address directly
-            // A more robust implementation would hash a struct representing the domain.
             let chain_id_val: felt252 = self._chain_id.read();
             let contract_addr_val: felt252 = self._contract_address_felt.read();
 
@@ -317,7 +347,7 @@ pub mod Medialane {
         }
 
 
-        /// @dev Validates the order's timing constraints.
+        /// Validates the order's timing constraints.
         fn _validate_order_timing(self: @ContractState, start_time: u64, end_time: u64) {
             let current_timestamp = get_block_timestamp();
             assert(current_timestamp >= start_time, errors::ORDER_NOT_YET_VALID);
@@ -327,7 +357,7 @@ pub mod Medialane {
             }
         }
 
-        /// @dev Validates the order's status (nonce, filled, cancelled). Reverts if invalid.
+        /// Validates the order's status (nonce, filled, cancelled). Reverts if invalid.
         fn _validate_order_status(
             ref self: ContractState, order_hash: felt252, offerer: ContractAddress, nonce: u128,
         ) {
@@ -339,7 +369,7 @@ pub mod Medialane {
             let status = self._order_status.read(order_hash);
             assert(
                 status == OrderFillStatus::Unfilled,
-                {
+            {
                     if status == OrderFillStatus::Filled {
                         errors::ORDER_ALREADY_FILLED
                     } else { // Must be Cancelled
@@ -347,9 +377,10 @@ pub mod Medialane {
                     }
                 },
             );
+
         }
 
-        /// @dev Verifies the ECDSA signature against the order hash and offerer address.
+        /// Verifies the ECDSA signature against the order hash and offerer address.
         fn _is_valid_offerer_signature(
             self: @ContractState,
             offerer: ContractAddress,
@@ -367,7 +398,7 @@ pub mod Medialane {
             return is_valid;
         }
 
-        /// @dev Executes the actual asset transfers based on the order parameters.
+        /// Executes the actual asset transfers based on the order parameters.
         fn _execute_transfers(
             ref self: ContractState, parameters: OrderParameters, fulfiller: ContractAddress,
         ) {
@@ -386,15 +417,15 @@ pub mod Medialane {
                     ._transfer_item(
                         *item.start_amount,
                         *item.end_amount,
-                        Some(*item.token),
+                        Option::Some(*item.token),
                         *item.item_type,
-                        Some(*item.identifier_or_criteria),
+                        Option::Some(*item.identifier_or_criteria),
                         offerer,
                         fulfiller,
                     );
                 // self._transfer_item(*item, offerer, fulfiller);
                 offer_idx += 1;
-            }
+            };
 
             // Process Considerations: Fulfiller -> Recipient specified in item
             let mut consideration_items = parameters.consideration.clone();
@@ -410,22 +441,36 @@ pub mod Medialane {
                     ._transfer_item(
                         *item.start_amount,
                         *item.end_amount,
-                        Some(*item.token),
+                        Option::Some(*item.token),
                         *item.item_type,
-                        Some(*item.identifier_or_criteria),
+                        Option::Some(*item.identifier_or_criteria),
                         fulfiller,
                         *item.recipient,
                     );
                 cons_idx += 1;
-            }
+            };
         }
 
 
-        /// @dev Helper function to transfer a single item based on its type.
-        /// @param item The item to be transferred (STRK/ERC-20/ERC-721/ERC-1155).
-        /// @param from The address sending the item.
-        /// @param to The address receiving the item.
-        fn _transfer_item(
+        /// Transfers a single item of a specified type (NATIVE, ERC20, ERC721, or ERC1155) from one address to another.
+        ///
+        /// This is an internal helper function called by `_execute_transfers`. It handles the
+        /// specific transfer logic based on the `item_type`.
+        ///
+        /// # Arguments
+        /// * `start_amount:` - The amount of the item to transfer. For ERC721, this must be 1.
+        /// * `end_amount` - The ending amount for the item.
+        /// * `token` - The contract address of the token.
+        /// * `item_type` - The type of the item to transfer.
+        /// * `identifier_or_criteria` - The token ID for ERC721/ERC1155 items. Expected to be `Some(id)` for these types.
+        /// * `from` - The address sending the item. This address must have approved the Medialane contract or have sufficient balance.
+        /// * `to` - The address receiving the item.
+        ///
+        /// # Panics
+        /// * `errors::INVALID_AMOUNT` if `start_amount` is zero, or if `start_amount` is not 1 for an `ERC721` item.
+        /// * `errors::NATIVE_TRANSFER_FAILED` if the transfer of NATIVE (STRK) tokens fails.
+        /// * `errors::TRANSFER_FAILED` if the transfer of ERC20 tokens fails.
+         fn _transfer_item(
             ref self: ContractState,
             start_amount: u256,
             end_amount: u256,

@@ -1,10 +1,11 @@
+use starknet::ContractAddress;
+
 // https://wizard.openzeppelin.com/cairo#erc20
 #[starknet::contract]
-mod MockERC20 {
-    use openzeppelin::access::ownable::OwnableComponent;
+pub mod MockERC20 {
+    use openzeppelin_access::ownable::OwnableComponent;
     use openzeppelin_token::erc20::{ERC20Component, ERC20HooksEmptyImpl};
-    use starknet::{ContractAddress, get_caller_address};
-
+    use super::*;
     component!(path: ERC20Component, storage: erc20, event: ERC20Event);
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
 
@@ -41,18 +42,26 @@ mod MockERC20 {
         self.ownable.initializer(owner);
     }
 
-    #[generate_trait]
-    #[abi(per_item)]
-    impl ExternalImpl of ExternalTrait {
+    pub impl MockERC20Impl of super::IMockERC20<ContractState> {
         #[external(v0)]
-        fn burn(ref self: ContractState, value: u256) {
-            self.erc20.burn(get_caller_address(), value);
-        }
-
-        #[external(v0)]
-        fn mint(ref self: ContractState, recipient: ContractAddress, amount: u256) {
+        fn mint(ref self: ContractState, recepient: ContractAddress, amount: u256) {
             self.ownable.assert_only_owner();
-            self.erc20.mint(recipient, amount);
+            self.erc20.mint(recepient, amount);
+        }
+        #[external(v0)]
+        fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) {
+            self.erc20.approve(spender, amount);
+        }
+        #[external(v0)]
+        fn balance_of(ref self: ContractState, account: ContractAddress) -> u256 {
+            self.erc20.balance_of(account)
         }
     }
+}
+
+#[starknet::interface]
+pub trait IMockERC20<TContractState> {
+    fn mint(ref self: TContractState, recepient: ContractAddress, amount: u256);
+    fn approve(ref self: TContractState, spender: ContractAddress, amount: u256);
+    fn balance_of(ref self: TContractState, account: ContractAddress) -> u256;
 }
