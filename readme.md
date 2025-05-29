@@ -2,11 +2,12 @@
 
 Cairo smart contracts for Mediolano, the intellectual property provider of the integrity web, powered on Starknet.
 
+
 Quick links:
 <br>
-<a href="https://mediolano.xyz">Discover: mediolano.xyz</a>
-<br>
 <a href="https://ip.mediolano.app">Mediolano Dapp (Sepolia)</a>
+<br>
+<a href="https://mediolano.xyz">Website mediolano.xyz</a>
 <br>
 <a href="https://t.me/MediolanoStarknet">Telegram</a>
 <br>
@@ -14,6 +15,7 @@ Quick links:
 <br>
 <a href="https://x.com/mediolanoapp">X / Twitter</a>
 <br>
+
 
 ![medialane-screen](https://github.com/user-attachments/assets/2b4c1d1d-6322-4a0c-8bb8-67e735ae1761)
 
