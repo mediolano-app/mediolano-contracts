@@ -1,5 +1,5 @@
 [package]
-name = "ip_licensing"
+name = "ip_collection_erc_721"
 version = "0.1.0"
 edition = "2024_07"
 
@@ -7,11 +7,11 @@ edition = "2024_07"
 
 [dependencies]
 starknet = "2.9.2"
-openzeppelin = "0.20.0"
+openzeppelin = { git = "https://github.com/OpenZeppelin/cairo-contracts.git", tag = "v0.20.0" }
 
 [dev-dependencies]
-snforge_std = { git = "https://github.com/foundry-rs/starknet-foundry", tag = "v0.34.0" }
-assert_macros = "2.8.5"
+snforge_std = "0.36.0"
+assert_macros = "2.9.2"
 
 [[target.starknet-contract]]
 sierra = true

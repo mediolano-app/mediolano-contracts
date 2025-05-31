@@ -1,8 +1,24 @@
-![Mediolano.app](https://mediolano.app/wp-content/uploads/2024/09/mediolano-logo-dark-1.svg)
-
 # Mediolano.app Cairo Contracts
 
 Cairo smart contracts for Mediolano, the intellectual property provider of the integrity web, powered on Starknet.
+
+
+Quick links:
+<br>
+<a href="https://ip.mediolano.app">Mediolano Dapp (Sepolia)</a>
+<br>
+<a href="https://mediolano.xyz">Website mediolano.xyz</a>
+<br>
+<a href="https://t.me/MediolanoStarknet">Telegram</a>
+<br>
+<a href="https://discord.gg/NhqdTvyA">Discord</a>
+<br>
+<a href="https://x.com/mediolanoapp">X / Twitter</a>
+<br>
+
+
+![medialane-screen](https://github.com/user-attachments/assets/2b4c1d1d-6322-4a0c-8bb8-67e735ae1761)
+
 
 <h4 align="center">
   <a href="https://ip.mediolano.app">Open Dapp</a> | 
@@ -16,13 +32,13 @@ Cairo smart contracts for Mediolano, the intellectual property provider of the i
 
 ## Programmable IP for the Integrity Web
 
-Mediolano provides seamless tokenization services for intellectual property, leveraging Starknet’s unparalleled high-speed, low-cost, and smart contract intelligence for digital assets to empower creators, collectors, and organizations to protect and monetize their IP assets effectively.
+Mediolano empowers creators, artists and organizations to make money from their content, without requiring them to know anything about crypto.
 
-Registering intellectual property on Mediolano means your asset is automatically tokenized and protected in 181 countries, according to The Berne Convention for the Protection of Literary and Artistic Works, adopted in 1886. Mediolano assets generate Proof of Ownership to  guarantee recognition of the authorship of IP without the need for registration with the World Intellectual Property Organization (WIPO).
+With permissionless services for Programmable Intellectual Property (IP), leveraging Starknet’s high-speed, low-cost transactions and zero-knowledge proofs, Mediolano provides a comprehensive suite of solutions to tokenize and monetize assets efficiently, transparently and with sovereignty.
 
-Mediolano offers permissionless services with ZERO FEES for Programmable IP, such as artwork, videos, music, literary works, AI models, software, and other works of authorship. The copyright is immutable time stamped on Starknet public blockchain, and settled on Ethereum, providing Proof of Ownership valid for 50-70 years, in accord with the legal jurisdiction. Tokenizing intellectual property with smart contracts opens the door to countless opportunities, from integrations with communities and games to monetization with AI Agents.
+With zero fees, Mediolano’s open-source protocol and dapp ensures immediate tokenization and protection under the Berne Convention for the Protection of Literary and Artistic Works (1886), covering 181 countries. This framework guarantees global recognition of authorship, providing verifiable proof of ownership for 50 to 70 years, depending on jurisdiction.
 
-Mediolano aims to serve as the intellectual property provider for the integrity web, a public good to empower programmable IP to anyone. By integrating standards, innovative technology and decentralization, Mediolano ensures interoperability, security and sovereignty. Our platform is tailored for the tokenization and management of intellectual property, enabling you to register, track, license and monetize IP effortlessly, unlocking new revenue streams.
+The platform also introduces advanced monetization, enabling diverse approaches to licensing, royalties, and financing creators economies. These tools are designed to offer integrations with various ecosystems, including communities, games, and AI agents, unlocking the true power of Programmable IP for the Integrity Web.
 
 
 ## Getting Started
