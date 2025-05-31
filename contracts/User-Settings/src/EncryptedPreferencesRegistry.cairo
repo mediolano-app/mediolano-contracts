@@ -1,22 +1,22 @@
 #[starknet::contract]
 pub mod EncryptedPreferencesRegistry {
     use OwnableComponent::InternalTrait;
-use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHash};
+    use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHash, contract_address_const};
     use core::array::ArrayTrait;
-    use contract::structs::settings_structs::{
+    use user_settings::structs::settings_structs::{
         AccountSetting, IPProtectionLevel, IPSettings, NotificationSettings, Security, NetworkSettings, AdvancedSettings, NetworkType,
-        GasPricePreference, SocialVerification, XVerification
+        GasPricePreference, SocialVerification, XVerification, FacebookVerification
     };
-    use contract::interfaces::settings_interfaces::{IEncryptedPreferencesRegistry};
+    use user_settings::interfaces::settings_interfaces::{IEncryptedPreferencesRegistry};
     use starknet::storage::{Map, StoragePointerReadAccess, StoragePointerWriteAccess, StoragePathEntry};
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::upgrades::upgradeable::UpgradeableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
     use core::poseidon::PoseidonTrait;
     use core::hash::{HashStateTrait, HashStateExTrait};
-    use core::ecdsa;
+    // use core::ecdsa;
 
-    const SUPPORTED_VERSION: felt252 = 0x1; // Update with each major change
+    const SUPPORTED_VERSION: felt252 = 1; // Update with each major change
     const TIME_WINDOW: u64 = 300; // 5 minutes
 
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
@@ -39,9 +39,9 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
         users_advanced_settings: Map::<ContractAddress, AdvancedSettings>,
         users_social_verification: Map::<ContractAddress, SocialVerification>, // Map::<user-address - (social media, true or false)>
         // security features
-        users_pubkeys: Map::<ContractAddress, felt252>,
-        users_nonces: Map::<ContractAddress, felt252>,
-        users_versions: Map::<ContractAddress, felt252>,
+        // users_pubkeys: Map::<ContractAddress, felt252>,
+        // users_nonces: Map::<ContractAddress, felt252>,
+        // users_versions: Map::<ContractAddress, felt252>,
         users_last_updated: Map::<ContractAddress, u64>,
 
     }
@@ -56,7 +56,7 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
 
     #[event]
     #[derive(Drop, starknet::Event)]
-    enum Event {
+    pub enum Event {
         #[flat]
         OwnableEvent: OwnableComponent::Event,
         #[flat]
@@ -64,37 +64,50 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
         SettingUpdated: SettingUpdated,
         SettingRemoved: SettingRemoved,
         WalletKeyUpdated: WalletKeyUpdated,
-        SocialVerificationUpdated: SocialVerificationUpdated
+        SocialVerificationUpdated: SocialVerificationUpdated,
+        AccountDeleted: AccountDeleted,
     }
 
     #[derive(Drop, starknet::Event)]
-    struct SettingUpdated {
+    pub struct SettingUpdated {
         #[key]
-        user: ContractAddress,
-        setting_type: felt252,
-        version: felt252
+        pub user: ContractAddress,
+        pub setting_type: felt252,
+        pub timestamp: u64
+        // version: felt252
     }
 
     #[derive(Drop, starknet::Event)]
-    struct SettingRemoved {
+    pub struct SettingRemoved {
         #[key]
-        user: ContractAddress,
-        setting_type: felt252
+        pub user: ContractAddress,
+        pub setting_type: felt252,
+        pub timestamp: u64
     }
 
     #[derive(Drop, starknet::Event)]
-    struct WalletKeyUpdated {
+    pub struct WalletKeyUpdated {
         #[key]
-        user: ContractAddress,
-        pub_key: felt252,
-        version: felt252
+        pub user: ContractAddress,
+        pub pub_key: felt252,
+        pub version: felt252,
+        pub timestamp: u64
     }
 
     #[derive(Drop, starknet::Event)]
-    struct SocialVerificationUpdated {
+    pub struct SocialVerificationUpdated {
         #[key]
-        user: ContractAddress,
-        x_verified: bool
+        pub user: ContractAddress,
+        pub x_verified: bool,
+        pub timestamp: u64
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct AccountDeleted {
+        #[key]
+        pub user: ContractAddress,
+        pub setting: felt252,
+        pub timestamp: u64
     }
 
     #[constructor]
@@ -106,7 +119,12 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
         self.ownable.initializer(owner);
         self.owner.write(owner);
         self.mediolano_app.write(mediolano_app);
-        self.authorized_apps.write(mediolano_app, true);
+        self.authorized_apps.entry(owner).write(true);
+        self.authorized_apps.entry(mediolano_app).write(true);
+        // self.users_nonces.entry(owner).write(1);
+        // self.users_nonces.entry(mediolano_app).write(1);
+        // self.users_versions.entry(owner).write(SUPPORTED_VERSION);
+        // self.users_versions.entry(mediolano_app).write(SUPPORTED_VERSION);
     }
 
     #[abi(embed_v0)]
@@ -127,22 +145,20 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             name: felt252, 
             email: felt252, 
             username: felt252,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64, 
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
             
-            // Hash the account details to create a message hash
-            let message_hash = self.hash_account_details(name, email, username, nonce, timestamp, version);
-            
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp //message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
+            let current_timestamp = get_block_timestamp();
             
             let account_details = AccountSetting {
                 name, 
@@ -156,7 +172,8 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
                 SettingUpdated { 
                     user: caller, 
                     setting_type: 'account_details', 
-                    version: version 
+                    timestamp: current_timestamp
+                    // version: version 
                 }
             ));
         }
@@ -166,11 +183,11 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             name: Option<felt252>, 
             email: Option<felt252>, 
             username: Option<felt252>,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64, 
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
@@ -193,21 +210,13 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             let unwrapped_email = account_email.unwrap();
             let unwrapped_username = account_username.unwrap();
             
-            // Hash the updated account details for message hash
-            let message_hash = self.hash_account_details(
-                unwrapped_name, 
-                unwrapped_email, 
-                unwrapped_username, 
-                nonce, 
-                timestamp, 
-                version
-            );
-            
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp //message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
-            
+
+            let current_timestamp = get_block_timestamp();
+
             let new_account_info = AccountSetting {
                 name: unwrapped_name,
                 email: unwrapped_email,
@@ -220,7 +229,8 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
                 SettingUpdated { 
                     user: caller, 
                     setting_type: 'account_details', 
-                    version: version 
+                    timestamp: current_timestamp
+                    // version: version 
                 }
             ));
         }
@@ -229,26 +239,23 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             ref self: ContractState, 
             protection_level: u8, 
             automatic_ip_registration: bool,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64, 
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
             assert(protection_level == 1 || protection_level == 0, 'Invalid Protection Level');
             let processed_protection_level = self.reverse_process_ip_protection_level(protection_level).unwrap();
             
-            // Hash the IP settings for message hash
-            let message_hash = self.hash_ip_settings(
-                protection_level, automatic_ip_registration, nonce, timestamp, version
-            );
-            
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp //message_hash, timestamp, nonce, timestamp, version, pub_key, wallet_signature
             );
+
+            let current_timestamp = get_block_timestamp();
             
             let ip_settings = IPSettings {
                 ip_protection_level: processed_protection_level,
@@ -261,20 +268,21 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
                 SettingUpdated { 
                     user: caller, 
                     setting_type: 'ip_settings', 
-                    version: version 
+                    timestamp: current_timestamp
+                    // version: version 
                 }
             ));
         }
 
         fn update_ip_management_settings(
             ref self: ContractState, 
-            protection_level: Option<IPProtectionLevel>, 
+            protection_level: Option<u8>, 
             automatic_ip_registration: Option<bool>,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64, 
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
@@ -285,31 +293,20 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             );
             
             if !protection_level_current.is_some() {
-                protection_level_current = Option::Some(ip_settings.ip_protection_level);
+                protection_level_current = Option::Some(self.process_ip_protection_level(ip_settings.ip_protection_level));
             }
             if !auto_reg_current.is_some() {
                 auto_reg_current = Option::Some(ip_settings.automatic_ip_registration);
             }
             
-            let unwrapped_protection = protection_level_current.unwrap();
+            let unwrapped_protection = self.reverse_process_ip_protection_level((protection_level_current.unwrap())).unwrap();
             let unwrapped_auto_reg = auto_reg_current.unwrap();
-
-            let mut processed_unwrapped_protection = 0;
-
-            if unwrapped_protection == IPProtectionLevel::STANDARD {
-                processed_unwrapped_protection = 1
-            }
             
-            // Hash the updated IP settings for message hash
-            let message_hash = self.hash_ip_settings(
-                processed_unwrapped_protection, unwrapped_auto_reg, nonce, timestamp, version
-            );
-            
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp // message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
-            
+            let current_timestamp = get_block_timestamp();
             let new_ip_settings = IPSettings {
                 ip_protection_level: unwrapped_protection,
                 automatic_ip_registration: unwrapped_auto_reg
@@ -321,7 +318,8 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
                 SettingUpdated { 
                     user: caller, 
                     setting_type: 'ip_settings', 
-                    version: version 
+                    timestamp: current_timestamp
+                    // version: version 
                 }
             ));
         }
@@ -332,24 +330,18 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             ip_updates: bool, 
             blockchain_events: bool, 
             account_activity: bool,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64, 
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
             
-            // Hash the notification settings for message hash
-            let message_hash = self.hash_notification_settings(
-                enable_notifications, ip_updates, blockchain_events, account_activity,
-                nonce, timestamp, version
-            );
-            
-            // Verify signature and update security state
+            // Verify timestamp
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp //message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
             
             let notification_settings = NotificationSettings {
@@ -358,14 +350,15 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
                 blockchain_events,
                 account_activity
             };
+            let current_timestamp = get_block_timestamp();
             self.users_notification_settings.entry(caller).write(notification_settings);
             
             // Emit event
             self.emit(Event::SettingUpdated(
                 SettingUpdated { 
                     user: caller, 
-                    setting_type: 'notification_settings', 
-                    version: version 
+                    setting_type: 'notification_settings',
+                    timestamp: current_timestamp 
                 }
             ));
         }
@@ -376,11 +369,11 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             ip_updates: Option<bool>, 
             blockchain_events: Option<bool>, 
             account_activity: Option<bool>,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64, 
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
@@ -408,15 +401,9 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             let unwrapped_blockchain = blockchain_events_current.unwrap();
             let unwrapped_activity = account_activity_current.unwrap();
             
-            // Hash the updated notification settings for message hash
-            let message_hash = self.hash_notification_settings(
-                unwrapped_enabled, unwrapped_updates, unwrapped_blockchain, unwrapped_activity,
-                nonce, timestamp, version
-            );
-            
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp //message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
             
             let new_notification_settings = NotificationSettings {
@@ -432,7 +419,8 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
                 SettingUpdated { 
                     user: caller, 
                     setting_type: 'notification_settings', 
-                    version: version 
+                    timestamp: get_block_timestamp(),
+                    // version: version 
                 }
             ));
         }
@@ -440,25 +428,22 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
         fn store_security_settings(
             ref self: ContractState, 
             password: felt252,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64, 
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
 
             let felt_caller: felt252 = caller.into();
             
-            let hashed_password = PoseidonTrait::new().update_with(password).update_with(felt_caller).finalize();
-
-            // Hash the security settings for message hash
-            let message_hash = self.hash_security_settings(hashed_password, nonce, timestamp, version);
+            let hashed_password: felt252 = PoseidonTrait::new().update_with(password).update_with(timestamp).update_with(felt_caller).finalize().into();
             
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp // message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
             
             let security_settings = Security {
@@ -472,7 +457,8 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
                 SettingUpdated { 
                     user: caller, 
                     setting_type: 'security_settings', 
-                    version: version 
+                    timestamp: get_block_timestamp()
+                    // version: version 
                 }
             ));
         }
@@ -480,26 +466,27 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
         fn update_security_settings(
             ref self: ContractState, 
             password: felt252,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64, 
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
             
-            // Hash the security settings for message hash
-            let message_hash = self.hash_security_settings(password, nonce, timestamp, version);
-            
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp //message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
             let mut security_settings = self.users_security_settings.entry(caller).read();
+
+            let felt_caller: felt252 = caller.into();
+
+            let hashed_password = PoseidonTrait::new().update_with(password).update_with(felt_caller).finalize();
             
             security_settings = Security {
-                password,
+                password: hashed_password,
                 two_factor_authentication: security_settings.two_factor_authentication
             };
             self.users_security_settings.entry(caller).write(security_settings);
@@ -509,7 +496,8 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
                 SettingUpdated { 
                     user: caller, 
                     setting_type: 'security_settings', 
-                    version: version 
+                    timestamp: get_block_timestamp()
+                    // version: version 
                 }
             ));
         }
@@ -518,11 +506,11 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             ref self: ContractState, 
             network_type: u8, 
             gas_price_preference: u8,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64, 
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized Caller');
@@ -532,14 +520,9 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             let processed_network_type = self.reverse_process_network_type(network_type).unwrap();
             let processed_gas_price_preference = self.reverse_process_gas_price_preference(gas_price_preference).unwrap();
             
-            // Hash the network settings for message hash
-            let message_hash = self.hash_network_settings(
-                network_type, gas_price_preference, nonce, timestamp, version
-            );
-            
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp //message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
             
             let network_settings = NetworkSettings {
@@ -553,20 +536,21 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
                 SettingUpdated { 
                     user: caller, 
                     setting_type: 'network_settings', 
-                    version: version 
+                    timestamp: get_block_timestamp()
+                    // version: version 
                 }
             ));
         }
 
         fn update_network_settings(
             ref self: ContractState, 
-            network_type: Option<NetworkType>, 
-            gas_price_preference: Option<GasPricePreference>,
-            nonce: felt252,
+            network_type: Option<u8>, 
+            gas_price_preference: Option<u8>,
+            // nonce: felt252,
             timestamp: u64, 
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized Caller');
@@ -577,28 +561,23 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             );
             
             if !network_type_current.is_some() {
-                network_type_current = Option::Some(network_settings.network_type);
+                network_type_current = Option::Some(self.process_network_type(network_settings.network_type));
             }
             if !gas_price_current.is_some() {
-                gas_price_current = Option::Some(network_settings.gas_price_preference);
+                gas_price_current = Option::Some(self.process_gas_price_preference(network_settings.gas_price_preference));
             }
             
-            let unwrapped_network_type = self.process_network_type(network_type_current.unwrap());
-            let unwrapped_gas_price = self.process_gas_price_preference(gas_price_current.unwrap());
+            let unwrapped_network_type = (self.reverse_process_network_type(network_type_current.unwrap())).unwrap();
+            let unwrapped_gas_price = (self.reverse_process_gas_price_preference(gas_price_current.unwrap())).unwrap();
             
-            // Hash the updated network settings for message hash
-            let message_hash = self.hash_network_settings(
-                unwrapped_network_type, unwrapped_gas_price, nonce, timestamp, version
-            );
-            
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp //message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
             
             let new_network_settings = NetworkSettings {
-                network_type: network_type_current.unwrap(),
-                gas_price_preference: gas_price_current.unwrap()
+                network_type: unwrapped_network_type,
+                gas_price_preference: unwrapped_gas_price
             };
             self.users_network_settings.entry(caller).write(new_network_settings);
             
@@ -607,7 +586,8 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
                 SettingUpdated { 
                     user: caller, 
                     setting_type: 'network_settings', 
-                    version: version 
+                    timestamp: get_block_timestamp()
+                    // version: version 
                 }
             ));
         }
@@ -615,21 +595,18 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
         fn store_advanced_settings(
             ref self: ContractState, 
             api_key: felt252,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64, 
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
             
-            // Hash the advanced settings for message hash
-            let message_hash = self.hash_advanced_settings(api_key, nonce, timestamp, version);
-            
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp //message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
 
             let mut advanced_settings = self.users_advanced_settings.entry(caller).read();
@@ -645,7 +622,8 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
                 SettingUpdated { 
                     user: caller, 
                     setting_type: 'advanced_settings', 
-                    version: version 
+                    timestamp: get_block_timestamp()
+                    // version: version 
                 }
             ));
         }
@@ -654,22 +632,19 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
         fn store_X_verification(
             ref self: ContractState,
             x_verified: bool,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>,
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>,
             handler: felt252
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
             
-            // Hash the social verification settings for message hash
-            let message_hash = self.hash_social_verification(x_verified, nonce, timestamp, version);
-            
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp //message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
 
             let current_users_social_verification = self.users_social_verification.entry(caller).read();
@@ -690,179 +665,126 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             self.emit(Event::SocialVerificationUpdated(
                 SocialVerificationUpdated { 
                     user: caller, 
-                    x_verified: x_verified
-                }
-            ));
-        }
-
-        fn update_wallet_key(
-            ref self: ContractState,
-            new_pub_key: felt252,
-            nonce: felt252,
-            timestamp: u64,
-            version: felt252,
-            current_pub_key: felt252,
-            wallet_signature: Array<felt252>
-        ) {
-            let caller = get_caller_address();
-            assert(self.assert_authorized(caller), 'Unauthorized caller');
-            
-            // Hash the wallet key update for message hash
-            let message_hash = self.hash_wallet_update(
-                new_pub_key, nonce, timestamp, version
-            );
-            
-            // Verify signature with current public key
-            self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, current_pub_key, wallet_signature
-            );
-            
-            // Update user's public key
-            self.users_pubkeys.write(caller, new_pub_key);
-            
-            // Emit event
-            self.emit(Event::WalletKeyUpdated(
-                WalletKeyUpdated { 
-                    user: caller, 
-                    pub_key: new_pub_key, 
-                    version: version 
+                    x_verified: x_verified,
+                    timestamp: get_block_timestamp()
                 }
             ));
         }
 
         fn regenerate_api_key(
             ref self: ContractState,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) -> felt252 {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
             
-            // Hash the api key regeneration request for message hash
-            let message_hash = self.hash_api_key_regeneration(nonce, timestamp, version);
-            
-            // Verify signature and update security state
-            self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
-            );
+            // Verify timestamp validity
+            self.verify_settings_update(caller, timestamp);
 
-            let numerical_nonce: u64 = nonce.try_into().unwrap();
-            let numerical_version: u64 = version.try_into().unwrap();
-            
-            // Generate a new API key (this is simplified - should use proper randomness)
-            let new_api_key = timestamp ^ numerical_nonce ^ numerical_version;
-
-            let felt_api_key: felt252 = new_api_key.into();
-            
-            // Store the new API key
+            // Read current advanced settings
             let mut advanced_settings = self.users_advanced_settings.entry(caller).read();
-            advanced_settings = AdvancedSettings {
-                api_key: felt_api_key,
-                data_retention: advanced_settings.data_retention
-            };
+            
+            // Generate new API key using Poseidon hash
+            let mut hasher = PoseidonTrait::new();
+            hasher = hasher.update(caller.into()); // Caller address
+            hasher = hasher.update(timestamp.into()); // Current timestamp
+            hasher = hasher.update(advanced_settings.api_key); // Previous API key for uniqueness
+            let new_api_key = hasher.finalize();
+
+            // Update advanced settings with new API key
+            advanced_settings.api_key = new_api_key;
             self.users_advanced_settings.entry(caller).write(advanced_settings);
             
             // Emit event
-            self.emit(Event::SettingUpdated(
-                SettingUpdated { 
-                    user: caller, 
-                    setting_type: 'advanced_settings', 
-                    version: version 
-                }
-            ));
+            self.emit(Event::SettingUpdated(SettingUpdated { 
+                user: caller, 
+                setting_type: 'advanced_settings', 
+                timestamp: get_block_timestamp()
+            }));
             
-            new_api_key.into()
+            // Return new API key
+            new_api_key
         }
 
         fn delete_account(
             ref self: ContractState,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let caller = get_caller_address();
             assert(self.assert_authorized(caller), 'Unauthorized caller');
             
-            // Hash the account deletion request for message hash
-            let message_hash = self.hash_account_deletion(nonce, timestamp, version);
-            
-            // Verify signature and update security state
+            // Verify timestamp and update state
             self.verify_settings_update(
-                caller, message_hash, nonce, timestamp, version, pub_key, wallet_signature
+                caller, timestamp //message_hash, nonce, timestamp, version, pub_key, wallet_signature
             );
             
+            let current_timestamp = get_block_timestamp();
             // Reset all user settings (we're not actually deleting from storage since that's not possible)
             // But we can reset everything to default values
+            self.users_account_settings.entry(caller).write(Default::default());
+            self.users_notification_settings.entry(caller).write(Default::default());
+            self.users_ip_settings.entry(caller).write(Default::default());
+            self.users_security_settings.entry(caller).write(Default::default());
+            self.users_advanced_settings.entry(caller).write(Default::default());
+            self.users_network_settings.entry(caller).write(Default::default());
+            let zero_address = contract_address_const::<0>();
+            let x_verification = XVerification {
+                is_verified: false,
+                handler: 0,
+                user_address: zero_address
+            };
+            let facebook_verification = FacebookVerification {
+                is_verified: false,
+                handler: 0,
+                user_address: zero_address,
+            };
+            let social_verification = SocialVerification {
+                x_verification_status: x_verification,
+                facebook_verification_status: facebook_verification
+            };
+            self.users_social_verification.entry(caller).write(social_verification);
             
-            // Emit events for all settings being removed
-            self.emit(Event::SettingRemoved(SettingRemoved { user: caller, setting_type: 'account_details' }));
-            self.emit(Event::SettingRemoved(SettingRemoved { user: caller, setting_type: 'ip_settings' }));
-            self.emit(Event::SettingRemoved(SettingRemoved { user: caller, setting_type: 'notification_settings' }));
-            self.emit(Event::SettingRemoved(SettingRemoved { user: caller, setting_type: 'security_settings' }));
-            self.emit(Event::SettingRemoved(SettingRemoved { user: caller, setting_type: 'network_settings' }));
-            self.emit(Event::SettingRemoved(SettingRemoved { user: caller, setting_type: 'advanced_settings' }));
-            self.emit(Event::SettingRemoved(SettingRemoved { user: caller, setting_type: 'social_verification' }));
+            
+            // Emit events for account deletion
+            self.emit(Event::AccountDeleted(AccountDeleted { user: caller, setting: 'account_deleted', timestamp: current_timestamp }))
         }
 
         // READ FUNCTIONS
-        fn get_account_settings(self: @ContractState) -> AccountSetting {
-            let caller = get_caller_address();
-            assert(self.assert_authorized(caller), 'Unauthorized caller');
-            self.users_account_settings.entry(caller).read()
+        fn get_account_settings(self: @ContractState, user: ContractAddress) -> AccountSetting {
+            self.users_account_settings.entry(user).read()
         }
 
-        fn get_network_settings(self: @ContractState) -> NetworkSettings {
-            let caller = get_caller_address();
-            assert(self.assert_authorized(caller), 'Unauthorized caller');
-            self.users_network_settings.entry(caller).read()
+        fn get_network_settings(self: @ContractState, user: ContractAddress) -> NetworkSettings {
+            self.users_network_settings.entry(user).read()
         }
 
-        fn get_ip_settings(self: @ContractState) -> IPSettings {
-            let caller = get_caller_address();
-            assert(self.assert_authorized(caller), 'Unauthorized caller');
-            self.users_ip_settings.entry(caller).read()
+        fn get_ip_settings(self: @ContractState, user: ContractAddress) -> IPSettings {
+            self.users_ip_settings.entry(user).read()
         }
 
-        fn get_notification_settings(self: @ContractState) -> NotificationSettings {
-            let caller = get_caller_address();
-            assert(self.assert_authorized(caller), 'Unauthorized caller');
-            self.users_notification_settings.entry(caller).read()
+        fn get_notification_settings(self: @ContractState, user: ContractAddress) -> NotificationSettings {
+            self.users_notification_settings.entry(user).read()
         }
 
-        fn get_security_settings(self: @ContractState) -> Security {
-            let caller = get_caller_address();
-            assert(self.assert_authorized(caller), 'Unauthorized caller');
-            self.users_security_settings.entry(caller).read()
+        fn get_security_settings(self: @ContractState, user: ContractAddress) -> Security {
+            self.users_security_settings.entry(user).read()
         }
 
-        fn get_advanced_settings(self: @ContractState) -> AdvancedSettings {
-            let caller = get_caller_address();
-            assert(self.assert_authorized(caller), 'Unauthorized caller');
-            self.users_advanced_settings.entry(caller).read()
+        fn get_advanced_settings(self: @ContractState, user: ContractAddress) -> AdvancedSettings {
+            self.users_advanced_settings.entry(user).read()
         }
 
         // New getter for social verification
-        fn get_social_verification(self: @ContractState) -> SocialVerification {
-            let caller = get_caller_address();
-            assert(self.assert_authorized(caller), 'Unauthorized caller');
-            self.users_social_verification.entry(caller).read()
-        }
-
-        // Added getter for user's public key
-        fn get_public_key(self: @ContractState) -> felt252 {
-            let caller = get_caller_address();
-            self.users_pubkeys.read(caller)
-        }
-
-        // Added getter for user's nonce
-        fn get_nonce(self: @ContractState) -> felt252 {
-            let caller = get_caller_address();
-            self.users_nonces.read(caller)
+        fn get_social_verification(self: @ContractState, user: ContractAddress) -> SocialVerification {
+            self.users_social_verification.entry(user).read()
         }
     }
 
@@ -872,105 +794,22 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             self.authorized_apps.entry(caller).read()
         }
 
-        // fn verify_settings_update(
-        //     self: @ContractState,
-        //     caller: ContractAddress,
-        //     message_hash: felt252,
-        //     nonce: felt252,
-        //     timestamp: u64,
-        //     version: felt252,
-        //     pub_key: felt252,
-        //     wallet_signature: Array<felt252>
-        // ) {
-        //         let current_time = starknet::get_block_timestamp();
-        //     assert(
-        //         timestamp <= current_time + TIME_WINDOW && 
-        //         timestamp >= current_time - TIME_WINDOW,
-        //         'Invalid timestamp'
-        //     );
-
-        //     // 2. Validate nonce
-        //     let stored_nonce = self.users_nonces.read(caller);
-        //     assert(nonce == stored_nonce + 1, 'Invalid nonce');
-        //     self.users_nonces.write(caller, nonce);
-
-        //     // 3. Validate version
-        //     assert(version == SUPPORTED_VERSION, 'Unsupported version');
-
-        //     // 4. Validate public key consistency
-        //     let stored_pubkey = self.users_pubkeys.read(caller);
-        //     if stored_pubkey == 0 {
-        //         // First interaction - store pubkey
-        //         self.users_pubkeys.write(caller, pub_key);
-        //     } else {
-        //         assert(stored_pubkey == pub_key, 'Public key changed');
-        //     }
-
-        //     // 5. Validate signature
-        //     assert(wallet_signature.len() == 2, 'Invalid signature format');
-        //     let sig_r = *wallet_signature.at(0);
-        //     let sig_s = *wallet_signature.at(1);
-            
-        //     let is_valid = ecdsa::check_ecdsa_signature(
-        //         sig_r,
-        //         sig_s,
-        //         pub_key,
-        //         message_hash
-        //     );
-        //     assert(is_valid, 'Invalid signature');
-        // }
-
         fn verify_settings_update(
             ref self: ContractState,
             caller: ContractAddress,
-            message_hash: felt252,
-            nonce: felt252,
+            // message_hash: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252,
-            pub_key: felt252,
-            wallet_signature: Array<felt252>
+            // version: felt252,
+            // pub_key: felt252,
+            // wallet_signature: Array<felt252>
         ) {
             let current_time = get_block_timestamp();
-            
-            // 1. Validate timestamp is within TIME_WINDOW
             assert(
                 timestamp <= current_time + TIME_WINDOW && 
                 timestamp >= current_time - TIME_WINDOW,
                 'Invalid timestamp'
             );
-
-            // 2. Validate nonce is sequential
-            let stored_nonce = self.users_nonces.entry(caller).read();
-            assert(nonce == stored_nonce + 1, 'Invalid nonce');
-            self.users_nonces.entry(caller).write(nonce);
-
-            // 3. Validate version matches supported version
-            assert(version == SUPPORTED_VERSION, 'Unsupported version');
-
-            // 4. Validate public key consistency
-            let stored_pubkey = self.users_pubkeys.read(caller);
-            if stored_pubkey == 0 {
-                // First interaction - store pubkey
-                self.users_pubkeys.entry(caller).write(pub_key);
-            } else {
-                assert(stored_pubkey == pub_key, 'Public key changed');
-            }
-
-            // 5. Validate signature
-            assert(wallet_signature.len() == 2, 'Invalid signature format');
-            let sig_r = *wallet_signature.at(0);
-            let sig_s = *wallet_signature.at(1);
-            
-            let is_valid = ecdsa::check_ecdsa_signature(
-                message_hash,
-                pub_key,
-                sig_r,
-                sig_s
-            );
-            assert(is_valid, 'Invalid signature');
-            
-            // 6. Update the user's version and last updated timestamp
-            self.users_versions.entry(caller).write(version);
             self.users_last_updated.entry(caller).write(timestamp);
         }
 
@@ -980,18 +819,18 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             name: felt252,
             email: felt252,
             username: felt252,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252
+            // version: felt252
         ) -> felt252 {
             let mut hash_state = PoseidonTrait::new();
             let processed_timestamp: felt252 = timestamp.try_into().unwrap();
             hash_state = hash_state.update_with(name);
             hash_state = hash_state.update_with(email);
             hash_state = hash_state.update_with(username);
-            hash_state = hash_state.update_with(nonce);
+            // hash_state = hash_state.update_with(nonce);
             hash_state = hash_state.update_with(processed_timestamp);
-            hash_state = hash_state.update_with(version);
+            // hash_state = hash_state.update_with(version);
             hash_state.finalize()
         }
         
@@ -999,17 +838,17 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             self: @ContractState,
             protection_level: u8,
             automatic_ip_registration: bool,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252
+            // version: felt252
         ) -> felt252 {
             let mut hash_state = PoseidonTrait::new();
             assert(protection_level == 1 || protection_level == 0, 'Invalid Protection Level');
             hash_state = hash_state.update(protection_level.into());
             hash_state = hash_state.update(if automatic_ip_registration { 1 } else { 0 });
-            hash_state = hash_state.update(nonce);
+            // hash_state = hash_state.update(nonce);
             hash_state = hash_state.update(timestamp.into());
-            hash_state = hash_state.update(version);
+            // hash_state = hash_state.update(version);
             hash_state.finalize()
         }
         
@@ -1019,33 +858,33 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             ip_updates: bool,
             blockchain_events: bool,
             account_activity: bool,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252
+            // version: felt252
         ) -> felt252 {
             let mut hash_state = PoseidonTrait::new();
             hash_state = hash_state.update(if enable_notifications { 1 } else { 0 });
             hash_state = hash_state.update(if ip_updates { 1 } else { 0 });
             hash_state = hash_state.update(if blockchain_events { 1 } else { 0 });
             hash_state = hash_state.update(if account_activity { 1 } else { 0 });
-            hash_state = hash_state.update(nonce);
+            // hash_state = hash_state.update(nonce);
             hash_state = hash_state.update(timestamp.into());
-            hash_state = hash_state.update(version);
+            // hash_state = hash_state.update(version);
             hash_state.finalize()
         }
         
         fn hash_security_settings(
             self: @ContractState,
             password: felt252,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252
+            // version: felt252
         ) -> felt252 {
             let mut hash_state = PoseidonTrait::new();
             hash_state = hash_state.update(password);
-            hash_state = hash_state.update(nonce);
+            // hash_state = hash_state.update(nonce);
             hash_state = hash_state.update(timestamp.into());
-            hash_state = hash_state.update(version);
+            // hash_state = hash_state.update(version);
             hash_state.finalize()
         }
         
@@ -1053,9 +892,9 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             self: @ContractState,
             network_type: u8,
             gas_price_preference: u8,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252
+            // version: felt252
         ) -> felt252 {
             let mut hash_state = PoseidonTrait::new();
             assert(network_type == 1 || network_type == 0, 'Invalid Network Type');
@@ -1073,82 +912,82 @@ use starknet::{ContractAddress, get_caller_address, get_block_timestamp, ClassHa
             }
             hash_state = hash_state.update(network_type.into());
             hash_state = hash_state.update(gas_price_preference.into());
-            hash_state = hash_state.update(nonce);
+            // hash_state = hash_state.update(nonce);
             hash_state = hash_state.update(timestamp.into());
-            hash_state = hash_state.update(version);
+            // hash_state = hash_state.update(version);
             hash_state.finalize()
         }
         
         fn hash_advanced_settings(
             self: @ContractState,
             api_key: felt252,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252
+            // version: felt252
         ) -> felt252 {
             let mut hash_state = PoseidonTrait::new();
             hash_state = hash_state.update(api_key);
-            hash_state = hash_state.update(nonce);
+            // hash_state = hash_state.update(nonce);
             hash_state = hash_state.update(timestamp.into());
-            hash_state = hash_state.update(version);
+            // hash_state = hash_state.update(version);
             hash_state.finalize()
         }
         
         fn hash_social_verification(
             self: @ContractState,
             x_verified: bool,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252
+            // version: felt252
         ) -> felt252 {
             let mut hash_state = PoseidonTrait::new();
             hash_state = hash_state.update(if x_verified { 1 } else { 0 });
-            hash_state = hash_state.update(nonce);
+            // hash_state = hash_state.update(nonce);
             hash_state = hash_state.update(timestamp.into());
-            hash_state = hash_state.update(version);
+            // hash_state = hash_state.update(version);
             hash_state.finalize()
         }
         
         fn hash_wallet_update(
             self: @ContractState,
             new_pub_key: felt252,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252
+            // version: felt252
         ) -> felt252 {
             let mut hash_state = PoseidonTrait::new();
             hash_state = hash_state.update(new_pub_key);
-            hash_state = hash_state.update(nonce);
+            // hash_state = hash_state.update(nonce);
             hash_state = hash_state.update(timestamp.into());
-            hash_state = hash_state.update(version);
+            // hash_state = hash_state.update(version);
             hash_state.finalize()
         }
         
         fn hash_api_key_regeneration(
             self: @ContractState,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252
+            // version: felt252
         ) -> felt252 {
             let mut hash_state = PoseidonTrait::new();
             hash_state = hash_state.update('regenerate_api');
-            hash_state = hash_state.update(nonce);
+            // hash_state = hash_state.update(nonce);
             hash_state = hash_state.update(timestamp.into());
-            hash_state = hash_state.update(version);
+            // hash_state = hash_state.update(version);
             hash_state.finalize()
         }
         
         fn hash_account_deletion(
             self: @ContractState,
-            nonce: felt252,
+            // nonce: felt252,
             timestamp: u64,
-            version: felt252
+            // version: felt252
         ) -> felt252 {
             let mut hash_state = PoseidonTrait::new();
             hash_state = hash_state.update('delete_account');
-            hash_state = hash_state.update(nonce);
+            // hash_state = hash_state.update(nonce);
             hash_state = hash_state.update(timestamp.into());
-            hash_state = hash_state.update(version);
+            // hash_state = hash_state.update(version);
             hash_state.finalize()
         }
         
