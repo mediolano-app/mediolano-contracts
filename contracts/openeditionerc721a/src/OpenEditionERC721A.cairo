@@ -149,7 +149,6 @@ pub mod OpenEditionERC721A {
     }
 
     fn get_token_uri(base_uri: ByteArray, token_id: u256) -> ByteArray {
-        // Simplified URI concatenation (in production, implement proper string manipulation)
         base_uri.clone()
     }
 
@@ -212,8 +211,6 @@ pub mod OpenEditionERC721A {
             while i < quantity {
                 let token_id = first_token_id + i;
                 self.erc721.mint(caller, token_id);
-                // Note: OpenZeppelin's ERC721Component does not have set_token_uri; metadata is
-                // handled via base_uri
                 i += 1;
             };
 
