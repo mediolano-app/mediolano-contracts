@@ -179,10 +179,39 @@ pub mod IPCollection {
         }
     }
 
-    // This avoids using string operations and just returns the base URI as-is
-    fn get_token_uri(base_uri: ByteArray, _token_id: u256) -> ByteArray {
-        // You would need to implement proper string conversion in a production contract
-        base_uri.clone()
+    fn u256_to_byte_array(value: u256) -> ByteArray {
+        if value == 0 {
+            return "0";
+        }
+        
+        let mut temp = value;
+        let mut digits: Array<u8> = array![];
+        
+        while temp > 0 {
+            let digit = (temp % 10).try_into().unwrap();
+            digits.append(48 + digit); // 48 is ASCII for '0'
+            temp = temp / 10;
+        };
+        
+        let mut byte_array = "";
+        let mut i = digits.len();
+        
+        while i > 0 {
+            i -= 1;
+            let digit_char = *digits.at(i);
+            byte_array.append_byte(digit_char);
+        };
+        
+        byte_array
+    }
+
+    fn get_token_uri(base_uri: ByteArray, token_id: u256) -> ByteArray {
+        // Construct the token URI by appending the token ID to the base URI
+        let mut token_uri = base_uri.clone();
+        let token_id_str = u256_to_byte_array(token_id);
+        token_uri.append(@token_id_str);
+        token_uri.append(@".json");
+        token_uri
     }
 
     #[abi(embed_v0)]
