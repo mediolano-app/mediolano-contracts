@@ -5,7 +5,6 @@ use snforge_std::{
 };
 use core::result::ResultTrait;
 use ip_collection_erc_721::IPCollection::{IIPCollectionDispatcher, IIPCollectionDispatcherTrait};
-// use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
 
 // Test constants
 fn OWNER() -> ContractAddress {
@@ -130,7 +129,7 @@ fn test_mint_token() {
     assert(token.collection_id == collection_id, 'Token collection ID mismatch');
     assert(token.token_id == token_id, 'Token ID mismatch');
     assert(token.owner == recipient, 'Token owner mismatch');
-    assert(token.metadata_uri == "ipfs://QmCollectionBaseUri", 'Token metadata URI mismatch');
+    assert(token.metadata_uri == "ipfs://QmCollectionBaseUri1.json", 'Token metadata URI mismatch');
 
     let recipient_tokens = dispatcher.list_user_tokens(recipient);
     assert(recipient_tokens.len() == 1, 'Recipient should have 1 token');
@@ -308,6 +307,84 @@ fn test_list_collection_tokens_not_owner() {
     // Verify non-existent collection
     let empty_tokens = dispatcher.list_collection_tokens(999);
     assert(empty_tokens.len() == 0, 'Non-existent, should have 0');
+
+    stop_cheat_caller_address(address);
+}
+
+#[test]
+fn test_multiple_tokens_metadata_uris() {
+    let (dispatcher, address) = deploy_contract();
+    let owner = OWNER();
+    let recipient = USER1();
+    start_cheat_caller_address(address, owner); // Start spoofing at the beginning
+
+    // Create collection
+    let collection_id = dispatcher.create_collection("Test Collection", "TST", "ipfs://QmCollectionBaseUri");
+
+    // Mint multiple tokens
+    let token_id1 = dispatcher.mint(collection_id, recipient);
+    let token_id2 = dispatcher.mint(collection_id, recipient);
+    let token_id3 = dispatcher.mint(collection_id, recipient);
+
+    // Verify token metadata URIs
+    let token1 = dispatcher.get_token(token_id1);
+    let token2 = dispatcher.get_token(token_id2);
+    let token3 = dispatcher.get_token(token_id3);
+
+    assert(token1.metadata_uri == "ipfs://QmCollectionBaseUri1.json", 'Token 1 metadata URI mismatch');
+    assert(token2.metadata_uri == "ipfs://QmCollectionBaseUri2.json", 'Token 2 metadata URI mismatch');
+    assert(token3.metadata_uri == "ipfs://QmCollectionBaseUri3.json", 'Token 3 metadata URI mismatch');
+
+    stop_cheat_caller_address(address);
+}
+
+#[test]
+fn test_different_collections_metadata_uris() {
+    let (dispatcher, address) = deploy_contract();
+    let owner = OWNER();
+    let recipient = USER1();
+    start_cheat_caller_address(address, owner);
+
+    // Create two collections with different base URIs
+    let collection1_id = dispatcher.create_collection(
+        "Collection 1", "C1", "ipfs://QmCollection1/"
+    );
+    let collection2_id = dispatcher.create_collection(
+        "Collection 2", "C2", "ipfs://QmCollection2/"
+    );
+
+    // Mint tokens in different collections
+    let token1_id = dispatcher.mint(collection1_id, recipient);
+    let token2_id = dispatcher.mint(collection2_id, recipient);
+
+    // Verify token metadata URIs
+    let token1 = dispatcher.get_token(token1_id);
+    let token2 = dispatcher.get_token(token2_id);
+
+    // Fix: token IDs are globally incremented, so first token is 1, second is 2
+    assert(token1.metadata_uri == "ipfs://QmCollection1/1.json", 'Collection 1 token md mismatch');
+    assert(token2.metadata_uri == "ipfs://QmCollection2/2.json", 'Collection 2 token md mismatch');
+
+    stop_cheat_caller_address(address);
+}
+
+#[test]
+fn test_token_metadata_uri_format() {
+    let (dispatcher, address) = deploy_contract();
+    let owner = OWNER();
+    let recipient = USER1();
+    start_cheat_caller_address(address, owner);
+
+    // Create collection with a specific base URI
+    let base_uri: ByteArray = "https://example.com/nfts/";
+    let collection_id = dispatcher.create_collection("Test Collection", "TST", base_uri);
+
+    // Mint a token
+    let token_id = dispatcher.mint(collection_id, recipient);
+    let token = dispatcher.get_token(token_id);
+
+    // Verify the metadata URI follows the standard format
+    assert(token.metadata_uri == "https://example.com/nfts/1.json", 'Token metadata mismatch');
 
     stop_cheat_caller_address(address);
 }
