@@ -4,4 +4,6 @@ pub mod IPOfferLicensing;
 mod test;
 
 pub use interfaces::IIPOfferLicensing;
-pub use IPOfferLicensing::IPOfferLicensing as IPOfferLicensingContract;
+pub use interfaces::{Offer, OfferStatus};
+pub use IPOfferLicensing::IPOfferLicensingDispatcher;
+pub use IPOfferLicensing::IPOfferLicensingDispatcherTrait;
