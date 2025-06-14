@@ -1,12 +1,12 @@
 #[starknet::contract]
 pub mod MockToken {
-    use starknet::event::EventEmitter;
-    use starknet::{ContractAddress, get_caller_address};
-    use starknet::storage::{
-        StoragePointerReadAccess, StoragePointerWriteAccess, Map, StoragePathEntry,
-    };
-    use ip_launchpad::interfaces::IERC20::IERC20;
     use core::num::traits::Zero;
+    use ip_launchpad::interfaces::IERC20::IERC20;
+    use starknet::event::EventEmitter;
+    use starknet::storage::{
+        Map, StoragePathEntry, StoragePointerReadAccess, StoragePointerWriteAccess,
+    };
+    use starknet::{ContractAddress, get_caller_address};
 
     #[storage]
     pub struct Storage {

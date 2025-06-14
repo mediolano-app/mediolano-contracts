@@ -31,10 +31,12 @@ pub trait ICrowdfunding<TContractState> {
         goal: u256,
         duration: u64,
         base_price: u256,
-        ipfs_hash: Array<felt252>
+        ipfs_hash: Array<felt252>,
     );
 
-    fn fund(ref self: TContractState, asset_id: u64, amount: u256); // Payable functions receive amount
+    fn fund(
+        ref self: TContractState, asset_id: u64, amount: u256,
+    ); // Payable functions receive amount
 
     fn close_funding(ref self: TContractState, asset_id: u64);
 
@@ -48,6 +50,8 @@ pub trait ICrowdfunding<TContractState> {
     fn get_asset_count(self: @TContractState) -> u64;
     fn get_asset_data(self: @TContractState, asset_id: u64) -> Asset;
     fn get_asset_ipfs_hash(self: @TContractState, asset_id: u64) -> Array<felt252>;
-    fn get_investor_data(self: @TContractState, asset_id: u64, investor: ContractAddress) -> Investment;
+    fn get_investor_data(
+        self: @TContractState, asset_id: u64, investor: ContractAddress,
+    ) -> Investment;
     fn get_token_address(self: @TContractState) -> ContractAddress;
 }
