@@ -42,9 +42,12 @@ pub trait ICrowdfunding<TContractState> {
 
     fn withdraw_investor(ref self: TContractState, asset_id: u64);
 
+    fn set_token_address(ref self: TContractState, token_address: ContractAddress);
+
     // View functions
     fn get_asset_count(self: @TContractState) -> u64;
     fn get_asset_data(self: @TContractState, asset_id: u64) -> Asset;
     fn get_asset_ipfs_hash(self: @TContractState, asset_id: u64) -> Array<felt252>;
     fn get_investor_data(self: @TContractState, asset_id: u64, investor: ContractAddress) -> Investment;
+    fn get_token_address(self: @TContractState) -> ContractAddress;
 }
