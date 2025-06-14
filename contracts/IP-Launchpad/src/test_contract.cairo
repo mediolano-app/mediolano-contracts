@@ -18,8 +18,6 @@ mod tests {
         ICrowdfundingDispatcher, ICrowdfundingDispatcherTrait,
     };
     use ip_launchpad::interfaces::IERC20::IERC20Dispatcher;
-    // Note: Assuming the interface ICrowdfunding and its dispatcher ICrowdfundingDispatcher are
-    // defined in the parent module of the Crowdfunding contract module.
 
     // Required for declaring and deploying a contract using Starknet Foundry
     use snforge_std::{ContractClassTrait, DeclareResultTrait, declare};
@@ -46,77 +44,45 @@ mod tests {
     fn deploy_crowdfunding_contract(
         owner: ContractAddress,
     ) -> (ICrowdfundingDispatcher, IERC20Dispatcher) {
-        // 1. Declare the contract class, identified by its module name "Crowdfunding" <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a>
+        // 1. Declare the contract class
         let contract = declare("Crowdfunding");
 
         let erc20_dispatcher = deploy_mock_erc20(owner);
 
-        // 2. Create constructor arguments - serialize each one into a felt252 array <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a>
+        // 2. Create constructor arguments - serialize each one into a felt252 array
         let mut constructor_args = array![];
         // The constructor expects owner and ip_token_contract
         Serde::serialize(@owner, ref constructor_args);
         Serde::serialize(@erc20_dispatcher.contract_address, ref constructor_args);
 
-        // 3. Deploy the contract and retrieve its address <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a>
+        // 3. Deploy the contract and retrieve its address
         let (contract_address, _) = contract
             .unwrap()
             .contract_class()
             .deploy(@constructor_args)
             .unwrap();
 
-        // 4. Create a dispatcher to interact with the contract using its interface <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a>
+        // 4. Create a dispatcher to interact with the contract using its interface
         (ICrowdfundingDispatcher { contract_address }, erc20_dispatcher)
     }
 
     fn deploy_mock_erc20(owner: ContractAddress) -> IERC20Dispatcher {
-        // 1. Declare the contract class, identified by its module name "Crowdfunding" <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a>
+        // 1. Declare the contract class, identified by its module name "MockToken"
         let contract = declare("MockToken");
 
-        // 2. Create constructor arguments - serialize each one into a felt252 array <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a>
+        // 2. Create constructor arguments - serialize each one into a felt252 array
         let mut constructor_args = array![];
 
         Serde::serialize(@owner, ref constructor_args);
 
-        // 3. Deploy the contract and retrieve its address <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a>
+        // 3. Deploy the contract and retrieve its address
         let (contract_address, _) = contract
             .unwrap()
             .contract_class()
             .deploy(@constructor_args)
             .unwrap();
 
-        // 4. Create a dispatcher to interact with the contract using its interface <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a>
+        // 4. Create a dispatcher to interact with the contract using its interface
         IERC20Dispatcher { contract_address }
     }
 
@@ -146,29 +112,13 @@ mod tests {
     fn test_create_asset() {
         let (dispatcher, _) = deploy_crowdfunding_contract(OWNER_ADDRESS);
 
-        // Setup cheatcodes: mock caller and block timestamp <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a><a
-        // href="https://foundry-rs.github.io/starknet-foundry/testing/testing-contract-internals.html"
-        // target="_blank" rel="noopener noreferrer" className="bg-light-secondary
-        // dark:bg-dark-secondary px-1 rounded ml-1 no-underline text-xs text-black/70
-        // dark:text-white/70 relative hover:underline">10</a>
+        // Setup cheatcodes: mock caller and block timestamp
         let creator = CREATOR_ADDRESS;
         start_cheat_caller_address(dispatcher.contract_address, creator);
         let start_time: u64 = 1000;
         start_cheat_block_timestamp(dispatcher.contract_address, start_time);
 
-        // Setup event spy to capture emitted events <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a><a
-        // href="https://foundry-rs.github.io/starknet-foundry/testing/testing-contract-internals.html"
-        // target="_blank" rel="noopener noreferrer" className="bg-light-secondary
-        // dark:bg-dark-secondary px-1 rounded ml-1 no-underline text-xs text-black/70
-        // dark:text-white/70 relative hover:underline">10</a>
+        // Setup event spy to capture emitted events
         let mut spy = spy_events();
 
         // Define asset parameters
@@ -210,15 +160,7 @@ mod tests {
             i += 1;
         }
 
-        // Verify event emission <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a><a
-        // href="https://foundry-rs.github.io/starknet-foundry/testing/testing-contract-internals.html"
-        // target="_blank" rel="noopener noreferrer" className="bg-light-secondary
-        // dark:bg-dark-secondary px-1 rounded ml-1 no-underline text-xs text-black/70
-        // dark:text-white/70 relative hover:underline">10</a>
+        // Verify event emission
         let expected_event = Crowdfunding::Event::AssetCreated(
             AssetCreated {
                 asset_id: expected_asset_id,
@@ -604,8 +546,6 @@ mod tests {
 
         // Withdraw as the creator
         start_cheat_caller_address(dispatcher.contract_address, creator);
-        // Note: This test assumes the internal transfer_erc20 function succeeds.
-        // Mocking external calls is not covered by the provided context.
         dispatcher.withdraw_creator(0);
         stop_cheat_caller_address(dispatcher.contract_address);
 
@@ -617,8 +557,6 @@ mod tests {
         );
         let expected_events = array![(dispatcher.contract_address, expected_event)];
         spy.assert_emitted(@expected_events);
-        // Note: Verifying the actual token transfer requires mocking the ERC20 contract,
-    // which is beyond the scope of the provided context.
     }
 
     #[test]
@@ -712,8 +650,7 @@ mod tests {
 
         // Withdraw as the investor
         start_cheat_caller_address(dispatcher.contract_address, investor);
-        // Note: This test assumes the internal transfer_erc20 function succeeds.
-        // Mocking external calls is not covered by the provided context.
+
         dispatcher.withdraw_investor(0);
         stop_cheat_caller_address(dispatcher.contract_address);
 
@@ -729,8 +666,6 @@ mod tests {
         );
         let expected_events = array![(dispatcher.contract_address, expected_event)];
         spy.assert_emitted(@expected_events);
-        // Note: Verifying the actual token transfer requires mocking the ERC20 contract,
-    // which is beyond the scope of the provided context.
     }
 
     #[test]
@@ -776,15 +711,7 @@ mod tests {
     fn test_set_token_address_success() {
         let (dispatcher, _) = deploy_crowdfunding_contract(OWNER_ADDRESS);
 
-        // Set caller address to the owner <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a><a
-        // href="https://foundry-rs.github.io/starknet-foundry/testing/testing-contract-internals.html"
-        // target="_blank" rel="noopener noreferrer" className="bg-light-secondary
-        // dark:bg-dark-secondary px-1 rounded ml-1 no-underline text-xs text-black/70
-        // dark:text-white/70 relative hover:underline">10</a>
+        // Set caller address to the owner
         start_cheat_caller_address(dispatcher.contract_address, OWNER_ADDRESS);
 
         let new_token_address: ContractAddress = 777.try_into().unwrap();
@@ -793,11 +720,7 @@ mod tests {
         // Stop mocking
         stop_cheat_caller_address(dispatcher.contract_address);
 
-        // Verify state update using load (since no public getter for token_address) <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a>
+        // Verify state update using load (since no public getter for token_address)
         let token_address_loaded = dispatcher.get_token_address();
         assert(token_address_loaded == new_token_address, 'Token address not updated');
     }
@@ -807,15 +730,7 @@ mod tests {
     fn test_set_token_address_panic_not_owner() {
         let (dispatcher, _) = deploy_crowdfunding_contract(OWNER_ADDRESS);
 
-        // Set caller address to a non-owner address <a
-        // href="https://book.cairo-lang.org/ch104-02-testing-smart-contracts.html" target="_blank"
-        // rel="noopener noreferrer" className="bg-light-secondary dark:bg-dark-secondary px-1
-        // rounded ml-1 no-underline text-xs text-black/70 dark:text-white/70 relative
-        // hover:underline">6</a><a
-        // href="https://foundry-rs.github.io/starknet-foundry/testing/testing-contract-internals.html"
-        // target="_blank" rel="noopener noreferrer" className="bg-light-secondary
-        // dark:bg-dark-secondary px-1 rounded ml-1 no-underline text-xs text-black/70
-        // dark:text-white/70 relative hover:underline">10</a>
+        // Set caller address to a non-owner address
         start_cheat_caller_address(dispatcher.contract_address, OTHER_ADDRESS);
 
         let new_token_address: ContractAddress = 777.try_into().unwrap();
