@@ -189,25 +189,14 @@ use starknet::ContractAddress;
             } else {
                 0
             };
-            
-            println!("time elapsed: {}", time_elapsed);
-            println!("total_duration: {}", total_duration);
-            println!("time remaining percentage: {}", time_remaining_percentage);
-            println!("discount percentage: {}", discount_percentage);
 
             // Ensure at least 10% discount (or whatever minimum you want)
             let effective_discount_percentage = max_u64(discount_percentage, 10);
-            
-            println!("effective discount: {}", effective_discount_percentage);
-            println!("base_price: {}", asset.base_price);
 
             // Calculate discounted price: base_price * (100 - effective_discount_percentage) / 100
             // NOTE: This simplified u256 multiplication/division can overflow for large numbers.
             // A robust solution might require 512-bit intermediates or checked arithmetic.
             let discounted_price = unsafe_u256_mul_div(asset.base_price, (100 - effective_discount_percentage).into(), 100.into());
-
-            println!("Discounted_price : {}", discounted_price);
-            println!("amount: {}", amount);
 
             assert(amount >= discounted_price, 'INSUFFICIENT_FUNDS');
 
@@ -258,7 +247,6 @@ use starknet::ContractAddress;
 
             // Transfer funds using the helper
             let amount_to_transfer = asset.raised;
-            println!("Amount to transfer: {}", amount_to_transfer); // Debugging output
             assert(amount_to_transfer > 0, 'AMOUNT_TO_TRANSFER_ZERO'); // Should not happen if raised > 0
             let success = transfer_erc20(caller, amount_to_transfer, self.token_address.read());
             assert(success, 'TRANSFER_FAILED');
