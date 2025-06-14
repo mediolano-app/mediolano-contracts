@@ -1,5 +1,4 @@
-# Mediolano.app Cairo Contracts
-
+# Mediolano Codebase
 Cairo smart contracts for Mediolano, the intellectual property provider of the integrity web, powered on Starknet.
 
 
