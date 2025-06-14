@@ -16,58 +16,56 @@ use starknet::ContractAddress;
     // Storage imports
     use starknet::storage::*;
 
-    // Constants
-    const ETH_ADDRESS: felt252 = 0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7;
-
     // Storage variables defined in a struct
     #[storage]
     pub struct Storage {
-        asset_count: u64, // Counter for assets
-        asset_data: Map<u64, Asset>, // Map asset_id (u64) to Asset struct
-        asset_ipfs_hash: Map<(u64, u64), felt252>, // Map (asset_id, index) to felt252 hash part
-        investor_data: Map<(u64, ContractAddress), Investment>, // Map (asset_id, investor_address) to Investment struct
+        pub asset_count: u64, // Counter for assets
+        pub token_address: ContractAddress, 
+        pub owner: ContractAddress, // Owner of the contract
+        pub asset_data: Map<u64, Asset>, // Map asset_id (u64) to Asset struct
+        pub asset_ipfs_hash: Map<(u64, u64), felt252>, // Map (asset_id, index) to felt252 hash part
+        pub investor_data: Map<(u64, ContractAddress), Investment>, // Map (asset_id, investor_address) to Investment struct
     }
 
     // Events - Must derive Drop and starknet::Event, and be part of an #[event] enum
     #[derive(Drop, starknet::Event)]
     pub struct AssetCreated {
-        asset_id: u64,
-        creator: ContractAddress,
-        goal: u256,
-        start_time: u64,
-        duration: u64,
-        base_price: u256,
-        ipfs_hash_len: u64,
-        ipfs_hash: Span<felt252>, // Events emit Span for arrays
+        pub asset_id: u64,
+        pub creator: ContractAddress,
+        pub goal: u256,
+        pub start_time: u64,
+        pub duration: u64,
+        pub base_price: u256,
+        pub ipfs_hash_len: u64,
+        pub ipfs_hash: Span<felt252>, // Events emit Span for arrays
     }
 
     #[derive(Drop, starknet::Event)]
     pub struct Funded {
-        asset_id: u64,
-        investor: ContractAddress,
-        amount: u256,
-        // discounted_price: u256, // Removed from event as it's a calculation
-        timestamp: u64,
+        pub asset_id: u64,
+        pub investor: ContractAddress,
+        pub amount: u256,
+        pub timestamp: u64,
     }
 
     #[derive(Drop, starknet::Event)]
     pub struct FundingClosed {
-        asset_id: u64,
-        total_raised: u256,
-        success: bool, // Use bool type
+        pub asset_id: u64,
+        pub total_raised: u256,
+        pub success: bool, // Use bool type
     }
 
     #[derive(Drop, starknet::Event)]
     pub struct CreatorWithdrawal {
-        asset_id: u64,
-        amount: u256,
+        pub asset_id: u64,
+        pub amount: u256,
     }
 
     #[derive(Drop, starknet::Event)]
     pub struct InvestorWithdrawal {
-        asset_id: u64,
-        investor: ContractAddress,
-        amount: u256,
+        pub asset_id: u64,
+        pub investor: ContractAddress,
+        pub amount: u256,
     }
 
     // Event Enum
@@ -81,9 +79,22 @@ use starknet::ContractAddress;
         InvestorWithdrawal: InvestorWithdrawal,
     }
 
+    #[constructor]
+    fn constructor(
+        ref self: ContractState,
+        owner: ContractAddress,
+        ip_token_contract: ContractAddress
+    ) {
+            // Initialize storage variables
+            self.asset_count.write(0);
+            self.token_address.write(ip_token_contract); // Default address
+            self.owner.write(owner); // Set contract owner to caller
+    }
+
     // Implement the contract interface - Functions here are public
     #[abi(embed_v0)]
     pub impl CrowdfundingImpl of ICrowdfunding<ContractState> {
+
         fn create_asset(
             ref self: ContractState,
             goal: u256,
@@ -134,6 +145,7 @@ use starknet::ContractAddress;
                     AssetCreated {
                         asset_id: asset_id,
                         creator: caller,
+
                         goal: goal,
                         start_time: start_time,
                         duration: duration,
@@ -162,18 +174,40 @@ use starknet::ContractAddress;
             let time_elapsed = current_time - asset.start_time;
             let total_duration = asset.end_time - asset.start_time;
 
-            let discount_percentage: u64 = if total_duration > 0 {
+            // Calculate percentage of time remaining
+            let time_remaining_percentage: u64 = if total_duration > 0 {
                  (total_duration - time_elapsed) * 100 / total_duration
             } else {
                 0
             };
 
+            // Cap the maximum discount at 10%
+            let max_discount: u64 = 10;
+            let discount_percentage = if time_remaining_percentage > 0 {
+                // Scale the time_remaining_percentage to be between 0 and max_discount
+                time_remaining_percentage * max_discount / 100
+            } else {
+                0
+            };
+            
+            println!("time elapsed: {}", time_elapsed);
+            println!("total_duration: {}", total_duration);
+            println!("time remaining percentage: {}", time_remaining_percentage);
+            println!("discount percentage: {}", discount_percentage);
+
+            // Ensure at least 10% discount (or whatever minimum you want)
             let effective_discount_percentage = max_u64(discount_percentage, 10);
+            
+            println!("effective discount: {}", effective_discount_percentage);
+            println!("base_price: {}", asset.base_price);
 
             // Calculate discounted price: base_price * (100 - effective_discount_percentage) / 100
             // NOTE: This simplified u256 multiplication/division can overflow for large numbers.
             // A robust solution might require 512-bit intermediates or checked arithmetic.
             let discounted_price = unsafe_u256_mul_div(asset.base_price, (100 - effective_discount_percentage).into(), 100.into());
+
+            println!("Discounted_price : {}", discounted_price);
+            println!("amount: {}", amount);
 
             assert(amount >= discounted_price, 'INSUFFICIENT_FUNDS');
 
@@ -224,8 +258,9 @@ use starknet::ContractAddress;
 
             // Transfer funds using the helper
             let amount_to_transfer = asset.raised;
+            println!("Amount to transfer: {}", amount_to_transfer); // Debugging output
             assert(amount_to_transfer > 0, 'AMOUNT_TO_TRANSFER_ZERO'); // Should not happen if raised > 0
-            let success = transfer_erc20(caller, amount_to_transfer);
+            let success = transfer_erc20(caller, amount_to_transfer, self.token_address.read());
             assert(success, 'TRANSFER_FAILED');
 
             // Emit event
@@ -240,12 +275,12 @@ use starknet::ContractAddress;
             // Validate
             assert(investment.amount > 0, 'NO_INVESTMENT'); // Has investment
             assert(asset.is_closed, 'FUNDING_NOT_CLOSED');
-            assert!(asset.raised < asset.goal, "GOAL_REACHED_USE_CREATOR_WITHDRAW"); // Goal not reached
+            assert!(asset.raised < asset.goal, "GOAL_REACHED"); // Goal not reached
 
             // Transfer funds using the helper
             let amount_to_transfer = investment.amount;
             assert(amount_to_transfer > 0, 'AMOUNT_TO_TRANSFER_ZERO'); // Should be covered by NO_INVESTMENT
-            let success = transfer_erc20(caller, amount_to_transfer);
+            let success = transfer_erc20(caller, amount_to_transfer, self.token_address.read());
             assert(success, 'TRANSFER_FAILED');
 
             // Reset investment in storage
@@ -255,6 +290,15 @@ use starknet::ContractAddress;
 
             // Emit event
             self.emit(Event::InvestorWithdrawal(InvestorWithdrawal { asset_id: asset_id, investor: caller, amount: amount_to_transfer }));
+        }
+
+        fn set_token_address(ref self: ContractState, token_address: ContractAddress) {
+            // Only the contract owner can set the token address
+            let caller = get_caller_address();
+            assert(caller == self.owner.read(), 'NOT_CONTRACT_OWNER');
+
+            // Update token address
+            self.token_address.write(token_address);
         }
 
         // View functions - Use self: @ContractState for read-only access
@@ -285,16 +329,19 @@ use starknet::ContractAddress;
         fn get_investor_data(self: @ContractState, asset_id: u64, investor: ContractAddress) -> Investment {
             self.investor_data.read((asset_id, investor))
         }
+
+        fn get_token_address(self: @ContractState) -> ContractAddress {
+            self.token_address.read()
+        }
     }
 
     // --- Helper functions ---
 
     // Helper function to transfer ERC20 tokens
     // This function is private (not in the abi(embed_v0) impl)
-    fn transfer_erc20(recipient: ContractAddress, amount: u256) -> bool {
+    fn transfer_erc20(recipient: ContractAddress, amount: u256, token_address: ContractAddress) -> bool {
 
-        let eth_contract_address: ContractAddress = ETH_ADDRESS.try_into().unwrap();
-        let erc20_dispatcher = IERC20Dispatcher { contract_address: eth_contract_address };
+        let erc20_dispatcher = IERC20Dispatcher { contract_address: token_address };
 
         let result = erc20_dispatcher.transfer(
             recipient,
@@ -304,10 +351,6 @@ use starknet::ContractAddress;
     }
 
     // Helper function for u256 multiplication and division
-    // NOTE: This is a simplified version using direct u256 operators.
-    // For full precision with large numbers, a 512-bit intermediate might be required,
-    // which is not directly supported by core library types in this context.
-    // This function can panic on overflow during multiplication or division by zero.
     fn unsafe_u256_mul_div(value: u256, numerator: u256, denominator: u256) -> u256 {
         assert(denominator > 0, 'DIVISION_BY_ZERO'); // Ensure denominator is not zero
         (value * numerator) / denominator // Perform multiplication and division
