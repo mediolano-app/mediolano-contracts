@@ -8,6 +8,28 @@ trait IMIPCollections<TContractState> {
         from_zero: bool,
         owner: ContractAddress,
     ) -> ContractAddress;
+
+    fn create_collection(
+        ref self: TContractState,
+        name: felt252, 
+        symbol: felt252
+    ) -> ContractAddress;
+
+    fn get_collection_count(
+        self: @TContractState, 
+        user: ContractAddress
+    ) -> u64;
+
+    fn get_collection_by_index(
+        self: @TContractState, 
+        user: ContractAddress, 
+        index: u64
+    ) -> CollectionInfo;
+
+    fn get_all_collections_for_user(
+        self: @TContractState, 
+        user: ContractAddress
+    ) -> Array<CollectionInfo>;
 }
 
 #[starknet::contract]
