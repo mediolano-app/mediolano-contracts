@@ -1,14 +1,19 @@
 #[starknet::contract]
 mod CollectiveIPCore {
-    use ip_collective_agreement::types::{OwnershipInfo, IPAssetInfo, IPAssetType, ComplianceStatus};
-    use ip_collective_agreement::interface::{IOwnershipRegistry, IIPAssetManager};
+    use ip_collective_agreement::types::{
+        OwnershipInfo, IPAssetInfo, IPAssetType, ComplianceStatus, RevenueInfo, OwnerRevenueInfo,
+    };
+    use ip_collective_agreement::interface::{
+        IOwnershipRegistry, IIPAssetManager, IRevenueDistribution,
+    };
     use starknet::storage::{
         StoragePointerReadAccess, StoragePointerWriteAccess, Map, StorageMapReadAccess,
         StorageMapWriteAccess,
     };
-    use starknet::{ContractAddress, get_caller_address, get_block_timestamp};
+    use starknet::{ContractAddress, get_caller_address, get_block_timestamp, get_contract_address};
     use core::array::ArrayTrait;
     use openzeppelin::token::erc1155::{ERC1155Component, ERC1155HooksEmptyImpl};
+    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::access::ownable::OwnableComponent;
     use core::num::traits::Zero;
@@ -51,6 +56,13 @@ mod CollectiveIPCore {
         // Global state
         next_asset_id: u256,
         paused: bool,
+        revenue_info: Map<(u256, ContractAddress), RevenueInfo>,
+        pending_revenue: Map<
+            (u256, ContractAddress, ContractAddress), u256,
+        >, // (asset_id, owner, token) -> amount
+        owner_revenue_info: Map<
+            (u256, ContractAddress, ContractAddress), OwnerRevenueInfo,
+        > // (asset_id, owner, token) -> info
     }
 
     #[event]
@@ -68,6 +80,9 @@ mod CollectiveIPCore {
         IPOwnershipTransferred: IPOwnershipTransferred,
         AssetRegistered: AssetRegistered,
         MetadataUpdated: MetadataUpdated,
+        RevenueReceived: RevenueReceived,
+        RevenueDistributed: RevenueDistributed,
+        RevenueWithdrawn: RevenueWithdrawn,
     }
 
     #[derive(Drop, starknet::Event)]
@@ -103,6 +118,34 @@ mod CollectiveIPCore {
         timestamp: u64,
     }
 
+    /// Revenue Distribution Events
+    #[derive(Drop, starknet::Event)]
+    pub struct RevenueReceived {
+        pub asset_id: u256,
+        pub token_address: ContractAddress,
+        pub amount: u256,
+        pub from: ContractAddress,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RevenueDistributed {
+        pub asset_id: u256,
+        pub token_address: ContractAddress,
+        pub total_amount: u256,
+        pub recipients_count: u32,
+        pub distributed_by: ContractAddress,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct RevenueWithdrawn {
+        pub asset_id: u256,
+        pub owner: ContractAddress,
+        pub token_address: ContractAddress,
+        pub amount: u256,
+        pub timestamp: u64,
+    }
 
     #[constructor]
     fn constructor(ref self: ContractState, owner: ContractAddress, base_uri: ByteArray) {
@@ -209,6 +252,17 @@ mod CollectiveIPCore {
             let to_current = self.owner_percentage.read((asset_id, to));
             self.owner_percentage.write((asset_id, to), to_current + percentage);
 
+            if to_current == 0 {
+                // New owner - add to asset_owners mapping
+                let ownership_info = self.ownership_info.read(asset_id);
+                self.asset_owners.write((asset_id, ownership_info.total_owners), to);
+
+                // Update total_owners count
+                let mut updated_ownership_info = ownership_info;
+                updated_ownership_info.total_owners += 1;
+                self.ownership_info.write(asset_id, updated_ownership_info);
+            }
+
             // Update governance weights proportionally
             let from_gov_weight = self.governance_weight.read((asset_id, from));
             let weight_to_transfer = (from_gov_weight * percentage) / current_percentage;
@@ -286,7 +340,7 @@ mod CollectiveIPCore {
                 total_supply: 1000, // Standard initial supply for IP tokens
                 creation_timestamp: get_block_timestamp(),
                 is_verified: false,
-                compliance_status: ComplianceStatus::Pending,
+                compliance_status: ComplianceStatus::Pending.into(),
             };
 
             self.asset_info.write(asset_id, asset_info);
@@ -382,18 +436,14 @@ mod CollectiveIPCore {
         }
 
         fn verify_asset_ownership(self: @ContractState, asset_id: u256) -> bool {
-            println!("In here: 1");
             let asset_info = self.asset_info.read(asset_id);
-            println!("In here: 2");
             let ownership_info = self.ownership_info.read(asset_id);
-            println!("In here: 3");
 
-            println!("asset_info.asset_id: {:?}", asset_info.asset_id.is_non_zero());
-            println!("ownership_info.is_active: {:?}", ownership_info.is_active);
+            if asset_info.asset_id == 0 || !ownership_info.is_active {
+                return false;
+            }
 
-            println!("In here: 4");
-            // Basic verification - can be extended with more complex logic
-            asset_info.asset_id.is_non_zero() && ownership_info.is_active
+            true
         }
 
         fn get_total_supply(self: @ContractState, asset_id: u256) -> u256 {
@@ -414,6 +464,245 @@ mod CollectiveIPCore {
             self.unpause();
         }
     }
+
+    #[abi(embed_v0)]
+    impl RevenueDistributionImpl of IRevenueDistribution<ContractState> {
+        fn receive_revenue(
+            ref self: ContractState, asset_id: u256, token_address: ContractAddress, amount: u256,
+        ) -> bool {
+            let caller = get_caller_address();
+
+            // Validate asset exists
+            assert(self.verify_asset_ownership(asset_id), 'Invalid asset ID');
+            assert!(amount > 0, "Amount must be greater than zero");
+
+            // Transfer tokens from caller to contract
+            if !token_address.is_zero() {
+                let erc20 = IERC20Dispatcher { contract_address: token_address };
+                let success = erc20.transfer_from(caller, get_contract_address(), amount);
+                assert!(success, "Token transfer failed");
+            }
+
+            // Update revenue tracking
+            let mut revenue_info = self.revenue_info.read((asset_id, token_address));
+            revenue_info.total_received += amount;
+            revenue_info.accumulated_revenue += amount;
+            self.revenue_info.write((asset_id, token_address), revenue_info);
+
+            // Emit event
+            self
+                .emit(
+                    RevenueReceived {
+                        asset_id,
+                        token_address,
+                        amount,
+                        from: caller,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn distribute_revenue(
+            ref self: ContractState, asset_id: u256, token_address: ContractAddress, amount: u256,
+        ) -> bool {
+            let caller = get_caller_address();
+
+            // Only owners can trigger distribution
+            assert!(self.is_owner(asset_id, caller), "Only owners can distribute revenue");
+
+            // Validate asset and amount
+            assert(self.verify_asset_ownership(asset_id), 'Invalid asset ID');
+            assert!(amount > 0, "Amount must be greater than zero");
+
+            // Check we have enough accumulated revenue
+            let mut revenue_info = self.revenue_info.read((asset_id, token_address));
+            assert!(revenue_info.accumulated_revenue >= amount, "Insufficient accumulated revenue");
+
+            // Check minimum distribution amount
+            assert!(
+                amount >= revenue_info.minimum_distribution, "Amount below minimum distribution",
+            );
+
+            // Get owners and their percentages
+            let (owners, percentages) = self.get_asset_owners_with_percentages(asset_id);
+
+            // Distribute to each owner
+            let mut i = 0;
+            let mut total_distributed = 0;
+
+            loop {
+                if i >= owners.len() {
+                    break;
+                }
+
+                let owner = *owners.at(i);
+                let percentage = *percentages.at(i);
+                let owner_share = (amount * percentage) / 100;
+
+                if owner_share > 0 {
+                    // Add to owner's pending revenue
+                    let current_pending = self
+                        .pending_revenue
+                        .read((asset_id, owner, token_address));
+                    self
+                        .pending_revenue
+                        .write((asset_id, owner, token_address), current_pending + owner_share);
+
+                    // Update owner revenue tracking
+                    let mut owner_info = self
+                        .owner_revenue_info
+                        .read((asset_id, owner, token_address));
+                    owner_info.total_earned += owner_share;
+                    self.owner_revenue_info.write((asset_id, owner, token_address), owner_info);
+
+                    total_distributed += owner_share;
+                }
+
+                i += 1;
+            };
+
+            // Update revenue info
+            revenue_info.accumulated_revenue -= total_distributed;
+            revenue_info.total_distributed += total_distributed;
+            revenue_info.last_distribution_timestamp = get_block_timestamp();
+            revenue_info.distribution_count += 1;
+            self.revenue_info.write((asset_id, token_address), revenue_info);
+
+            // Emit event
+            self
+                .emit(
+                    RevenueDistributed {
+                        asset_id,
+                        token_address,
+                        total_amount: total_distributed,
+                        recipients_count: owners.len(),
+                        distributed_by: caller,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn distribute_all_revenue(
+            ref self: ContractState, asset_id: u256, token_address: ContractAddress,
+        ) -> bool {
+            // Get all accumulated revenue for this asset
+            let revenue_info = self.revenue_info.read((asset_id, token_address));
+            let accumulated = revenue_info.accumulated_revenue;
+
+            if accumulated > 0 {
+                self.distribute_revenue(asset_id, token_address, accumulated)
+            } else {
+                false
+            }
+        }
+
+        fn withdraw_pending_revenue(
+            ref self: ContractState, asset_id: u256, token_address: ContractAddress,
+        ) -> u256 {
+            let caller = get_caller_address();
+
+            // Verify caller is an owner
+            assert(self.is_owner(asset_id, caller), 'Not an asset owner');
+
+            // Get pending revenue
+            let pending_amount = self.pending_revenue.read((asset_id, caller, token_address));
+            assert!(pending_amount > 0, "No pending revenue");
+
+            // Clear pending revenue
+            self.pending_revenue.write((asset_id, caller, token_address), 0);
+
+            // Update owner revenue info
+            let mut owner_info = self.owner_revenue_info.read((asset_id, caller, token_address));
+            owner_info.total_withdrawn += pending_amount;
+            owner_info.last_withdrawal_timestamp = get_block_timestamp();
+            self.owner_revenue_info.write((asset_id, caller, token_address), owner_info);
+
+            // Transfer tokens from contract to owner
+            if !token_address.is_zero() {
+                let erc20 = IERC20Dispatcher { contract_address: token_address };
+                let success = erc20.transfer(caller, pending_amount);
+                assert!(success, "Token transfer failed");
+            }
+
+            // Emit event
+            self
+                .emit(
+                    RevenueWithdrawn {
+                        asset_id,
+                        owner: caller,
+                        token_address,
+                        amount: pending_amount,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            pending_amount
+        }
+
+        fn get_accumulated_revenue(
+            self: @ContractState, asset_id: u256, token_address: ContractAddress,
+        ) -> u256 {
+            let revenue_info = self.revenue_info.read((asset_id, token_address));
+            revenue_info.accumulated_revenue
+        }
+
+        fn get_pending_revenue(
+            self: @ContractState,
+            asset_id: u256,
+            owner: ContractAddress,
+            token_address: ContractAddress,
+        ) -> u256 {
+            self.pending_revenue.read((asset_id, owner, token_address))
+        }
+
+        fn get_total_revenue_distributed(
+            self: @ContractState, asset_id: u256, token_address: ContractAddress,
+        ) -> u256 {
+            let revenue_info = self.revenue_info.read((asset_id, token_address));
+            revenue_info.total_distributed
+        }
+
+        fn get_owner_total_earned(
+            self: @ContractState,
+            asset_id: u256,
+            owner: ContractAddress,
+            token_address: ContractAddress,
+        ) -> u256 {
+            let owner_info = self.owner_revenue_info.read((asset_id, owner, token_address));
+            owner_info.total_earned
+        }
+
+        fn set_minimum_distribution(
+            ref self: ContractState,
+            asset_id: u256,
+            min_amount: u256,
+            token_address: ContractAddress,
+        ) -> bool {
+            let caller = get_caller_address();
+
+            // Verify caller is an owner
+            assert!(self.is_owner(asset_id, caller), "Not an asset owner");
+
+            // Update minimum distribution
+            let mut revenue_info = self.revenue_info.read((asset_id, token_address));
+            revenue_info.minimum_distribution = min_amount;
+            self.revenue_info.write((asset_id, token_address), revenue_info);
+
+            true
+        }
+
+        fn get_minimum_distribution(
+            self: @ContractState, asset_id: u256, token_address: ContractAddress,
+        ) -> u256 {
+            let revenue_info = self.revenue_info.read((asset_id, token_address));
+            revenue_info.minimum_distribution
+        }
+    }
+
 
     // Internal helper functions
     #[generate_trait]
@@ -469,6 +758,28 @@ mod CollectiveIPCore {
             };
 
             creators
+        }
+
+        fn get_asset_owners_with_percentages(
+            self: @ContractState, asset_id: u256,
+        ) -> (Span<ContractAddress>, Span<u256>) {
+            let ownership_info = self.ownership_info.read(asset_id);
+            let mut owners = ArrayTrait::new();
+            let mut percentages = ArrayTrait::new();
+            let mut i = 0;
+
+            loop {
+                if i >= ownership_info.total_owners {
+                    break;
+                }
+                let owner = self.asset_owners.read((asset_id, i));
+                let percentage = self.owner_percentage.read((asset_id, owner));
+                owners.append(owner);
+                percentages.append(percentage);
+                i += 1;
+            };
+
+            (owners.span(), percentages.span())
         }
     }
 }

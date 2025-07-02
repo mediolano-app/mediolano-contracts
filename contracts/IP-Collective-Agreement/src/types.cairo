@@ -15,7 +15,7 @@ pub struct IPAssetInfo {
     pub total_supply: u256,
     pub creation_timestamp: u64,
     pub is_verified: bool,
-    pub compliance_status: ComplianceStatus,
+    pub compliance_status: felt252,
 }
 
 #[derive(Drop, Serde, starknet::Store)]
@@ -98,4 +98,21 @@ impl Felt252TryIntoComplianceStatus of TryInto<felt252, ComplianceStatus> {
             Option::None
         }
     }
+}
+
+#[derive(Drop, Serde, starknet::Store)]
+pub struct RevenueInfo {
+    pub total_received: u256, // Total revenue received for this asset
+    pub total_distributed: u256, // Total revenue distributed to owners
+    pub accumulated_revenue: u256, // Revenue waiting to be distributed
+    pub last_distribution_timestamp: u64,
+    pub minimum_distribution: u256,
+    pub distribution_count: u32,
+}
+
+#[derive(Drop, Serde, starknet::Store)]
+pub struct OwnerRevenueInfo {
+    pub total_earned: u256,
+    pub total_withdrawn: u256,
+    pub last_withdrawal_timestamp: u64,
 }
