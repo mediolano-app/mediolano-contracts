@@ -118,17 +118,23 @@ pub mod EncryptedPreferencesRegistry {
 
     #[constructor]
     fn constructor(
-        ref self: ContractState, owner: ContractAddress, mediolano_app: ContractAddress,
+        ref self: ContractState,
+        owner: ContractAddress,
+        mediolano_app: ContractAddress
     ) {
-        self.ownable.initializer(owner);
-        self.owner.write(owner);
-        self.mediolano_app.write(mediolano_app);
+        // Initialize Ownable component
+        self.ownable.initialize(owner);
+        
+        // Initialize Upgradeable component
+        self.upgradeable.initialize();
+        
+        // Set initial state
+        self.owner = owner;
+        self.mediolano_app = mediolano_app;
+        
+        // Authorize the owner and mediolano app
         self.authorized_apps.entry(owner).write(true);
         self.authorized_apps.entry(mediolano_app).write(true);
-        // self.users_nonces.entry(owner).write(1);
-    // self.users_nonces.entry(mediolano_app).write(1);
-    // self.users_versions.entry(owner).write(SUPPORTED_VERSION);
-    // self.users_versions.entry(mediolano_app).write(SUPPORTED_VERSION);
     }
 
     #[abi(embed_v0)]
