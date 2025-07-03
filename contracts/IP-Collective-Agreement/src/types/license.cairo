@@ -19,7 +19,7 @@ pub struct LicenseInfo {
     pub payment_token: ContractAddress, // Token for payments (0 = ETH)
     pub metadata_uri: ByteArray, // Additional license terms
     pub is_suspended: bool,
-pub suspension_end_timestamp: u64
+    pub suspension_end_timestamp: u64,
 }
 
 #[derive(Drop, Serde, starknet::Store)]

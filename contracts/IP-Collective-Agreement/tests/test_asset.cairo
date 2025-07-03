@@ -1,21 +1,21 @@
 use starknet::{ContractAddress, contract_address_const, get_block_timestamp};
 use snforge_std::{
-    declare, ContractClassTrait, DeclareResultTrait, start_cheat_caller_address,
-    stop_cheat_caller_address, start_cheat_block_timestamp, stop_cheat_block_timestamp,
+    start_cheat_caller_address, stop_cheat_caller_address, start_cheat_block_timestamp,
+    stop_cheat_block_timestamp,
 };
-use ip_collective_agreement::types::{OwnershipInfo, IPAssetInfo, IPAssetType, ComplianceStatus};
+use ip_collective_agreement::types::{IPAssetType};
 use ip_collective_agreement::interface::{
     IOwnershipRegistryDispatcher, IOwnershipRegistryDispatcherTrait, IIPAssetManagerDispatcher,
     IIPAssetManagerDispatcherTrait, IRevenueDistributionDispatcher,
     IRevenueDistributionDispatcherTrait,
 };
 use openzeppelin::token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
-use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+// use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use core::num::traits::Bounded;
 
 use super::test_utils::{
     OWNER, CREATOR1, CREATOR2, CREATOR3, USER, SPENDER, MARKETPLACE, setup,
-    create_test_creators_data, register_test_asset,
+    create_test_creators_data, register_test_asset, deploy_erc1155_receiver,
 };
 
 
@@ -26,9 +26,9 @@ fn test_register_ip_asset_success() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -103,9 +103,9 @@ fn test_erc1155_token_minting() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -149,9 +149,9 @@ fn test_register_ip_asset_when_paused() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -184,9 +184,9 @@ fn test_register_ip_asset_no_creators() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -212,9 +212,9 @@ fn test_register_ip_asset_mismatched_arrays() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -240,9 +240,9 @@ fn test_register_ip_asset_invalid_percentages() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -267,9 +267,9 @@ fn test_ownership_transfer() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -328,9 +328,9 @@ fn test_ownership_transfer_unauthorized() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -365,9 +365,9 @@ fn test_ownership_transfer_insufficient_share() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -401,9 +401,9 @@ fn test_update_metadata() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -451,9 +451,9 @@ fn test_update_metadata_unauthorized() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -489,9 +489,9 @@ fn test_mint_additional_tokens() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -540,9 +540,9 @@ fn test_mint_additional_tokens_unauthorized() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -576,9 +576,9 @@ fn test_access_control_functions() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -623,9 +623,9 @@ fn test_verify_asset_ownership() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -672,9 +672,9 @@ fn test_multiple_asset_registration() {
         ownership_dispatcher,
         asset_dispatcher,
         erc1155_dispatcher,
-        revenue_dispatcher,
         _,
-        erc20_dispatcher,
+        _,
+        _,
         owner_address,
     ) =
         setup();
@@ -691,7 +691,11 @@ fn test_multiple_asset_registration() {
     // Register multiple assets
     let asset_id_1 = asset_dispatcher
         .register_ip_asset(
-            IPAssetType::Art.into(), "ipfs://QmArt", creators, ownership_percentages, governance_weights,
+            IPAssetType::Art.into(),
+            "ipfs://QmArt",
+            creators,
+            ownership_percentages,
+            governance_weights,
         );
 
     let asset_id_2 = asset_dispatcher
@@ -725,3 +729,71 @@ fn test_multiple_asset_registration() {
     assert(asset_info_3.asset_type == 'LITERATURE', 'Wrong asset type for asset 3');
 }
 
+#[test]
+fn test_mint_additional_tokens_overflow_protection() {
+    let (contract_address, _, asset_dispatcher, erc1155_dispatcher, _, _, _, owner_address) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let recipient = USER();
+
+    let initial_supply = asset_dispatcher.get_total_supply(asset_id);
+    let very_large_amount = Bounded::<u256>::MAX - initial_supply - 1;
+
+    // This should work (just under overflow)
+    start_cheat_caller_address(contract_address, creator1);
+    let success = asset_dispatcher.mint_additional_tokens(asset_id, recipient, very_large_amount);
+    stop_cheat_caller_address(contract_address);
+
+    assert!(success, "Minting large amount should succeed");
+
+    let new_supply = asset_dispatcher.get_total_supply(asset_id);
+    assert!(new_supply == initial_supply + very_large_amount, "Supply should update correctly");
+
+    let recipient_balance = erc1155_dispatcher.balance_of(recipient, asset_id);
+    assert!(recipient_balance == very_large_amount, "Recipient should receive minted tokens");
+}
+
+#[test]
+#[should_panic(expected: "Only owners can update metadata")]
+fn test_update_metadata_by_non_owner_after_transfer() {
+    let (contract_address, ownership_dispatcher, asset_dispatcher, _, _, _, _, owner_address) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let new_owner = USER();
+    let non_owner = deploy_erc1155_receiver();
+
+    // Transfer all ownership away from creator1
+    start_cheat_caller_address(contract_address, creator1);
+    ownership_dispatcher.transfer_ownership_share(asset_id, creator1, new_owner, 50_u256);
+    stop_cheat_caller_address(contract_address);
+
+    // Try to update metadata as former owner
+    start_cheat_caller_address(contract_address, creator1);
+    asset_dispatcher.update_asset_metadata(asset_id, "ipfs://unauthorized-update");
+}
+
+#[test]
+fn test_verify_asset_ownership_edge_cases() {
+    let (contract_address, _, asset_dispatcher, _, _, _, _, owner_address) = setup();
+
+    // Test with non-existent asset
+    let non_existent_verification = asset_dispatcher.verify_asset_ownership(999_u256);
+    assert!(!non_existent_verification, "Non-existent asset should not verify");
+
+    // Test with zero asset ID
+    let zero_verification = asset_dispatcher.verify_asset_ownership(0_u256);
+    assert!(!zero_verification, "Zero asset ID should not verify");
+
+    // Test with valid asset
+    let (asset_id, _, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let valid_verification = asset_dispatcher.verify_asset_ownership(asset_id);
+    assert!(valid_verification, "Valid asset should verify");
+}

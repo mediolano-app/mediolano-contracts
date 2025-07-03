@@ -14,5 +14,5 @@ pub use license::{
     LicenseInfo, LicenseType, UsageRights, LicenseStatus, LicenseTerms, LicenseProposal,
     RoyaltyInfo, LicenseOfferCreated, LicenseApproved, LicenseExecuted, LicenseRevoked,
     LicenseSuspended, LicenseTransferred, RoyaltyPaid, UsageReported, LicenseProposalCreated,
-    LicenseProposalVoted, LicenseProposalExecuted, LicenseReactivated
+    LicenseProposalVoted, LicenseProposalExecuted, LicenseReactivated,
 };

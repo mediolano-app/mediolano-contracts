@@ -56,20 +56,11 @@ pub trait ILicenseManager<TContractState> {
 
     fn execute_license_proposal(ref self: TContractState, proposal_id: u256) -> bool;
 
-    fn check_and_reactivate_license(
-        ref self: TContractState,
-        license_id: u256,
-    ) -> bool;
+    fn check_and_reactivate_license(ref self: TContractState, license_id: u256) -> bool;
 
-    fn reactivate_suspended_license(
-        ref self: TContractState,
-        license_id: u256,
-    ) -> bool;
+    fn reactivate_suspended_license(ref self: TContractState, license_id: u256) -> bool;
 
-    fn get_license_status(
-        self: @TContractState,
-        license_id: u256,
-    ) -> felt252;
+    fn get_license_status(self: @TContractState, license_id: u256) -> felt252;
 
     // Query Functions
     fn get_license_info(self: @TContractState, license_id: u256) -> LicenseInfo;

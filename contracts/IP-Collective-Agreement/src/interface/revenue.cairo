@@ -1,7 +1,4 @@
 use starknet::ContractAddress;
-use ip_collective_agreement::types::{
-    OwnershipInfo, IPAssetInfo, IPAssetType, ComplianceStatus, RevenueInfo, OwnerRevenueInfo,
-};
 
 #[starknet::interface]
 pub trait IRevenueDistribution<TContractState> {

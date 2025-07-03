@@ -7,7 +7,7 @@ mod CollectiveIPCore {
         LicenseStatus, LicenseTerms, LicenseProposal, RoyaltyInfo, MetadataUpdated,
         LicenseOfferCreated, LicenseApproved, LicenseExecuted, LicenseRevoked, LicenseSuspended,
         LicenseTransferred, RoyaltyPaid, UsageReported, LicenseProposalCreated,
-        LicenseProposalVoted, LicenseProposalExecuted, LicenseReactivated, 
+        LicenseProposalVoted, LicenseProposalExecuted, LicenseReactivated,
     };
     use ip_collective_agreement::interface::{
         IOwnershipRegistry, IIPAssetManager, IRevenueDistribution, ILicenseManager,
@@ -93,8 +93,7 @@ mod CollectiveIPCore {
         has_voted: Map<(u256, ContractAddress), bool>,
         // Default terms
         default_license_terms: Map<u256, LicenseTerms>, // asset_id -> default terms
-
-        total_assets: u256,  // Track total number of assets created
+        total_assets: u256 // Track total number of assets created
     }
 
     #[event]
@@ -357,7 +356,8 @@ mod CollectiveIPCore {
                 }
                 let creator = *creators.at(i);
                 let percentage = *ownership_percentages.at(i);
-                let token_amount = (STANDARD_INITIAL_SUPPLY * percentage) / 100; // Calculate based on percentage
+                let token_amount = (STANDARD_INITIAL_SUPPLY * percentage)
+                    / 100; // Calculate based on percentage
 
                 self
                     .erc1155
@@ -747,7 +747,7 @@ mod CollectiveIPCore {
                 payment_token,
                 metadata_uri: metadata_uri.clone(),
                 is_suspended: false,
-suspension_end_timestamp: 0,
+                suspension_end_timestamp: 0,
             };
 
             // Store license info and terms
@@ -1058,16 +1058,13 @@ suspension_end_timestamp: 0,
             }
         }
 
-        fn check_and_reactivate_license(
-            ref self: ContractState,
-            license_id: u256,
-        ) -> bool {
+        fn check_and_reactivate_license(ref self: ContractState, license_id: u256) -> bool {
             let mut license_info = self.license_info.read(license_id);
-            
+
             if !license_info.is_suspended {
                 return false; // Not suspended
             }
-            
+
             let current_time = get_block_timestamp();
             if current_time >= license_info.suspension_end_timestamp {
                 // Suspension period ended, reactivate
@@ -1075,66 +1072,64 @@ suspension_end_timestamp: 0,
                 license_info.is_suspended = false;
                 license_info.suspension_end_timestamp = 0;
                 self.license_info.write(license_id, license_info);
-                
-                self.emit(LicenseReactivated {
-                    license_id,
-                    reactivated_by: get_caller_address(),
-                    timestamp: current_time,
-                });
-                
+
+                self
+                    .emit(
+                        LicenseReactivated {
+                            license_id,
+                            reactivated_by: get_caller_address(),
+                            timestamp: current_time,
+                        },
+                    );
+
                 return true;
             }
-            
+
             false
         }
-        
-        fn reactivate_suspended_license(
-            ref self: ContractState,
-            license_id: u256,
-        ) -> bool {
+
+        fn reactivate_suspended_license(ref self: ContractState, license_id: u256) -> bool {
             let caller = get_caller_address();
             let mut license_info = self.license_info.read(license_id);
-            
+
             assert!(license_info.license_id != 0, "License does not exist");
             assert!(license_info.is_suspended, "License is not suspended");
             assert!(
                 self.is_owner(license_info.asset_id, caller),
-                "Only asset owners can manually reactivate"
+                "Only asset owners can manually reactivate",
             );
-            
+
             // Manual reactivation by owner, ignores suspension time
             license_info.is_active = true;
             license_info.is_suspended = false;
             license_info.suspension_end_timestamp = 0;
             self.license_info.write(license_id, license_info);
-            
-            self.emit(LicenseReactivated {
-                license_id,
-                reactivated_by: caller,
-                timestamp: get_block_timestamp(),
-            });
-            
+
+            self
+                .emit(
+                    LicenseReactivated {
+                        license_id, reactivated_by: caller, timestamp: get_block_timestamp(),
+                    },
+                );
+
             true
         }
-        
-        fn get_license_status(
-            self: @ContractState,
-            license_id: u256,
-        ) -> felt252 {
+
+        fn get_license_status(self: @ContractState, license_id: u256) -> felt252 {
             let license_info = self.license_info.read(license_id);
-            
+
             if license_info.license_id == 0 {
                 return 'NOT_FOUND';
             }
-            
+
             if !license_info.is_approved {
                 return 'PENDING_APPROVAL';
             }
-            
+
             if !license_info.is_active && !license_info.is_suspended {
                 return 'INACTIVE';
             }
-            
+
             if license_info.is_suspended {
                 let current_time = get_block_timestamp();
                 if current_time >= license_info.suspension_end_timestamp {
@@ -1143,13 +1138,13 @@ suspension_end_timestamp: 0,
                     return 'SUSPENDED';
                 }
             }
-            
+
             // Check expiration
             let current_time = get_block_timestamp();
             if license_info.end_timestamp != 0 && current_time >= license_info.end_timestamp {
                 return 'EXPIRED';
             }
-            
+
             'ACTIVE'
         }
 
@@ -1262,33 +1257,33 @@ suspension_end_timestamp: 0,
             self: @ContractState, licensee: ContractAddress,
         ) -> Array<u256> {
             let mut pending_licenses = ArrayTrait::new();
-    let total_assets = self.total_assets.read();
-    
-    let mut asset_id = 1;
-    loop {
-        if asset_id > total_assets {
-            break;
-        }
-        
-        let available_licenses = self.get_available_licenses(asset_id);
-        let mut i = 0;
-        loop {
-            if i >= available_licenses.len() {
-                break;
-            }
-            let license_id = *available_licenses.at(i);
-            let license_info = self.license_info.read(license_id);
-            
-            if license_info.licensee == licensee {
-                pending_licenses.append(license_id);
-            }
-            i += 1;
-        };
-        
-        asset_id += 1;
-    };
+            let total_assets = self.total_assets.read();
 
-    pending_licenses
+            let mut asset_id = 1;
+            loop {
+                if asset_id > total_assets {
+                    break;
+                }
+
+                let available_licenses = self.get_available_licenses(asset_id);
+                let mut i = 0;
+                loop {
+                    if i >= available_licenses.len() {
+                        break;
+                    }
+                    let license_id = *available_licenses.at(i);
+                    let license_info = self.license_info.read(license_id);
+
+                    if license_info.licensee == licensee {
+                        pending_licenses.append(license_id);
+                    }
+                    i += 1;
+                };
+
+                asset_id += 1;
+            };
+
+            pending_licenses
         }
 
         fn set_default_license_terms(
@@ -1368,11 +1363,11 @@ suspension_end_timestamp: 0,
             assert!(self.is_owner(asset_id, caller), "Only asset owners can vote");
 
             // Update vote function:
-let has_already_voted = self.has_voted.read((proposal_id, caller));
-assert!(!has_already_voted, "Already voted on this proposal");
+            let has_already_voted = self.has_voted.read((proposal_id, caller));
+            assert!(!has_already_voted, "Already voted on this proposal");
 
-self.has_voted.write((proposal_id, caller), true);
-self.proposal_votes.write((proposal_id, caller), vote_for);
+            self.has_voted.write((proposal_id, caller), true);
+            self.proposal_votes.write((proposal_id, caller), vote_for);
 
             // Get voting weight
             let voting_weight = self.get_governance_weight(asset_id, caller);
@@ -1424,7 +1419,7 @@ self.proposal_votes.write((proposal_id, caller), vote_for);
             proposed_license.is_approved = true; // Approved through governance
             proposed_license.is_active = false; // Still needs execution by licensee
             proposed_license.is_suspended = false;
-proposed_license.suspension_end_timestamp = 0;
+            proposed_license.suspension_end_timestamp = 0;
 
             self.next_license_id.write(license_id + 1);
             self.license_info.write(license_id, proposed_license);

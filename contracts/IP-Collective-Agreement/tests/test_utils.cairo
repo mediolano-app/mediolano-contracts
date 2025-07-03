@@ -3,10 +3,7 @@ use snforge_std::{
     declare, ContractClassTrait, DeclareResultTrait, start_cheat_caller_address,
     stop_cheat_caller_address, start_cheat_block_timestamp, stop_cheat_block_timestamp,
 };
-use ip_collective_agreement::types::{
-    OwnershipInfo, IPAssetInfo, IPAssetType, ComplianceStatus, LicenseInfo, LicenseTerms,
-    LicenseType, UsageRights,
-};
+use ip_collective_agreement::types::{LicenseInfo, LicenseTerms, LicenseType, UsageRights};
 use ip_collective_agreement::interface::{
     IOwnershipRegistryDispatcher, IOwnershipRegistryDispatcherTrait, IIPAssetManagerDispatcher,
     IIPAssetManagerDispatcherTrait, IRevenueDistributionDispatcher,
@@ -163,4 +160,100 @@ pub fn create_basic_license_terms() -> LicenseTerms {
         commercial_revenue_share: 0,
         termination_notice_period: 604800 // 7 days
     }
+}
+
+pub fn create_proposed_license(
+    asset_id: u256, licensee: ContractAddress, payment_token: ContractAddress,
+) -> LicenseInfo {
+    LicenseInfo {
+        license_id: 0,
+        asset_id,
+        licensor: contract_address_const::<0>(),
+        licensee,
+        license_type: LicenseType::Exclusive.into(),
+        usage_rights: UsageRights::All.into(),
+        territory: 'GLOBAL',
+        license_fee: 2000_u256,
+        royalty_rate: 500_u256,
+        start_timestamp: get_block_timestamp(),
+        end_timestamp: 0,
+        is_active: false,
+        requires_approval: false,
+        is_approved: false,
+        payment_token,
+        metadata_uri: "ipfs://governance-license",
+        is_suspended: false,
+        suspension_end_timestamp: 0,
+    }
+}
+
+pub fn setup_licensee_payment(
+    contract_address: ContractAddress,
+    erc20_dispatcher: IERC20Dispatcher,
+    licensee: ContractAddress,
+    amount: u256,
+) {
+    start_cheat_caller_address(erc20_dispatcher.contract_address, SPENDER());
+    erc20_dispatcher.transfer(licensee, amount);
+    stop_cheat_caller_address(erc20_dispatcher.contract_address);
+
+    start_cheat_caller_address(erc20_dispatcher.contract_address, licensee);
+    erc20_dispatcher.approve(contract_address, Bounded::<u256>::MAX);
+    stop_cheat_caller_address(erc20_dispatcher.contract_address);
+}
+
+pub fn create_and_execute_license(
+    contract_address: ContractAddress,
+    licensing_dispatcher: ILicenseManagerDispatcher,
+    erc20_dispatcher: IERC20Dispatcher,
+    asset_id: u256,
+    creator: ContractAddress,
+    licensee: ContractAddress,
+    payment_amount: u256,
+) -> u256 {
+    create_and_execute_license_with_terms(
+        contract_address,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        asset_id,
+        creator,
+        licensee,
+        payment_amount,
+        create_basic_license_terms(),
+    )
+}
+
+pub fn create_and_execute_license_with_terms(
+    contract_address: ContractAddress,
+    licensing_dispatcher: ILicenseManagerDispatcher,
+    erc20_dispatcher: IERC20Dispatcher,
+    asset_id: u256,
+    creator: ContractAddress,
+    licensee: ContractAddress,
+    payment_amount: u256,
+    terms: LicenseTerms,
+) -> u256 {
+    start_cheat_caller_address(contract_address, creator);
+    let license_id = licensing_dispatcher
+        .create_license_request(
+            asset_id,
+            licensee,
+            LicenseType::NonExclusive.into(),
+            UsageRights::Commercial.into(),
+            'GLOBAL',
+            100_u256,
+            300_u256, // 3% royalty
+            0,
+            erc20_dispatcher.contract_address,
+            terms,
+            "ipfs://test-license",
+        );
+    stop_cheat_caller_address(contract_address);
+
+    setup_licensee_payment(contract_address, erc20_dispatcher, licensee, payment_amount);
+    start_cheat_caller_address(contract_address, licensee);
+    licensing_dispatcher.execute_license(license_id);
+    stop_cheat_caller_address(contract_address);
+
+    license_id
 }

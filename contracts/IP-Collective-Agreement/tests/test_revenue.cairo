@@ -1,30 +1,28 @@
 use starknet::{ContractAddress, contract_address_const, get_block_timestamp};
 use snforge_std::{
-    declare, ContractClassTrait, DeclareResultTrait, start_cheat_caller_address,
-    stop_cheat_caller_address, start_cheat_block_timestamp, stop_cheat_block_timestamp,
+    start_cheat_caller_address, stop_cheat_caller_address, start_cheat_block_timestamp,
+    stop_cheat_block_timestamp,
 };
-use ip_collective_agreement::types::{OwnershipInfo, IPAssetInfo, IPAssetType, ComplianceStatus};
 use ip_collective_agreement::interface::{
     IOwnershipRegistryDispatcher, IOwnershipRegistryDispatcherTrait, IIPAssetManagerDispatcher,
     IIPAssetManagerDispatcherTrait, IRevenueDistributionDispatcher,
     IRevenueDistributionDispatcherTrait,
 };
-use openzeppelin::token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use core::num::traits::Bounded;
 
 use super::test_utils::{
-    OWNER, CREATOR1, CREATOR2, CREATOR3, USER, SPENDER, MARKETPLACE, setup,
-    create_test_creators_data, register_test_asset,
+    USER, SPENDER, MARKETPLACE, setup, register_test_asset, deploy_mock_erc20,
+    deploy_erc1155_receiver,
 };
 
 #[test]
 fn test_receive_revenue_success() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -58,9 +56,9 @@ fn test_receive_revenue_success() {
 fn test_multiple_revenue_receipts() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -98,9 +96,9 @@ fn test_multiple_revenue_receipts() {
 fn test_distribute_revenue_success() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -152,9 +150,9 @@ fn test_distribute_revenue_success() {
 fn test_distribute_all_revenue() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -195,9 +193,9 @@ fn test_distribute_all_revenue() {
 fn test_withdraw_pending_revenue() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -243,9 +241,9 @@ fn test_withdraw_pending_revenue() {
 fn test_receive_revenue_invalid_asset() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -264,9 +262,9 @@ fn test_receive_revenue_invalid_asset() {
 fn test_receive_revenue_zero_amount() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -289,9 +287,9 @@ fn test_receive_revenue_zero_amount() {
 fn test_distribute_revenue_not_owner() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -321,9 +319,9 @@ fn test_distribute_revenue_not_owner() {
 fn test_distribute_revenue_insufficient_accumulated() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -353,9 +351,9 @@ fn test_distribute_revenue_insufficient_accumulated() {
 fn test_withdraw_not_owner() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -390,9 +388,9 @@ fn test_withdraw_not_owner() {
 fn test_withdraw_no_pending_revenue() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -416,9 +414,9 @@ fn test_withdraw_no_pending_revenue() {
 fn test_minimum_distribution() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -463,9 +461,9 @@ fn test_minimum_distribution() {
 fn test_distribute_below_minimum() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -501,7 +499,7 @@ fn test_revenue_flow_with_ownership_transfer() {
         contract_address,
         ownership_dispatcher,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -557,9 +555,9 @@ fn test_revenue_flow_with_ownership_transfer() {
 fn test_partial_distributions_and_withdrawals() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -616,9 +614,9 @@ fn test_partial_distributions_and_withdrawals() {
 fn test_complete_revenue_cycle() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         _,
         erc20_dispatcher,
@@ -679,4 +677,196 @@ fn test_complete_revenue_cycle() {
     // Verify total distributed
     let total_distributed = revenue_dispatcher.get_total_revenue_distributed(asset_id, erc20);
     assert!(total_distributed == 1000, "Total distributed should be 1000");
+}
+
+#[test]
+fn test_revenue_distribution_with_fractional_percentages() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        revenue_dispatcher,
+        _,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+
+    // Create asset with percentages that might cause rounding issues
+    let creators = array![
+        deploy_erc1155_receiver(), deploy_erc1155_receiver(), deploy_erc1155_receiver(),
+    ]
+        .span();
+    let ownership_percentages = array![33_u256, 33_u256, 34_u256].span(); // 33%, 33%, 34%
+    let governance_weights = array![33_u256, 33_u256, 34_u256].span();
+
+    start_cheat_caller_address(contract_address, owner_address);
+    let asset_id = asset_dispatcher
+        .register_ip_asset(
+            'MUSIC', "ipfs://fractional-test", creators, ownership_percentages, governance_weights,
+        );
+    stop_cheat_caller_address(contract_address);
+
+    let creator1 = *creators[0];
+    let creator2 = *creators[1];
+    let creator3 = *creators[2];
+    let erc20 = erc20_dispatcher.contract_address;
+
+    // Receive revenue that's hard to divide evenly
+    start_cheat_caller_address(contract_address, SPENDER());
+    revenue_dispatcher.receive_revenue(asset_id, erc20, 1000_u256); // $10.00
+    stop_cheat_caller_address(contract_address);
+
+    // Distribute all revenue
+    start_cheat_caller_address(contract_address, creator1);
+    revenue_dispatcher.distribute_all_revenue(asset_id, erc20);
+    stop_cheat_caller_address(contract_address);
+
+    // Check distribution (33% of 1000 = 330, 34% of 1000 = 340)
+    let creator1_pending = revenue_dispatcher.get_pending_revenue(asset_id, creator1, erc20);
+    let creator2_pending = revenue_dispatcher.get_pending_revenue(asset_id, creator2, erc20);
+    let creator3_pending = revenue_dispatcher.get_pending_revenue(asset_id, creator3, erc20);
+
+    assert!(creator1_pending == 330, "Creator1 should get 330 (33%)");
+    assert!(creator2_pending == 330, "Creator2 should get 330 (33%)");
+    assert!(creator3_pending == 340, "Creator3 should get 340 (34%)");
+
+    // Verify total adds up exactly
+    let total_distributed = creator1_pending + creator2_pending + creator3_pending;
+    assert!(total_distributed == 1000, "Total should equal original amount");
+}
+
+#[test]
+fn test_revenue_distribution_after_ownership_transfer_edge_case() {
+    let (
+        contract_address,
+        ownership_dispatcher,
+        asset_dispatcher,
+        _,
+        revenue_dispatcher,
+        _,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0]; // Initially 50%
+    let creator2 = *creators[1]; // Initially 30%
+    let new_owner = USER();
+    let erc20 = erc20_dispatcher.contract_address;
+
+    // Transfer ALL of creator1's ownership to new_owner
+    start_cheat_caller_address(contract_address, creator1);
+    ownership_dispatcher.transfer_ownership_share(asset_id, creator1, new_owner, 50_u256);
+    stop_cheat_caller_address(contract_address);
+
+    // Verify creator1 now has 0% ownership
+    let creator1_percentage = ownership_dispatcher.get_owner_percentage(asset_id, creator1);
+    assert!(creator1_percentage == 0, "Creator1 should have 0% after transferring all");
+
+    // Receive and distribute revenue
+    start_cheat_caller_address(contract_address, SPENDER());
+    revenue_dispatcher.receive_revenue(asset_id, erc20, 1000_u256);
+    stop_cheat_caller_address(contract_address);
+
+    // Only creator2 can now distribute (creator1 has no ownership)
+    start_cheat_caller_address(contract_address, creator2);
+    revenue_dispatcher.distribute_all_revenue(asset_id, erc20);
+    stop_cheat_caller_address(contract_address);
+
+    // Check pending amounts
+    let creator1_pending = revenue_dispatcher.get_pending_revenue(asset_id, creator1, erc20);
+    let new_owner_pending = revenue_dispatcher.get_pending_revenue(asset_id, new_owner, erc20);
+
+    assert!(
+        creator1_pending == 0, "Creator1 should get no revenue after transferring all ownership",
+    );
+    assert!(new_owner_pending == 500, "New owner should get 50% of revenue");
+}
+
+#[test]
+#[should_panic(expected: "Only owners can distribute revenue")]
+fn test_distribute_revenue_after_losing_all_ownership() {
+    let (
+        contract_address,
+        ownership_dispatcher,
+        asset_dispatcher,
+        _,
+        revenue_dispatcher,
+        _,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let new_owner = USER();
+    let erc20 = erc20_dispatcher.contract_address;
+
+    // Transfer all ownership away
+    start_cheat_caller_address(contract_address, creator1);
+    ownership_dispatcher.transfer_ownership_share(asset_id, creator1, new_owner, 50_u256);
+    stop_cheat_caller_address(contract_address);
+
+    // Receive revenue
+    start_cheat_caller_address(contract_address, SPENDER());
+    revenue_dispatcher.receive_revenue(asset_id, erc20, 1000_u256);
+    stop_cheat_caller_address(contract_address);
+
+    // Try to distribute as former owner (should panic)
+    start_cheat_caller_address(contract_address, creator1);
+    revenue_dispatcher.distribute_revenue(asset_id, erc20, 500_u256);
+}
+
+#[test]
+fn test_multiple_revenue_tokens_distribution() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        revenue_dispatcher,
+        _,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let erc20_1 = erc20_dispatcher.contract_address;
+    let erc20_2 = deploy_mock_erc20("SecondToken", "ST2", 1000000_u256, SPENDER());
+    let erc20_2_dispatcher = IERC20Dispatcher { contract_address: erc20_2 };
+
+    // Setup approvals for second token
+    start_cheat_caller_address(erc20_2, SPENDER());
+    erc20_2_dispatcher.approve(contract_address, Bounded::<u256>::MAX);
+    stop_cheat_caller_address(erc20_2);
+
+    // Receive revenue in both tokens
+    start_cheat_caller_address(contract_address, SPENDER());
+    revenue_dispatcher.receive_revenue(asset_id, erc20_1, 1000_u256);
+    revenue_dispatcher.receive_revenue(asset_id, erc20_2, 2000_u256);
+    stop_cheat_caller_address(contract_address);
+
+    // Distribute both tokens
+    start_cheat_caller_address(contract_address, creator1);
+    revenue_dispatcher.distribute_all_revenue(asset_id, erc20_1);
+    revenue_dispatcher.distribute_all_revenue(asset_id, erc20_2);
+    stop_cheat_caller_address(contract_address);
+
+    // Check distributions are independent
+    let creator1_pending_token1 = revenue_dispatcher
+        .get_pending_revenue(asset_id, creator1, erc20_1);
+    let creator1_pending_token2 = revenue_dispatcher
+        .get_pending_revenue(asset_id, creator1, erc20_2);
+
+    assert!(creator1_pending_token1 == 500, "Creator1 should get 50% of token1");
+    assert!(creator1_pending_token2 == 1000, "Creator1 should get 50% of token2");
 }

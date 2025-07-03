@@ -1,7 +1,5 @@
 use starknet::ContractAddress;
-use ip_collective_agreement::types::{
-    OwnershipInfo, IPAssetInfo, IPAssetType, ComplianceStatus, RevenueInfo, OwnerRevenueInfo,
-};
+use ip_collective_agreement::types::{IPAssetInfo};
 
 #[starknet::interface]
 pub trait IIPAssetManager<TContractState> {

@@ -1,35 +1,31 @@
 use starknet::{ContractAddress, contract_address_const, get_block_timestamp};
 use snforge_std::{
-    declare, ContractClassTrait, DeclareResultTrait, start_cheat_caller_address,
-    stop_cheat_caller_address, start_cheat_block_timestamp, stop_cheat_block_timestamp,
+    start_cheat_caller_address, stop_cheat_caller_address, start_cheat_block_timestamp,
+    stop_cheat_block_timestamp,
 };
-use openzeppelin::token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
-use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-use ip_collective_agreement::types::{
-    OwnershipInfo, IPAssetInfo, IPAssetType, ComplianceStatus, LicenseInfo, LicenseTerms,
-    LicenseType, UsageRights,
-};
+use ip_collective_agreement::types::{LicenseInfo, LicenseTerms, LicenseType, UsageRights};
 use ip_collective_agreement::interface::{
     IOwnershipRegistryDispatcher, IOwnershipRegistryDispatcherTrait, IIPAssetManagerDispatcher,
     IIPAssetManagerDispatcherTrait, IRevenueDistributionDispatcher,
     IRevenueDistributionDispatcherTrait, ILicenseManagerDispatcher, ILicenseManagerDispatcherTrait,
 };
+use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use core::num::traits::Bounded;
 
 use super::test_utils::{
-    OWNER, CREATOR1, CREATOR2, CREATOR3, USER, SPENDER, MARKETPLACE, setup,
-    create_test_creators_data, register_test_asset, create_basic_license_terms,
-    deploy_erc1155_receiver,
+    USER, SPENDER, MARKETPLACE, setup, register_test_asset, create_basic_license_terms,
+    deploy_erc1155_receiver, create_proposed_license, setup_licensee_payment,
+    create_and_execute_license, create_and_execute_license_with_terms,
 };
 
 #[test]
 fn test_create_license_offer_simple() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -86,10 +82,10 @@ fn test_create_license_offer_simple() {
 fn test_create_exclusive_license_requires_approval() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -137,9 +133,9 @@ fn test_create_exclusive_license_requires_approval() {
 fn test_approve_and_execute_license_flow() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         licensing_dispatcher,
         erc20_dispatcher,
@@ -229,10 +225,10 @@ fn test_approve_and_execute_license_flow() {
 fn test_execute_license_with_usage_and_royalties() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -315,10 +311,10 @@ fn test_execute_license_with_usage_and_royalties() {
 fn test_license_transfer_after_execution() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -390,10 +386,10 @@ fn test_license_transfer_after_execution() {
 fn test_license_with_usage_limits() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -492,10 +488,10 @@ fn test_license_with_usage_limits() {
 fn test_usage_limit_exceeded_panics() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -559,10 +555,10 @@ fn test_usage_limit_exceeded_panics() {
 fn test_governance_license_proposal_and_execution() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -672,10 +668,10 @@ fn test_governance_license_proposal_and_execution() {
 fn test_create_license_unauthorized() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -714,10 +710,10 @@ fn test_create_license_unauthorized() {
 fn test_execute_license_wrong_licensee() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -762,10 +758,10 @@ fn test_execute_license_wrong_licensee() {
 fn test_execute_license_already_active() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -823,10 +819,10 @@ fn test_execute_license_already_active() {
 fn test_transfer_inactive_license() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -870,10 +866,10 @@ fn test_transfer_inactive_license() {
 fn test_complete_license_discovery_flow() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -983,10 +979,10 @@ fn test_complete_license_discovery_flow() {
 fn test_revoke_active_license() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
-        revenue_dispatcher,
+        _,
+        _,
         licensing_dispatcher,
         erc20_dispatcher,
         owner_address,
@@ -1058,9 +1054,9 @@ fn test_revoke_active_license() {
 fn test_integration_with_corrected_flow() {
     let (
         contract_address,
-        ownership_dispatcher,
+        _,
         asset_dispatcher,
-        erc1155_dispatcher,
+        _,
         revenue_dispatcher,
         licensing_dispatcher,
         erc20_dispatcher,
@@ -1186,10 +1182,647 @@ fn test_integration_with_corrected_flow() {
     let artist2_final = revenue_dispatcher.get_pending_revenue(asset_id, artist2, erc20);
     let studio_final = revenue_dispatcher.get_pending_revenue(asset_id, studio, erc20);
 
-    println!("artist1 final: {}, artist2 final: {}, studio final: {}", artist1_final, artist2_final, studio_final);
+    println!(
+        "artist1 final: {}, artist2 final: {}, studio final: {}",
+        artist1_final,
+        artist2_final,
+        studio_final,
+    );
 
     // License fee + royalty share
     assert!(artist1_final == 120, "Artist1 total: $60 fee + $60 royalty");
     assert!(artist2_final == 104, "Artist2 total: $52.50 fee + $52.50 royalty");
     assert!(studio_final == 74, "Studio total: $37.50 fee + $37.50 royalty");
 }
+
+#[test]
+fn test_license_expiration_timing() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let licensee = USER();
+
+    // Create license with 1 hour duration
+    start_cheat_caller_address(contract_address, creator1);
+    let license_id = licensing_dispatcher
+        .create_license_request(
+            asset_id,
+            licensee,
+            LicenseType::NonExclusive.into(),
+            UsageRights::Commercial.into(),
+            'GLOBAL',
+            100_u256,
+            200_u256,
+            3600, // 1 hour
+            erc20_dispatcher.contract_address,
+            create_basic_license_terms(),
+            "ipfs://expiring-license",
+        );
+    stop_cheat_caller_address(contract_address);
+
+    // Execute immediately - should work
+    setup_licensee_payment(contract_address, erc20_dispatcher, licensee, 1000_u256);
+    start_cheat_caller_address(contract_address, licensee);
+    licensing_dispatcher.execute_license(license_id);
+    stop_cheat_caller_address(contract_address);
+
+    assert!(licensing_dispatcher.is_license_valid(license_id), "License should be valid initially");
+
+    // Fast forward to just before expiration
+    start_cheat_block_timestamp(contract_address, 3599);
+    assert!(
+        licensing_dispatcher.is_license_valid(license_id),
+        "License should still be valid 1 second before expiry",
+    );
+
+    // Fast forward past expiration
+    start_cheat_block_timestamp(contract_address, 3601);
+    assert!(
+        !licensing_dispatcher.is_license_valid(license_id),
+        "License should be invalid after expiry",
+    );
+
+    let status = licensing_dispatcher.get_license_status(license_id);
+    assert!(status == 'EXPIRED', "Status should be EXPIRED");
+
+    stop_cheat_block_timestamp(contract_address);
+}
+
+#[test]
+#[should_panic(expected: "License has expired")]
+fn test_execute_expired_license_offer() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let licensee = USER();
+
+    // Create license with short duration
+    start_cheat_caller_address(contract_address, creator1);
+    let license_id = licensing_dispatcher
+        .create_license_request(
+            asset_id,
+            licensee,
+            LicenseType::NonExclusive.into(),
+            UsageRights::Commercial.into(),
+            'GLOBAL',
+            100_u256,
+            200_u256,
+            10, // 10 seconds
+            erc20_dispatcher.contract_address,
+            create_basic_license_terms(),
+            "ipfs://short-license",
+        );
+    stop_cheat_caller_address(contract_address);
+
+    // Fast forward past expiration
+    start_cheat_block_timestamp(contract_address, get_block_timestamp() + 20);
+
+    setup_licensee_payment(contract_address, erc20_dispatcher, licensee, 1000_u256);
+    start_cheat_caller_address(contract_address, licensee);
+    licensing_dispatcher.execute_license(license_id); // Should panic
+}
+
+#[test]
+fn test_suspension_auto_reactivation() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let licensee = USER();
+
+    // Create and execute license
+    let license_id = create_and_execute_license(
+        contract_address,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        asset_id,
+        creator1,
+        licensee,
+        1000_u256,
+    );
+
+    // Suspend for 1 hour
+    start_cheat_caller_address(contract_address, creator1);
+    licensing_dispatcher.suspend_license(license_id, 3600);
+    stop_cheat_caller_address(contract_address);
+
+    let status = licensing_dispatcher.get_license_status(license_id);
+    assert!(status == 'SUSPENDED', "License should be suspended");
+
+    // Check just before suspension ends
+    start_cheat_block_timestamp(contract_address, get_block_timestamp() + 3599);
+    let status = licensing_dispatcher.get_license_status(license_id);
+    assert!(status == 'SUSPENDED', "License should still be suspended");
+
+    // Check after suspension ends
+    start_cheat_block_timestamp(contract_address, get_block_timestamp() + 3601);
+    let status = licensing_dispatcher.get_license_status(license_id);
+    assert!(status == 'SUSPENSION_EXPIRED', "License suspension should have expired");
+
+    // Auto-reactivate
+    start_cheat_caller_address(contract_address, licensee);
+    let reactivated = licensing_dispatcher.check_and_reactivate_license(license_id);
+    stop_cheat_caller_address(contract_address);
+
+    assert!(reactivated, "License should be reactivated");
+    assert!(
+        licensing_dispatcher.is_license_valid(license_id),
+        "License should be valid after reactivation",
+    );
+
+    stop_cheat_block_timestamp(contract_address);
+}
+
+#[test]
+fn test_high_value_license_governance_threshold() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let licensee = USER();
+
+    // Create high-value license (> $500)
+    start_cheat_caller_address(contract_address, creator1);
+    let license_id = licensing_dispatcher
+        .create_license_request(
+            asset_id,
+            licensee,
+            LicenseType::NonExclusive.into(),
+            UsageRights::Commercial.into(),
+            'GLOBAL',
+            600_u256, // High value
+            200_u256,
+            0,
+            erc20_dispatcher.contract_address,
+            create_basic_license_terms(),
+            "ipfs://high-value-license",
+        );
+    stop_cheat_caller_address(contract_address);
+
+    let license_info = licensing_dispatcher.get_license_info(license_id);
+    assert!(license_info.requires_approval, "High-value license should require approval");
+    assert!(!license_info.is_approved, "High-value license should not be auto-approved");
+}
+
+#[test]
+fn test_governance_voting_minority_fails() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0]; // 40 weight
+    let creator2 = *creators[1]; // 35 weight
+    let creator3 = *creators[2]; // 25 weight
+
+    let proposed_license = create_proposed_license(
+        asset_id, USER(), erc20_dispatcher.contract_address,
+    );
+
+    // Create proposal
+    start_cheat_caller_address(contract_address, creator1);
+    let proposal_id = licensing_dispatcher.propose_license_terms(asset_id, proposed_license, 86400);
+    stop_cheat_caller_address(contract_address);
+
+    // Vote: creator1(40) AGAINST, creator2(35) + creator3(25) = 60 FOR
+    // This should pass since 60 FOR > 40 AGAINST
+    start_cheat_caller_address(contract_address, creator1);
+    licensing_dispatcher.vote_on_license_proposal(proposal_id, false); // 40 against
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator2);
+    licensing_dispatcher.vote_on_license_proposal(proposal_id, true); // 35 for
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator3);
+    licensing_dispatcher.vote_on_license_proposal(proposal_id, true); // 25 for
+    stop_cheat_caller_address(contract_address);
+
+    // Fast forward past voting deadline
+    start_cheat_block_timestamp(contract_address, get_block_timestamp() + 86401);
+
+    start_cheat_caller_address(contract_address, creator1);
+    let execution_result = licensing_dispatcher.execute_license_proposal(proposal_id);
+    stop_cheat_caller_address(contract_address);
+
+    // Should pass because 60 FOR > 40 AGAINST
+    assert!(execution_result, "Proposal should pass when for votes exceed against votes");
+
+    stop_cheat_block_timestamp(contract_address);
+}
+
+#[test]
+#[should_panic(expected: "Proposal did not pass")]
+fn test_governance_voting_fails_when_minority_supports() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0]; // 40 weight
+    let creator2 = *creators[1]; // 35 weight
+    let creator3 = *creators[2]; // 25 weight
+
+    let proposed_license = create_proposed_license(
+        asset_id, USER(), erc20_dispatcher.contract_address,
+    );
+
+    // Create proposal
+    start_cheat_caller_address(contract_address, creator1);
+    let proposal_id = licensing_dispatcher.propose_license_terms(asset_id, proposed_license, 86400);
+    stop_cheat_caller_address(contract_address);
+
+    // Vote: creator2(35) FOR, creator1(40) + creator3(25) = 65 AGAINST
+    // This should fail since 35 FOR < 65 AGAINST
+    start_cheat_caller_address(contract_address, creator1);
+    licensing_dispatcher.vote_on_license_proposal(proposal_id, false); // 40 against
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator2);
+    licensing_dispatcher.vote_on_license_proposal(proposal_id, true); // 35 for
+    stop_cheat_caller_address(contract_address);
+
+    start_cheat_caller_address(contract_address, creator3);
+    licensing_dispatcher.vote_on_license_proposal(proposal_id, false); // 25 against
+    stop_cheat_caller_address(contract_address);
+
+    // Fast forward past voting deadline
+    start_cheat_block_timestamp(contract_address, get_block_timestamp() + 86401);
+
+    start_cheat_caller_address(contract_address, creator1);
+
+    licensing_dispatcher.execute_license_proposal(proposal_id);
+
+    stop_cheat_caller_address(contract_address);
+}
+
+#[test]
+#[should_panic(expected: "Already voted on this proposal")]
+fn test_double_voting_prevention() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+
+    let proposed_license = create_proposed_license(
+        asset_id, USER(), erc20_dispatcher.contract_address,
+    );
+
+    start_cheat_caller_address(contract_address, creator1);
+    let proposal_id = licensing_dispatcher.propose_license_terms(asset_id, proposed_license, 86400);
+    licensing_dispatcher.vote_on_license_proposal(proposal_id, true);
+    licensing_dispatcher.vote_on_license_proposal(proposal_id, false); // Should panic
+}
+
+// ========== USAGE LIMITS EDGE CASES ==========
+
+#[test]
+fn test_zero_usage_limit_means_unlimited() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let licensee = USER();
+
+    // Create license with 0 max usage (unlimited)
+    let mut license_terms = create_basic_license_terms();
+    license_terms.max_usage_count = 0; // Unlimited
+
+    let license_id = create_and_execute_license_with_terms(
+        contract_address,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        asset_id,
+        creator1,
+        licensee,
+        1000_u256,
+        license_terms,
+    );
+
+    // Report massive usage - should not fail
+    start_cheat_caller_address(contract_address, licensee);
+    let success = licensing_dispatcher.report_usage_revenue(license_id, 100000_u256, 1000000_u256);
+    stop_cheat_caller_address(contract_address);
+
+    assert!(success, "Unlimited usage should allow any amount");
+    assert!(licensing_dispatcher.is_license_valid(license_id), "License should remain valid");
+}
+
+#[test]
+fn test_usage_exactly_at_limit() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let licensee = USER();
+
+    let mut license_terms = create_basic_license_terms();
+    license_terms.max_usage_count = 10;
+
+    let license_id = create_and_execute_license_with_terms(
+        contract_address,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        asset_id,
+        creator1,
+        licensee,
+        1000_u256,
+        license_terms,
+    );
+
+    // Use exactly the limit
+    start_cheat_caller_address(contract_address, licensee);
+    licensing_dispatcher.report_usage_revenue(license_id, 1000_u256, 10_u256);
+    stop_cheat_caller_address(contract_address);
+
+    // Should still be valid at exactly the limit
+    assert!(
+        licensing_dispatcher.is_license_valid(license_id), "License should be valid at exact limit",
+    );
+
+    let terms = licensing_dispatcher.get_license_terms(license_id);
+    assert!(terms.current_usage_count == 10, "Usage count should be exactly at limit");
+}
+
+// ========== ROYALTY CALCULATION EDGE CASES ==========
+
+#[test]
+fn test_zero_royalty_rate() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let licensee = USER();
+
+    // Create license with 0% royalty
+    start_cheat_caller_address(contract_address, creator1);
+    let license_id = licensing_dispatcher
+        .create_license_request(
+            asset_id,
+            licensee,
+            LicenseType::NonExclusive.into(),
+            UsageRights::Commercial.into(),
+            'GLOBAL',
+            100_u256,
+            0_u256, // 0% royalty
+            0,
+            erc20_dispatcher.contract_address,
+            create_basic_license_terms(),
+            "ipfs://no-royalty-license",
+        );
+    stop_cheat_caller_address(contract_address);
+
+    setup_licensee_payment(contract_address, erc20_dispatcher, licensee, 1000_u256);
+    start_cheat_caller_address(contract_address, licensee);
+    licensing_dispatcher.execute_license(license_id);
+
+    // Report revenue
+    licensing_dispatcher.report_usage_revenue(license_id, 50000_u256, 100_u256);
+    stop_cheat_caller_address(contract_address);
+
+    // Should owe no royalties
+    let due_royalties = licensing_dispatcher.calculate_due_royalties(license_id);
+    assert!(due_royalties == 0, "Should owe no royalties with 0% rate");
+}
+
+#[test]
+fn test_fractional_royalty_calculation() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let licensee = USER();
+
+    let license_id = create_and_execute_license(
+        contract_address,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        asset_id,
+        creator1,
+        licensee,
+        1000_u256,
+    );
+
+    // Report revenue that results in fractional royalty
+    start_cheat_caller_address(contract_address, licensee);
+    licensing_dispatcher
+        .report_usage_revenue(license_id, 333_u256, 10_u256); // Should result in 33.3 cents royalty
+    stop_cheat_caller_address(contract_address);
+
+    let due_royalties = licensing_dispatcher.calculate_due_royalties(license_id);
+    // With 300 basis points (3%), 333 * 300 / 10000 = 9.99, should round down to 9
+    assert!(due_royalties == 9, "Fractional royalty should be handled correctly");
+}
+
+// ========== PAYMENT AND TRANSFER EDGE CASES ==========
+
+#[test]
+#[should_panic(expected: "Only licensee can transfer")]
+fn test_transfer_license_by_non_licensee() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let licensee = USER();
+    let malicious_user = deploy_erc1155_receiver();
+    let new_licensee = deploy_erc1155_receiver();
+
+    let license_id = create_and_execute_license(
+        contract_address,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        asset_id,
+        creator1,
+        licensee,
+        1000_u256,
+    );
+
+    // Try to transfer as someone other than the licensee
+    start_cheat_caller_address(contract_address, malicious_user);
+    licensing_dispatcher.transfer_license(license_id, new_licensee);
+}
+
+#[test]
+fn test_partial_royalty_payments() {
+    let (
+        contract_address,
+        _,
+        asset_dispatcher,
+        _,
+        _,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        owner_address,
+    ) =
+        setup();
+    let (asset_id, creators, _, _) = register_test_asset(
+        contract_address, asset_dispatcher, owner_address,
+    );
+    let creator1 = *creators[0];
+    let licensee = USER();
+
+    let license_id = create_and_execute_license(
+        contract_address,
+        licensing_dispatcher,
+        erc20_dispatcher,
+        asset_id,
+        creator1,
+        licensee,
+        5000_u256,
+    );
+
+    // Report revenue owing 30 in royalties (1000 * 3%)
+    start_cheat_caller_address(contract_address, licensee);
+    licensing_dispatcher.report_usage_revenue(license_id, 1000_u256, 10_u256);
+    stop_cheat_caller_address(contract_address);
+
+    let total_due = licensing_dispatcher.calculate_due_royalties(license_id);
+    assert!(total_due == 30, "Should owe 30 in royalties");
+
+    // Pay partial amount
+    start_cheat_caller_address(contract_address, licensee);
+    licensing_dispatcher.pay_royalties(license_id, 10_u256);
+    stop_cheat_caller_address(contract_address);
+
+    let remaining_due = licensing_dispatcher.calculate_due_royalties(license_id);
+    assert!(remaining_due == 20, "Should owe 20 remaining");
+
+    // Pay the rest
+    start_cheat_caller_address(contract_address, licensee);
+    licensing_dispatcher.pay_royalties(license_id, 20_u256);
+    stop_cheat_caller_address(contract_address);
+
+    let final_due = licensing_dispatcher.calculate_due_royalties(license_id);
+    assert!(final_due == 0, "Should owe nothing after full payment");
+}
+
