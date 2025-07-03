@@ -16,6 +16,14 @@ pub trait IIPCollection<ContractState> {
     fn get_token(self: @ContractState, token_id: u256) -> Token;
     fn list_all_tokens(self: @ContractState) -> Array<u256>;
     fn list_collection_tokens(self: @ContractState, collection_id: u256) -> Array<u256>;
+    fn mint_batch(ref self: ContractState, collection_id: u256, recipients: Array<ContractAddress>) -> Array<u256>;
+    fn burn_batch(ref self: ContractState, token_ids: Array<u256>);
+    fn transfer_batch(ref self: ContractState, from: ContractAddress, to: ContractAddress, token_ids: Array<u256>);
+    fn update_collection_metadata(ref self: ContractState, collection_id: u256, name: ByteArray, symbol: ByteArray, base_uri: ByteArray);
+    fn get_collection_stats(self: @ContractState, collection_id: u256) -> CollectionStats;
+    fn is_valid_collection(self: @ContractState, collection_id: u256) -> bool;
+    fn is_valid_token(self: @ContractState, token_id: u256) -> bool;
+    fn is_collection_owner(self: @ContractState, collection_id: u256, owner: ContractAddress) -> bool;
 }
 
 #[derive(Drop, Serde, starknet::Store)]
@@ -33,6 +41,15 @@ pub struct Token {
     pub token_id: u256,
     pub owner: ContractAddress,
     pub metadata_uri: ByteArray,
+}
+
+#[derive(Drop, Serde, starknet::Store)]
+pub struct CollectionStats {
+    pub total_supply: u256,
+    pub minted: u256,
+    pub burned: u256,
+    pub last_mint_batch_id: u256,
+    pub last_mint_time: u64,
 }
 
 #[starknet::contract]
@@ -55,7 +72,7 @@ pub mod IPCollection {
         },
     };
 
-    use super::{Collection, IIPCollection, Token};
+    use super::{Collection, IIPCollection, Token, CollectionStats};
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
@@ -83,16 +100,18 @@ pub mod IPCollection {
         collections: Map<u256, Collection>,
         collection_count: u256,
         tokens: Map<u256, Token>,
-        owned_collections: Map<(ContractAddress, u256), u256>, // (owner, index) -> collection_id
-        owned_collection_count: Map<ContractAddress, u256>,
-        owned_tokens: Map<(ContractAddress, u256), u256>, // (owner, index) -> token_id
-        owned_token_count: Map<ContractAddress, u256>,
-        owners: Map<u256, ContractAddress>,
-        balances: Map<ContractAddress, u256>,
-        token_uri: Map<u256, felt252>,
-        token_id_count: u256,
-        user_tokens: Map<(ContractAddress, u256), u256>, // (owner, index) -> token_id
-        user_token_count: Map<ContractAddress, u256>,
+        // Removed: owned_collections, owned_collection_count, owned_tokens, owned_token_count, user_tokens, user_token_count
+        // Operator approvals: (owner, operator) -> bool
+        operator_approvals: Map<(ContractAddress, ContractAddress), bool>,
+        // Token approvals: token_id -> approved address
+        token_approvals: Map<u256, ContractAddress>,
+        // Batch operation tracking: batch_id -> timestamp
+        mint_batch_timestamps: Map<u256, u64>,
+        burn_batch_timestamps: Map<u256, u64>,
+        transfer_batch_timestamps: Map<u256, u64>,
+        // Collection stats: collection_id -> CollectionStats
+        collection_stats: Map<u256, CollectionStats>,
+        // Global token tracking
         all_tokens: Map<u256, u256>, // index -> token_id
         all_token_count: u256, // total number of tokens
         collection_tokens: Map<(u256, u256), u256>, // (collection_id, index) -> token_id
@@ -123,7 +142,11 @@ pub mod IPCollection {
         #[flat]
         UpgradeableEvent: UpgradeableComponent::Event,
         CollectionCreated: CollectionCreated,
+        CollectionUpdated: CollectionUpdated,
         TokenMinted: TokenMinted,
+        TokenMintedBatch: TokenMintedBatch,
+        TokenBurnedBatch: TokenBurnedBatch,
+        TokenTransferredBatch: TokenTransferredBatch,
     }
 
 
@@ -144,6 +167,41 @@ pub mod IPCollection {
         pub metadata_uri: ByteArray,
     }
 
+    #[derive(Drop, starknet::Event)]
+    pub struct CollectionUpdated {
+        pub collection_id: u256,
+        pub owner: ContractAddress,
+        pub name: ByteArray,
+        pub symbol: ByteArray,
+        pub base_uri: ByteArray,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct TokenMintedBatch {
+        pub collection_id: u256,
+        pub token_ids: Array<u256>,
+        pub owners: Array<ContractAddress>,
+        pub operator: ContractAddress,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct TokenBurnedBatch {
+        pub token_ids: Array<u256>,
+        pub operator: ContractAddress,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct TokenTransferredBatch {
+        pub from: ContractAddress,
+        pub to: ContractAddress,
+        pub token_ids: Array<u256>,
+        pub operator: ContractAddress,
+        pub timestamp: u64,
+    }
+
     #[constructor]
     fn constructor(
         ref self: ContractState,
@@ -155,7 +213,6 @@ pub mod IPCollection {
         self.erc721.initializer(name, symbol, base_uri);
         self.ownable.initializer(owner);
         self.erc721_enumerable.initializer();
-        self.token_id_count.write(0);
         self.collection_count.write(0);
     }
 
@@ -205,11 +262,6 @@ pub mod IPCollection {
             self.collections.entry(collection_id).write(collection);
             self.collection_count.write(collection_id);
 
-            // Index collection for owner
-            let owner_collection_count = self.owned_collection_count.read(caller);
-            self.owned_collections.entry((caller, owner_collection_count)).write(collection_id);
-            self.owned_collection_count.entry(caller).write(owner_collection_count + 1);
-
             self.emit(CollectionCreated { collection_id, owner: caller, name, symbol, base_uri });
 
             collection_id
@@ -224,7 +276,7 @@ pub mod IPCollection {
             let caller = get_caller_address();
             assert(caller != Zero::zero(), 'Caller is zero address');
 
-            let token_id = self.token_id_count.read() + 1;
+            let token_id = self.all_token_count.read() + 1;
             let metadata_uri = get_token_uri(collection.base_uri, token_id);
 
             self.erc721.mint(recipient, token_id);
@@ -234,19 +286,11 @@ pub mod IPCollection {
             };
 
             self.tokens.write(token_id, token);
-            self.token_id_count.write(token_id);
 
-            // Index token for recipient
-            let user_token_count = self.user_token_count.read(recipient);
-            self.user_tokens.entry((recipient, user_token_count)).write(token_id);
-            self.user_token_count.entry(recipient).write(user_token_count + 1);
-
-            // NEW: Index token globally
             let all_token_count = self.all_token_count.read();
             self.all_tokens.entry(all_token_count).write(token_id);
             self.all_token_count.write(all_token_count + 1);
 
-            // NEW: Index token for collection
             let collection_token_count = self.collection_token_count.read(collection_id);
             self.collection_tokens.entry((collection_id, collection_token_count)).write(token_id);
             self.collection_token_count.entry(collection_id).write(collection_token_count + 1);
@@ -265,17 +309,8 @@ pub mod IPCollection {
             self.erc721.update(Zero::zero(), token_id, get_caller_address());
         }
 
-
         fn list_user_tokens(self: @ContractState, owner: ContractAddress) -> Array<u256> {
-            let mut token_ids: Array<u256> = array![];
-            let count = self.user_token_count.read(owner);
-            let mut i: u256 = 0;
-            while i < count {
-                let token_id = self.user_tokens.read((owner, i));
-                token_ids.append(token_id);
-                i += 1;
-            };
-            token_ids
+            return array![];
         }
 
         fn transfer_token(
@@ -292,23 +327,15 @@ pub mod IPCollection {
         }
 
         fn list_user_collections(self: @ContractState, owner: ContractAddress) -> Array<u256> {
-            let mut collections = array![];
-            let count = self.owned_collection_count.read(owner);
-            let mut i = 0;
-            while i < count {
-                let collection_id = self.owned_collections.read((owner, i));
-                collections.append(collection_id);
-                i += 1;
-            };
-            collections
+            return array![];
         }
 
         fn get_collection(self: @ContractState, collection_id: u256) -> Collection {
-            self.collections.entry(collection_id).read()
+            return self.collections.read(collection_id);
         }
 
         fn get_token(self: @ContractState, token_id: u256) -> Token {
-            self.tokens.read(token_id)
+            return self.tokens.read(token_id);
         }
 
         // NEW: Function to list all tokens in the contract
@@ -335,6 +362,100 @@ pub mod IPCollection {
                 i += 1;
             };
             token_ids
+        }
+
+        fn mint_batch(ref self: ContractState, collection_id: u256, recipients: Array<ContractAddress>) -> Array<u256> {
+            self.ownable.assert_only_owner();
+            let n = recipients.len();
+            assert(n > 0, 'Recipients array is empty');
+
+            let collection = self.collections.read(collection_id);
+            assert(collection.is_active, 'Collection is not active');
+
+            let mut token_ids: Array<u256> = array![];
+            let mut i: u32 = 0;
+            let mut all_token_count = self.all_token_count.read();
+            let mut collection_token_count = self.collection_token_count.read(collection_id);
+            let operator = get_caller_address();
+            let timestamp = 0; // TODO: Replace with block timestamp if available
+
+            while i < n {
+                let recipient: ContractAddress = *recipients.at(i);
+                assert(!recipient.is_zero(), 'Recipient is zero address');
+
+                let token_id = all_token_count + 1;
+                let metadata_uri = get_token_uri(collection.base_uri.clone(), token_id);
+
+                self.erc721.mint(recipient, token_id);
+
+                let token = Token {
+                    collection_id, token_id, owner: recipient, metadata_uri: metadata_uri.clone(),
+                };
+                self.tokens.write(token_id, token);
+
+                self.all_tokens.entry(all_token_count).write(token_id);
+                all_token_count += 1;
+
+                self.collection_tokens.entry((collection_id, collection_token_count)).write(token_id);
+                collection_token_count += 1;
+
+                token_ids.append(token_id);
+                i += 1;
+            };
+            self.all_token_count.write(all_token_count);
+            self.collection_token_count.entry(collection_id).write(collection_token_count);
+
+            // Emit batch event
+            self.emit(TokenMintedBatch {
+                collection_id,
+                token_ids: token_ids.clone(),
+                owners: recipients.clone(),
+                operator,
+                timestamp,
+            });
+
+            return token_ids;
+        }
+
+        fn burn_batch(ref self: ContractState, token_ids: Array<u256>) {
+            // Implementation needed
+            return ();
+        }
+
+        fn transfer_batch(ref self: ContractState, from: ContractAddress, to: ContractAddress, token_ids: Array<u256>) {
+            // Implementation needed
+            return ();
+        }
+
+        fn update_collection_metadata(ref self: ContractState, collection_id: u256, name: ByteArray, symbol: ByteArray, base_uri: ByteArray) {
+            // Implementation needed
+            return ();
+        }
+
+        fn get_collection_stats(self: @ContractState, collection_id: u256) -> CollectionStats {
+            // Implementation needed
+            return CollectionStats {
+                total_supply: 0,
+                minted: 0,
+                burned: 0,
+                last_mint_batch_id: 0,
+                last_mint_time: 0,
+            };
+        }
+
+        fn is_valid_collection(self: @ContractState, collection_id: u256) -> bool {
+            // Implementation needed
+            return false;
+        }
+
+        fn is_valid_token(self: @ContractState, token_id: u256) -> bool {
+            // Implementation needed
+            return false;
+        }
+
+        fn is_collection_owner(self: @ContractState, collection_id: u256, owner: ContractAddress) -> bool {
+            // Implementation needed
+            return false;
         }
     }
 }
