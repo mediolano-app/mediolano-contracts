@@ -1,5 +1,5 @@
 #[starknet::contract]
-pub mod IpClubNFT {
+pub mod IPClubNFT {
     use ERC721Component::InternalTrait;
     use openzeppelin_access::accesscontrol::{AccessControlComponent, DEFAULT_ADMIN_ROLE};
     use openzeppelin_introspection::src5::SRC5Component;
@@ -52,14 +52,14 @@ pub mod IpClubNFT {
     fn constructor(
         ref self: ContractState,
         name: ByteArray,
-        symbols: ByteArray,
+        symbol: ByteArray,
         club_id: u256,
         creator: ContractAddress,
         ip_club_manager: ContractAddress,
         metadata_uri: ByteArray,
     ) {
         // Initialize ERC721 with name, symbol, and metadata URI
-        self.erc721.initializer(name, symbols, metadata_uri);
+        self.erc721.initializer(name, symbol, metadata_uri);
         // Initialize AccessControl
         self.accesscontrol.initializer();
         // Grant admin role to the IP club manager
@@ -125,6 +125,11 @@ pub mod IpClubNFT {
         // Get the Club ID
         fn get_associated_club_id(self: @ContractState) -> u256 {
             self.club_id.read()
+        }
+
+        // Get last minted ID
+        fn get_last_minted_id(self: @ContractState) -> u256 {
+            self.last_token_id.read()
         }
     }
 }

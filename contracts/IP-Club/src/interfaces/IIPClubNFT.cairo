@@ -10,4 +10,5 @@ pub trait IIPClubNFT<TContractState> {
     fn get_nft_creator(self: @TContractState) -> ContractAddress;
     fn get_ip_club_manager(self: @TContractState) -> ContractAddress;
     fn get_associated_club_id(self: @TContractState) -> u256;
+    fn get_last_minted_id(self: @TContractState) -> u256;
 }

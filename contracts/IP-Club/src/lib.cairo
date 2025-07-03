@@ -6,3 +6,6 @@ pub mod interfaces {
     pub mod IIPClubNFT;
     pub mod IIPClub;
 }
+pub mod mocks {
+    pub mod MockERC20;
+}

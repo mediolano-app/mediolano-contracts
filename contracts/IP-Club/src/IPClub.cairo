@@ -1,5 +1,6 @@
 #[starknet::contract]
-pub mod xZBERC20 {
+pub mod IPClub {
+    use core::num::traits::Zero;
     use openzeppelin_access::accesscontrol::{AccessControlComponent, DEFAULT_ADMIN_ROLE};
     use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin_introspection::src5::SRC5Component;
@@ -59,10 +60,10 @@ pub mod xZBERC20 {
 
     #[constructor]
     fn constructor(
-        ref self: ContractState, owner: ContractAddress, ip_club_nft_class_hash: ClassHash,
+        ref self: ContractState, admin: ContractAddress, ip_club_nft_class_hash: ClassHash,
     ) {
         self.accesscontrol.initializer(); // Initialize access control
-        self.accesscontrol._grant_role(DEFAULT_ADMIN_ROLE, owner); // Grant admin role to owner
+        self.accesscontrol._grant_role(DEFAULT_ADMIN_ROLE, admin); // Grant admin role to owner
         self.ip_club_nft_class_hash.write(ip_club_nft_class_hash); // Store NFT class hash
     }
 
@@ -74,12 +75,30 @@ pub mod xZBERC20 {
         fn create_club(
             ref self: ContractState,
             name: ByteArray,
-            symbols: ByteArray,
+            symbol: ByteArray,
             metadata_uri: ByteArray,
             max_members: Option<u32>,
             entry_fee: Option<u256>,
             payment_token: Option<ContractAddress>,
         ) {
+            if let Option::Some(max) = max_members {
+                assert(max > 0, 'Max members cannot be zero');
+            }
+
+            assert(
+                (entry_fee.is_some() && payment_token.is_some())
+                    || (entry_fee.is_none() && payment_token.is_none()),
+                'Invalid fee configuration',
+            );
+
+            if let Option::Some(fee) = entry_fee {
+                assert(fee > 0, 'Entry fee cannot be zero');
+            }
+
+            if let Option::Some(token) = payment_token {
+                assert(!token.is_zero(), 'Payment token cannot be null');
+            }
+
             let ip_club_manager = get_contract_address(); // Address of this contract
             let creator = get_caller_address(); // Club creator
             let next_club_id = self.last_club_id.read() + 1; // Increment club ID
@@ -89,7 +108,7 @@ pub mod xZBERC20 {
             // Serialize constructor arguments for NFT contract
             (
                 name.clone(),
-                symbols.clone(),
+                symbol.clone(),
                 next_club_id,
                 creator,
                 ip_club_manager,
@@ -107,7 +126,7 @@ pub mod xZBERC20 {
             let club_record = ClubRecord {
                 id: next_club_id,
                 name,
-                symbols,
+                symbol,
                 metadata_uri: metadata_uri.clone(),
                 status: ClubStatus::Open,
                 num_members: 0,
@@ -119,6 +138,7 @@ pub mod xZBERC20 {
             };
 
             self.clubs.entry(next_club_id).write(club_record);
+            self.last_club_id.write(next_club_id);
 
             // Emit event for new club creation
             self
@@ -204,6 +224,10 @@ pub mod xZBERC20 {
             let club_record = self.clubs.entry(club_id).read();
             let ip_club_nft = IIPClubNFTDispatcher { contract_address: club_record.club_nft };
             ip_club_nft.has_nft(user)
+        }
+
+        fn get_last_club_id(self: @ContractState) -> u256 {
+            self.last_club_id.read()
         }
     }
 

@@ -8,11 +8,11 @@ pub enum ClubStatus {
     Closed,
 }
 
-#[derive(Drop, Serde, starknet::Store)]
+#[derive(Debug, Drop, Serde, starknet::Store)]
 pub struct ClubRecord {
     pub id: u256,
     pub name: ByteArray,
-    pub symbols: ByteArray,
+    pub symbol: ByteArray,
     pub metadata_uri: ByteArray,
     pub status: ClubStatus,
     pub num_members: u32,

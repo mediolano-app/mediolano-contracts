@@ -6,7 +6,7 @@ pub trait IIPClub<TContractState> {
     fn create_club(
         ref self: TContractState,
         name: ByteArray,
-        symbols: ByteArray,
+        symbol: ByteArray,
         metadata_uri: ByteArray,
         max_members: Option<u32>,
         entry_fee: Option<u256>,
@@ -16,5 +16,6 @@ pub trait IIPClub<TContractState> {
     fn join_club(ref self: TContractState, club_id: u256);
     fn get_club_record(self: @TContractState, club_id: u256) -> ClubRecord;
     fn is_member(self: @TContractState, club_id: u256, user: ContractAddress) -> bool;
+    fn get_last_club_id(self: @TContractState) -> u256;
 }
 
