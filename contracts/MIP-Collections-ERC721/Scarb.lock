@@ -117,15 +117,15 @@ source = "git+https://github.com/OpenZeppelin/cairo-contracts.git?tag=v0.20.0#77
 
 [[package]]
 name = "snforge_scarb_plugin"
-version = "0.36.0"
+version = "0.44.0"
 source = "registry+https://scarbs.xyz/"
-checksum = "sha256:b9550f5c921502be3e240e83aa9e2dc6ee63ae76bfecee082b7a15bead0460c0"
+checksum = "sha256:ec8c7637b33392a53153c1e5b87a4617ddcb1981951b233ea043cad5136697e2"
 
 [[package]]
 name = "snforge_std"
-version = "0.36.0"
+version = "0.44.0"
 source = "registry+https://scarbs.xyz/"
-checksum = "sha256:9f38c6c376447cfe225c5869905122f6a64bc301f5872c7855d2abe6e9c0a1da"
+checksum = "sha256:d4affedfb90715b1ac417b915c0a63377ae6dd69432040e5d933130d65114702"
 dependencies = [
  "snforge_scarb_plugin",
 ]

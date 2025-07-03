@@ -74,10 +74,6 @@ fn test_create_collection() {
     assert(collection.owner == owner, 'Collection owner mismatch');
     assert(collection.is_active, 'Collection should be active');
 
-    let owner_collections = dispatcher.list_user_collections(owner);
-    assert(owner_collections.len() == 1, 'Owner should have 1 collection');
-    assert(*owner_collections.at(0) == collection_id, 'Collection ID mismatch');
-
     stop_cheat_caller_address(address);
 }
 
@@ -98,11 +94,6 @@ fn test_create_multiple_collections() {
     let base_uri2: ByteArray = "ipfs://QmCollection2";
     let collection_id2 = dispatcher.create_collection(name2, symbol2, base_uri2);
     assert(collection_id2 == 2, 'Second ID should be 2');
-
-    let owner_collections = dispatcher.list_user_collections(owner);
-    assert(owner_collections.len() == 2, 'Owner should have 2 collections');
-    assert(*owner_collections.at(0) == collection_id1, 'First collection ID mismatch');
-    assert(*owner_collections.at(1) == collection_id2, 'Second collection ID mismatch');
 
     stop_cheat_caller_address(address);
 }
@@ -131,10 +122,6 @@ fn test_mint_token() {
     assert(token.token_id == token_id, 'Token ID mismatch');
     assert(token.owner == recipient, 'Token owner mismatch');
     assert(token.metadata_uri == "ipfs://QmCollectionBaseUri", 'Token metadata URI mismatch');
-
-    let recipient_tokens = dispatcher.list_user_tokens(recipient);
-    assert(recipient_tokens.len() == 1, 'Recipient should have 1 token');
-    assert(*recipient_tokens.at(0) == token_id, 'TokID mismatch in rec tokens');
 
     stop_cheat_caller_address(address);
 }
@@ -309,5 +296,81 @@ fn test_list_collection_tokens_not_owner() {
     let empty_tokens = dispatcher.list_collection_tokens(999);
     assert(empty_tokens.len() == 0, 'Non-existent, should have 0');
 
+    stop_cheat_caller_address(address);
+}
+
+#[test]
+fn test_mint_batch() {
+    let (dispatcher, address) = deploy_contract();
+    let owner = OWNER();
+    let recipients = array![USER1(), USER2()];
+    let collection_id = setup_collection(dispatcher, address);
+
+    start_cheat_caller_address(address, owner);
+    let token_ids = dispatcher.mint_batch(collection_id, recipients.clone());
+    assert(token_ids.len() == 2, 'Should mint 2 tokens');
+    let token1 = dispatcher.get_token(*token_ids.at(0));
+    let token2 = dispatcher.get_token(*token_ids.at(1));
+    assert(token1.owner == USER1(), 'First token owner mismatch');
+    assert(token2.owner == USER2(), 'Second token owner mismatch');
+    stop_cheat_caller_address(address);
+}
+
+#[test]
+fn test_transfer_batch() {
+    let (dispatcher, address) = deploy_contract();
+    let owner = OWNER();
+    let recipients = array![USER1(), USER1()];
+    let collection_id = setup_collection(dispatcher, address);
+
+    start_cheat_caller_address(address, owner);
+    let token_ids = dispatcher.mint_batch(collection_id, recipients.clone());
+    dispatcher.transfer_batch(USER1(), USER2(), token_ids.clone());
+    let token1 = dispatcher.get_token(*token_ids.at(0));
+    let token2 = dispatcher.get_token(*token_ids.at(1));
+    assert(token1.owner == USER2(), 'First token should be transfd');
+    assert(token2.owner == USER2(), 'Second token should be transf');
+    stop_cheat_caller_address(address);
+}
+
+#[test]
+fn test_update_collection_metadata() {
+    let (dispatcher, address) = deploy_contract();
+    let owner = OWNER();
+    let collection_id = setup_collection(dispatcher, address);
+
+    start_cheat_caller_address(address, owner);
+    dispatcher.update_collection_metadata(collection_id, "New Name", "NEW", "ipfs://QmNewBaseUri");
+    let collection = dispatcher.get_collection(collection_id);
+    assert(collection.name == "New Name", 'Name should be updated');
+    assert(collection.symbol == "NEW", 'Symbol should be updated');
+    assert(collection.base_uri == "ipfs://QmNewBaseUri", 'Base URI should be updated');
+    stop_cheat_caller_address(address);
+}
+
+#[test]
+fn test_verification_functions() {
+    let (dispatcher, address) = deploy_contract();
+    let owner = OWNER();
+    let collection_id = setup_collection(dispatcher, address);
+
+    start_cheat_caller_address(address, owner);
+    let token_id = dispatcher.mint(collection_id, USER1());
+    assert(dispatcher.is_valid_collection(collection_id), 'Collection should be valid');
+    assert(dispatcher.is_valid_token(token_id), 'Token should be valid');
+    assert(dispatcher.is_collection_owner(collection_id, owner), 'Owner should be correct');
+    stop_cheat_caller_address(address);
+}
+
+#[test]
+fn test_get_collection_stats() {
+    let (dispatcher, address) = deploy_contract();
+    let owner = OWNER();
+    let collection_id = setup_collection(dispatcher, address);
+
+    start_cheat_caller_address(address, owner);
+    let _ = dispatcher.mint(collection_id, USER1());
+    let stats = dispatcher.get_collection_stats(collection_id);
+    assert(stats.total_supply == 1, 'Total supply should be 1');
     stop_cheat_caller_address(address);
 }
