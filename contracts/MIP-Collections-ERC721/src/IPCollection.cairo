@@ -16,14 +16,26 @@ pub trait IIPCollection<ContractState> {
     fn get_token(self: @ContractState, token_id: u256) -> Token;
     fn list_all_tokens(self: @ContractState) -> Array<u256>;
     fn list_collection_tokens(self: @ContractState, collection_id: u256) -> Array<u256>;
-    fn mint_batch(ref self: ContractState, collection_id: u256, recipients: Array<ContractAddress>) -> Array<u256>;
+    fn mint_batch(
+        ref self: ContractState, collection_id: u256, recipients: Array<ContractAddress>,
+    ) -> Array<u256>;
     fn burn_batch(ref self: ContractState, token_ids: Array<u256>);
-    fn transfer_batch(ref self: ContractState, from: ContractAddress, to: ContractAddress, token_ids: Array<u256>);
-    fn update_collection_metadata(ref self: ContractState, collection_id: u256, name: ByteArray, symbol: ByteArray, base_uri: ByteArray);
+    fn transfer_batch(
+        ref self: ContractState, from: ContractAddress, to: ContractAddress, token_ids: Array<u256>,
+    );
+    fn update_collection_metadata(
+        ref self: ContractState,
+        collection_id: u256,
+        name: ByteArray,
+        symbol: ByteArray,
+        base_uri: ByteArray,
+    );
     fn get_collection_stats(self: @ContractState, collection_id: u256) -> CollectionStats;
     fn is_valid_collection(self: @ContractState, collection_id: u256) -> bool;
     fn is_valid_token(self: @ContractState, token_id: u256) -> bool;
-    fn is_collection_owner(self: @ContractState, collection_id: u256, owner: ContractAddress) -> bool;
+    fn is_collection_owner(
+        self: @ContractState, collection_id: u256, owner: ContractAddress,
+    ) -> bool;
 }
 
 #[derive(Drop, Serde, starknet::Store)]
@@ -66,6 +78,7 @@ pub mod IPCollection {
     use openzeppelin::upgrades::interface::IUpgradeable;
     use starknet::{
         ClassHash, ContractAddress, get_caller_address, get_contract_address,
+        contract_address_const,
         storage::{
             Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
             StoragePointerReadAccess, StoragePointerWriteAccess,
@@ -100,8 +113,8 @@ pub mod IPCollection {
         collections: Map<u256, Collection>,
         collection_count: u256,
         tokens: Map<u256, Token>,
-        // Removed: owned_collections, owned_collection_count, owned_tokens, owned_token_count, user_tokens, user_token_count
-        // Operator approvals: (owner, operator) -> bool
+        // Removed: owned_collections, owned_collection_count, owned_tokens, owned_token_count,
+        // user_tokens, user_token_count Operator approvals: (owner, operator) -> bool
         operator_approvals: Map<(ContractAddress, ContractAddress), bool>,
         // Token approvals: token_id -> approved address
         token_approvals: Map<u256, ContractAddress>,
@@ -306,7 +319,7 @@ pub mod IPCollection {
         }
 
         fn burn(ref self: ContractState, token_id: u256) {
-            self.erc721.update(Zero::zero(), token_id, get_caller_address());
+            self.erc721.update(contract_address_const::<0>(), token_id, get_caller_address());
         }
 
         fn list_user_tokens(self: @ContractState, owner: ContractAddress) -> Array<u256> {
@@ -364,7 +377,9 @@ pub mod IPCollection {
             token_ids
         }
 
-        fn mint_batch(ref self: ContractState, collection_id: u256, recipients: Array<ContractAddress>) -> Array<u256> {
+        fn mint_batch(
+            ref self: ContractState, collection_id: u256, recipients: Array<ContractAddress>,
+        ) -> Array<u256> {
             self.ownable.assert_only_owner();
             let n = recipients.len();
             assert(n > 0, 'Recipients array is empty');
@@ -376,7 +391,7 @@ pub mod IPCollection {
             let mut i: u32 = 0;
             let mut all_token_count = self.all_token_count.read();
             let mut collection_token_count = self.collection_token_count.read(collection_id);
-            let operator = get_caller_address();
+            let operator: ContractAddress = get_caller_address();
             let timestamp = 0; // TODO: Replace with block timestamp if available
 
             while i < n {
@@ -396,7 +411,10 @@ pub mod IPCollection {
                 self.all_tokens.entry(all_token_count).write(token_id);
                 all_token_count += 1;
 
-                self.collection_tokens.entry((collection_id, collection_token_count)).write(token_id);
+                self
+                    .collection_tokens
+                    .entry((collection_id, collection_token_count))
+                    .write(token_id);
                 collection_token_count += 1;
 
                 token_ids.append(token_id);
@@ -406,56 +424,136 @@ pub mod IPCollection {
             self.collection_token_count.entry(collection_id).write(collection_token_count);
 
             // Emit batch event
-            self.emit(TokenMintedBatch {
-                collection_id,
-                token_ids: token_ids.clone(),
-                owners: recipients.clone(),
-                operator,
-                timestamp,
-            });
+            self
+                .emit(
+                    TokenMintedBatch {
+                        collection_id,
+                        token_ids: token_ids.clone(),
+                        owners: recipients.clone(),
+                        operator,
+                        timestamp,
+                    },
+                );
 
-            return token_ids;
+            token_ids
         }
 
         fn burn_batch(ref self: ContractState, token_ids: Array<u256>) {
-            // Implementation needed
-            return ();
+            self.ownable.assert_only_owner();
+            let n = token_ids.len();
+            assert(n > 0, 'Token IDs array is empty');
+
+            let operator: ContractAddress = get_caller_address();
+            let timestamp = 0; // TODO: Replace with block timestamp if available
+            let mut i: u32 = 0;
+            while i < n {
+                let token_id: u256 = *token_ids.at(i);
+                // Validate token exists (optional: check not already burned)
+                let _ = self.tokens.read(token_id);
+                // Burn the token using ERC721 logic
+                self.erc721.update(contract_address_const::<0>(), token_id, operator);
+                // Optionally update your own mappings/stats here
+                i += 1;
+            };
+            // Emit batch event
+            self.emit(TokenBurnedBatch { token_ids: token_ids.clone(), operator, timestamp });
         }
 
-        fn transfer_batch(ref self: ContractState, from: ContractAddress, to: ContractAddress, token_ids: Array<u256>) {
-            // Implementation needed
-            return ();
+        fn transfer_batch(
+            ref self: ContractState,
+            from: ContractAddress,
+            to: ContractAddress,
+            token_ids: Array<u256>,
+        ) {
+            let n = token_ids.len();
+            assert(n > 0, 'Token IDs array is empty');
+            assert(!from.is_zero(), 'From address is zero');
+            assert(!to.is_zero(), 'To address is zero');
+
+            let operator: ContractAddress = get_caller_address();
+            let timestamp = 0; // TODO: Replace with block timestamp if available
+            let mut i: u32 = 0;
+            while i < n {
+                let token_id: u256 = *token_ids.at(i);
+                // Validate token exists and belongs to 'from'
+                let token = self.tokens.read(token_id);
+                assert(token.owner == from, 'Token not from address');
+                // Transfer the token using ERC721 logic
+                self.erc721.transfer(from, to, token_id);
+                // Update token owner in your storage
+                let mut updated_token = token;
+                updated_token.owner = to;
+                self.tokens.write(token_id, updated_token);
+                i += 1;
+            };
+            // Emit batch event
+            self
+                .emit(
+                    TokenTransferredBatch {
+                        from, to, token_ids: token_ids.clone(), operator, timestamp,
+                    },
+                );
         }
 
-        fn update_collection_metadata(ref self: ContractState, collection_id: u256, name: ByteArray, symbol: ByteArray, base_uri: ByteArray) {
-            // Implementation needed
-            return ();
+        fn update_collection_metadata(
+            ref self: ContractState,
+            collection_id: u256,
+            name: ByteArray,
+            symbol: ByteArray,
+            base_uri: ByteArray,
+        ) {
+            // Only collection owner can call
+            let caller = get_caller_address();
+            let mut collection = self.collections.read(collection_id);
+            assert(collection.owner == caller, 'Caller is not owner');
+            assert(name.len() > 0, 'Name cannot be empty');
+            assert(symbol.len() > 0, 'Symbol cannot be empty');
+            assert(base_uri.len() > 0, 'Base URI cannot be empty');
+
+            collection.name = name.clone();
+            collection.symbol = symbol.clone();
+            collection.base_uri = base_uri.clone();
+            self.collections.entry(collection_id).write(collection);
+
+            let timestamp = 0; // TODO: Replace with block timestamp if available
+            self
+                .emit(
+                    CollectionUpdated {
+                        collection_id, owner: caller, name, symbol, base_uri, timestamp,
+                    },
+                );
         }
 
         fn get_collection_stats(self: @ContractState, collection_id: u256) -> CollectionStats {
-            // Implementation needed
-            return CollectionStats {
-                total_supply: 0,
-                minted: 0,
-                burned: 0,
-                last_mint_batch_id: 0,
-                last_mint_time: 0,
-            };
+            // Read stats from storage
+            let total_supply = self.collection_token_count.read(collection_id);
+            let stats = self.collection_stats.read(collection_id);
+            CollectionStats {
+                total_supply,
+                minted: stats.minted,
+                burned: stats.burned,
+                last_mint_batch_id: stats.last_mint_batch_id,
+                last_mint_time: stats.last_mint_time,
+            }
         }
 
         fn is_valid_collection(self: @ContractState, collection_id: u256) -> bool {
-            // Implementation needed
-            return false;
+            // Try to read the collection; if it exists and is active, return true
+            let collection = self.collections.read(collection_id);
+            collection.is_active
         }
 
         fn is_valid_token(self: @ContractState, token_id: u256) -> bool {
-            // Implementation needed
-            return false;
+            // Try to read the token; if it exists and owner is not zero, return true
+            let token = self.tokens.read(token_id);
+            !token.owner.is_zero()
         }
 
-        fn is_collection_owner(self: @ContractState, collection_id: u256, owner: ContractAddress) -> bool {
-            // Implementation needed
-            return false;
+        fn is_collection_owner(
+            self: @ContractState, collection_id: u256, owner: ContractAddress,
+        ) -> bool {
+            let collection = self.collections.read(collection_id);
+            collection.owner == owner
         }
     }
 }
