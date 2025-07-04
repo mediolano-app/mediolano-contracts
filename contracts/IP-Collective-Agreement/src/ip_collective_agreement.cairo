@@ -7,10 +7,13 @@ mod CollectiveIPCore {
         LicenseStatus, LicenseTerms, LicenseProposal, RoyaltyInfo, MetadataUpdated,
         LicenseOfferCreated, LicenseApproved, LicenseExecuted, LicenseRevoked, LicenseSuspended,
         LicenseTransferred, RoyaltyPaid, UsageReported, LicenseProposalCreated,
-        LicenseProposalVoted, LicenseProposalExecuted, LicenseReactivated,
+        LicenseProposalVoted, LicenseProposalExecuted, LicenseReactivated, GovernanceProposal,
+        AssetManagementProposal, RevenuePolicyProposal, EmergencyProposal, GovernanceSettings,
+        ProposalType, GovernanceProposalCreated, ProposalQuorumReached, AssetManagementExecuted,
+        RevenuePolicyUpdated, EmergencyActionExecuted, GovernanceSettingsUpdated,
     };
     use ip_collective_agreement::interface::{
-        IOwnershipRegistry, IIPAssetManager, IRevenueDistribution, ILicenseManager,
+        IOwnershipRegistry, IIPAssetManager, IRevenueDistribution, ILicenseManager, IGovernance,
     };
     use ip_collective_agreement::constants::{THIRTY_DAYS, STANDARD_INITIAL_SUPPLY};
     use starknet::storage::{
@@ -93,7 +96,21 @@ mod CollectiveIPCore {
         has_voted: Map<(u256, ContractAddress), bool>,
         // Default terms
         default_license_terms: Map<u256, LicenseTerms>, // asset_id -> default terms
-        total_assets: u256 // Track total number of assets created
+        total_assets: u256, // Track total number of assets created
+        governance_proposals: Map<u256, GovernanceProposal>,
+        asset_management_proposals: Map<u256, AssetManagementProposal>,
+        revenue_policy_proposals: Map<u256, RevenuePolicyProposal>,
+        emergency_proposals: Map<u256, EmergencyProposal>,
+        governance_settings: Map<u256, GovernanceSettings>, // asset_id -> settings
+        governance_proposal_votes: Map<
+            (u256, ContractAddress), bool,
+        >, // (proposal_id, voter) -> vote
+        governance_has_voted: Map<
+            (u256, ContractAddress), bool,
+        >, // (proposal_id, voter) -> has_voted
+        next_governance_proposal_id: u256,
+        active_proposals_for_asset: Map<(u256, u32), u256>, // (asset_id, index) -> proposal_id
+        active_proposal_count: Map<u256, u32> // asset_id -> count
     }
 
     #[event]
@@ -124,6 +141,12 @@ mod CollectiveIPCore {
         LicenseProposalVoted: LicenseProposalVoted,
         LicenseProposalExecuted: LicenseProposalExecuted,
         LicenseReactivated: LicenseReactivated,
+        GovernanceProposalCreated: GovernanceProposalCreated,
+        ProposalQuorumReached: ProposalQuorumReached,
+        AssetManagementExecuted: AssetManagementExecuted,
+        RevenuePolicyUpdated: RevenuePolicyUpdated,
+        EmergencyActionExecuted: EmergencyActionExecuted,
+        GovernanceSettingsUpdated: GovernanceSettingsUpdated,
     }
 
 
@@ -1520,6 +1543,517 @@ mod CollectiveIPCore {
             };
 
             (owners.span(), percentages.span())
+        }
+    }
+
+    #[abi(embed_v0)]
+    impl GovernanceImpl of IGovernance<ContractState> {
+        fn set_governance_settings(
+            ref self: ContractState, asset_id: u256, settings: GovernanceSettings,
+        ) -> bool {
+            let caller = get_caller_address();
+            assert!(
+                self.is_owner(asset_id, caller), "Only asset owners can set governance settings",
+            );
+
+            // Validate settings
+            assert!(settings.default_quorum_percentage <= 10000, "Quorum cannot exceed 100%");
+            assert!(
+                settings.emergency_quorum_percentage <= settings.default_quorum_percentage,
+                "Emergency quorum cannot be higher than default",
+            );
+            assert!(settings.execution_delay >= 3600, "Execution delay must be at least 1 hour");
+
+            self.governance_settings.write(asset_id, settings);
+
+            self
+                .emit(
+                    GovernanceSettingsUpdated {
+                        asset_id, updated_by: caller, timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn get_governance_settings(self: @ContractState, asset_id: u256) -> GovernanceSettings {
+            let settings = self.governance_settings.read(asset_id);
+
+            // Return default settings if none set
+            if settings.default_quorum_percentage == 0 {
+                GovernanceSettings {
+                    default_quorum_percentage: 5000, // 50%
+                    emergency_quorum_percentage: 3000, // 30%
+                    license_quorum_percentage: 4000, // 40%
+                    asset_mgmt_quorum_percentage: 6000, // 60%
+                    revenue_policy_quorum_percentage: 5500, // 55%
+                    default_voting_duration: 259200, // 3 days
+                    emergency_voting_duration: 86400, // 1 day
+                    execution_delay: 86400 // 1 day
+                }
+            } else {
+                settings
+            }
+        }
+
+        fn propose_asset_management(
+            ref self: ContractState,
+            asset_id: u256,
+            proposal_data: AssetManagementProposal,
+            voting_duration: u64,
+            description: ByteArray,
+        ) -> u256 {
+            let caller = get_caller_address();
+            assert!(self.is_owner(asset_id, caller), "Only asset owners can create proposals");
+            assert(self.verify_asset_ownership(asset_id), 'Asset does not exist');
+
+            let proposal_id = self
+                ._create_governance_proposal(
+                    asset_id,
+                    ProposalType::AssetManagement.into(),
+                    caller,
+                    voting_duration,
+                    description,
+                );
+
+            self.asset_management_proposals.write(proposal_id, proposal_data);
+            proposal_id
+        }
+
+        fn propose_revenue_policy(
+            ref self: ContractState,
+            asset_id: u256,
+            proposal_data: RevenuePolicyProposal,
+            voting_duration: u64,
+            description: ByteArray,
+        ) -> u256 {
+            let caller = get_caller_address();
+            assert!(self.is_owner(asset_id, caller), "Only asset owners can create proposals");
+            assert(self.verify_asset_ownership(asset_id), 'Asset does not exist');
+
+            let proposal_id = self
+                ._create_governance_proposal(
+                    asset_id,
+                    ProposalType::RevenuePolicy.into(),
+                    caller,
+                    voting_duration,
+                    description,
+                );
+
+            self.revenue_policy_proposals.write(proposal_id, proposal_data);
+            proposal_id
+        }
+
+        fn propose_emergency_action(
+            ref self: ContractState,
+            asset_id: u256,
+            proposal_data: EmergencyProposal,
+            description: ByteArray,
+        ) -> u256 {
+            let caller = get_caller_address();
+            assert!(
+                self.is_owner(asset_id, caller), "Only asset owners can create emergency proposals",
+            );
+            assert(self.verify_asset_ownership(asset_id), 'Asset does not exist');
+
+            let settings = self.get_governance_settings(asset_id);
+
+            let proposal_id = self
+                ._create_governance_proposal(
+                    asset_id,
+                    ProposalType::Emergency.into(),
+                    caller,
+                    settings.emergency_voting_duration,
+                    description,
+                );
+
+            self.emergency_proposals.write(proposal_id, proposal_data);
+            proposal_id
+        }
+
+        fn vote_on_governance_proposal(
+            ref self: ContractState, proposal_id: u256, vote_for: bool,
+        ) -> bool {
+            let caller = get_caller_address();
+            let mut proposal = self.governance_proposals.read(proposal_id);
+
+            assert!(proposal.proposal_id != 0, "Proposal does not exist");
+            assert!(!proposal.is_executed, "Proposal already executed");
+            assert!(!proposal.is_cancelled, "Proposal cancelled");
+            assert!(get_block_timestamp() < proposal.voting_deadline, "Voting period ended");
+
+            let asset_id = proposal.asset_id;
+            assert!(self.is_owner(asset_id, caller), "Only asset owners can vote");
+
+            // Prevent double voting
+            let has_already_voted = self.governance_has_voted.read((proposal_id, caller));
+            assert!(!has_already_voted, "Already voted on this proposal");
+
+            self.governance_has_voted.write((proposal_id, caller), true);
+            self.governance_proposal_votes.write((proposal_id, caller), vote_for);
+
+            // Get voting weight
+            let voting_weight = self.get_governance_weight(asset_id, caller);
+
+            if vote_for {
+                proposal.votes_for += voting_weight;
+            } else {
+                proposal.votes_against += voting_weight;
+            }
+
+            self.governance_proposals.write(proposal_id, proposal.clone());
+
+            // Check if quorum reached
+            let total_votes = proposal.votes_for + proposal.votes_against;
+            if total_votes >= proposal.quorum_required {
+                self
+                    .emit(
+                        ProposalQuorumReached {
+                            proposal_id,
+                            total_votes,
+                            quorum_required: proposal.quorum_required,
+                            timestamp: get_block_timestamp(),
+                        },
+                    );
+            }
+
+            true
+        }
+
+        fn execute_asset_management_proposal(ref self: ContractState, proposal_id: u256) -> bool {
+            let caller = get_caller_address();
+            assert!(self._can_execute_proposal(proposal_id), "Cannot execute proposal");
+
+            let proposal = self.governance_proposals.read(proposal_id);
+            let proposal_data = self.asset_management_proposals.read(proposal_id);
+
+            // Mark as executed
+            let mut updated_proposal = proposal.clone();
+            updated_proposal.is_executed = true;
+            self.governance_proposals.write(proposal_id, updated_proposal);
+
+            // Execute the proposal
+            let mut metadata_updated = false;
+            let mut compliance_updated = false;
+
+            if proposal_data.update_metadata {
+                let mut asset_info = self.asset_info.read(proposal.asset_id.clone());
+                asset_info.metadata_uri = proposal_data.new_metadata_uri.clone();
+                self.asset_info.write(proposal.asset_id.clone(), asset_info);
+                metadata_updated = true;
+            }
+
+            if proposal_data.update_compliance {
+                let mut asset_info = self.asset_info.read(proposal.asset_id.clone());
+                asset_info.compliance_status = proposal_data.new_compliance_status;
+                self.asset_info.write(proposal.asset_id.clone(), asset_info);
+                compliance_updated = true;
+            }
+
+            self
+                .emit(
+                    AssetManagementExecuted {
+                        proposal_id,
+                        asset_id: proposal.asset_id,
+                        metadata_updated,
+                        compliance_updated,
+                        executed_by: caller,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn execute_revenue_policy_proposal(ref self: ContractState, proposal_id: u256) -> bool {
+            let caller = get_caller_address();
+            assert!(self._can_execute_proposal(proposal_id), "Cannot execute proposal");
+
+            let proposal = self.governance_proposals.read(proposal_id);
+            let proposal_data = self.revenue_policy_proposals.read(proposal_id);
+
+            // Mark as executed
+            let mut updated_proposal = proposal.clone();
+            updated_proposal.is_executed = true;
+            self.governance_proposals.write(proposal_id, updated_proposal);
+
+            // Update revenue settings
+            let mut revenue_info = self
+                .revenue_info
+                .read((proposal.asset_id.clone(), proposal_data.token_address));
+            revenue_info.minimum_distribution = proposal_data.new_minimum_distribution;
+            self
+                .revenue_info
+                .write((proposal.asset_id.clone(), proposal_data.token_address), revenue_info);
+
+            self
+                .emit(
+                    RevenuePolicyUpdated {
+                        proposal_id,
+                        asset_id: proposal.asset_id.clone(),
+                        token_address: proposal_data.token_address,
+                        new_minimum_distribution: proposal_data.new_minimum_distribution,
+                        executed_by: caller,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn execute_emergency_proposal(ref self: ContractState, proposal_id: u256) -> bool {
+            let caller = get_caller_address();
+            assert!(self._can_execute_proposal(proposal_id), "Cannot execute proposal");
+
+            let proposal = self.governance_proposals.read(proposal_id);
+            let proposal_data = self.emergency_proposals.read(proposal_id);
+
+            // Mark as executed
+            let mut updated_proposal = proposal.clone();
+            updated_proposal.is_executed = true;
+            self.governance_proposals.write(proposal_id, updated_proposal);
+
+            // Execute emergency action
+            if proposal_data.action_type == 'SUSPEND_LICENSE' {
+                // Suspend the license
+                let mut license_info = self.license_info.read(proposal_data.target_id);
+                let license_info_copy = license_info.clone();
+                if license_info_copy.license_id != 0 && license_info_copy.is_active {
+                    license_info.is_active = false;
+                    license_info.is_suspended = true;
+                    license_info.suspension_end_timestamp = get_block_timestamp()
+                        + proposal_data.suspension_duration;
+                    self.license_info.write(proposal_data.target_id, license_info);
+                }
+            } else if proposal_data.action_type == 'SUSPEND_ASSET' {
+                // Suspend all licenses for the asset
+                let asset_license_count = self.asset_license_count.read(proposal.asset_id);
+                let mut i = 0;
+                loop {
+                    if i >= asset_license_count {
+                        break;
+                    }
+                    let license_id = self.asset_licenses.read((proposal.asset_id, i));
+                    let mut license_info = self.license_info.read(license_id);
+                    let license_info_copy = license_info.clone();
+                    if license_info_copy.is_active {
+                        license_info.is_active = false;
+                        license_info.is_suspended = true;
+                        license_info.suspension_end_timestamp = get_block_timestamp()
+                            + proposal_data.suspension_duration;
+                        self.license_info.write(license_id, license_info);
+                    }
+                    i += 1;
+                };
+            }
+
+            self
+                .emit(
+                    EmergencyActionExecuted {
+                        proposal_id,
+                        action_type: proposal_data.action_type,
+                        target_id: proposal_data.target_id,
+                        executed_by: caller,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn get_governance_proposal(self: @ContractState, proposal_id: u256) -> GovernanceProposal {
+            self.governance_proposals.read(proposal_id)
+        }
+
+        fn get_asset_management_proposal(
+            self: @ContractState, proposal_id: u256,
+        ) -> AssetManagementProposal {
+            self.asset_management_proposals.read(proposal_id)
+        }
+
+        fn get_revenue_policy_proposal(
+            self: @ContractState, proposal_id: u256,
+        ) -> RevenuePolicyProposal {
+            self.revenue_policy_proposals.read(proposal_id)
+        }
+
+        fn get_emergency_proposal(self: @ContractState, proposal_id: u256) -> EmergencyProposal {
+            self.emergency_proposals.read(proposal_id)
+        }
+
+        fn check_quorum_reached(self: @ContractState, proposal_id: u256) -> bool {
+            let proposal = self.governance_proposals.read(proposal_id);
+            let total_votes = proposal.votes_for + proposal.votes_against;
+            total_votes >= proposal.quorum_required
+        }
+
+        fn get_proposal_participation_rate(self: @ContractState, proposal_id: u256) -> u256 {
+            let proposal = self.governance_proposals.read(proposal_id);
+            let total_votes = proposal.votes_for + proposal.votes_against;
+            if proposal.total_voting_weight == 0 {
+                0
+            } else {
+                (total_votes * 10000) / proposal.total_voting_weight // Return as basis points
+            }
+        }
+
+        fn can_execute_proposal(self: @ContractState, proposal_id: u256) -> bool {
+            self._can_execute_proposal(proposal_id)
+        }
+
+        fn get_active_proposals_for_asset(self: @ContractState, asset_id: u256) -> Array<u256> {
+            let proposal_count = self.active_proposal_count.read(asset_id);
+            let mut proposals = ArrayTrait::new();
+            let mut i = 0;
+
+            loop {
+                if i >= proposal_count {
+                    break;
+                }
+                let proposal_id = self.active_proposals_for_asset.read((asset_id, i));
+                let proposal = self.governance_proposals.read(proposal_id);
+
+                // Only include non-executed, non-cancelled proposals
+                if !proposal.is_executed && !proposal.is_cancelled {
+                    proposals.append(proposal_id);
+                }
+                i += 1;
+            };
+
+            proposals
+        }
+    }
+
+    #[generate_trait]
+    impl GovernanceInternalFunctions of GovernanceInternalFunctionsTrait {
+        fn _create_governance_proposal(
+            ref self: ContractState,
+            asset_id: u256,
+            proposal_type: felt252,
+            proposer: ContractAddress,
+            voting_duration: u64,
+            description: ByteArray,
+        ) -> u256 {
+            let proposal_id = self.next_governance_proposal_id.read();
+            self.next_governance_proposal_id.write(proposal_id + 1);
+
+            let settings = self.get_governance_settings(asset_id);
+            let current_time = get_block_timestamp();
+
+            // Calculate total voting weight and quorum
+            let total_voting_weight = self._calculate_total_voting_weight(asset_id);
+            let quorum_required = self
+                ._calculate_quorum_required(proposal_type, total_voting_weight, settings);
+
+            let proposal = GovernanceProposal {
+                proposal_id,
+                asset_id,
+                proposal_type,
+                proposer,
+                votes_for: 0,
+                votes_against: 0,
+                total_voting_weight,
+                quorum_required,
+                voting_deadline: current_time + voting_duration,
+                execution_deadline: current_time + voting_duration + settings.execution_delay,
+                is_executed: false,
+                is_cancelled: false,
+                description: description.clone(),
+            };
+
+            self.governance_proposals.write(proposal_id, proposal.clone());
+
+            // Add to active proposals for asset
+            let active_count = self.active_proposal_count.read(asset_id);
+            self.active_proposals_for_asset.write((asset_id, active_count), proposal_id);
+            self.active_proposal_count.write(asset_id, active_count + 1);
+
+            self
+                .emit(
+                    GovernanceProposalCreated {
+                        proposal_id,
+                        asset_id,
+                        proposal_type,
+                        proposer,
+                        quorum_required,
+                        voting_deadline: proposal.voting_deadline,
+                        description,
+                        timestamp: current_time,
+                    },
+                );
+
+            proposal_id
+        }
+
+        fn _calculate_total_voting_weight(self: @ContractState, asset_id: u256) -> u256 {
+            let ownership_info = self.ownership_info.read(asset_id);
+            let mut total_weight = 0;
+            let mut i = 0;
+
+            loop {
+                if i >= ownership_info.total_owners {
+                    break;
+                }
+                let owner = self.asset_owners.read((asset_id, i));
+                let weight = self.governance_weight.read((asset_id, owner));
+                total_weight += weight;
+                i += 1;
+            };
+
+            total_weight
+        }
+
+        fn _calculate_quorum_required(
+            self: @ContractState,
+            proposal_type: felt252,
+            total_voting_weight: u256,
+            settings: GovernanceSettings,
+        ) -> u256 {
+            let quorum_percentage = if proposal_type == ProposalType::Emergency.into() {
+                settings.emergency_quorum_percentage
+            } else if proposal_type == ProposalType::LicenseApproval.into() {
+                settings.license_quorum_percentage
+            } else if proposal_type == ProposalType::AssetManagement.into() {
+                settings.asset_mgmt_quorum_percentage
+            } else if proposal_type == ProposalType::RevenuePolicy.into() {
+                settings.revenue_policy_quorum_percentage
+            } else {
+                settings.default_quorum_percentage
+            };
+
+            (total_voting_weight * quorum_percentage) / 10000
+        }
+
+        fn _can_execute_proposal(self: @ContractState, proposal_id: u256) -> bool {
+            let proposal = self.governance_proposals.read(proposal_id);
+
+            if proposal.proposal_id == 0 || proposal.is_executed || proposal.is_cancelled {
+                return false;
+            }
+
+            let current_time = get_block_timestamp();
+
+            // Check voting period ended
+            if current_time <= proposal.voting_deadline {
+                return false;
+            }
+
+            // Check execution deadline not passed
+            if current_time > proposal.execution_deadline {
+                return false;
+            }
+
+            // Check quorum reached
+            if !self.check_quorum_reached(proposal_id) {
+                return false;
+            }
+
+            // Check majority approval
+            if proposal.votes_for <= proposal.votes_against {
+                return false;
+            }
+
+            true
         }
     }
 
