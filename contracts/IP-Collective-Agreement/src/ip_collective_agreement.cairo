@@ -159,6 +159,7 @@ mod CollectiveIPCore {
         self.next_license_id.write(1);
         self.next_proposal_id.write(1);
         self.total_assets.write(0);
+        self.next_governance_proposal_id.write(1);
     }
 
     #[abi(embed_v0)]

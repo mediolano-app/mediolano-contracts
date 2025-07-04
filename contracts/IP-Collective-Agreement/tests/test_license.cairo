@@ -479,8 +479,6 @@ fn test_license_with_usage_limits() {
     // Verify final usage count
     let terms_at_limit = licensing_dispatcher.get_license_terms(license_id);
     assert!(terms_at_limit.current_usage_count == 5, "Usage count should be 5 (at limit)");
-
-    println!("Usage limits test completed successfully");
 }
 
 #[test]
@@ -1181,13 +1179,6 @@ fn test_integration_with_corrected_flow() {
     let artist1_final = revenue_dispatcher.get_pending_revenue(asset_id, artist1, erc20);
     let artist2_final = revenue_dispatcher.get_pending_revenue(asset_id, artist2, erc20);
     let studio_final = revenue_dispatcher.get_pending_revenue(asset_id, studio, erc20);
-
-    println!(
-        "artist1 final: {}, artist2 final: {}, studio final: {}",
-        artist1_final,
-        artist2_final,
-        studio_final,
-    );
 
     // License fee + royalty share
     assert!(artist1_final == 120, "Artist1 total: $60 fee + $60 royalty");
