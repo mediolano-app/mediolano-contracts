@@ -1,14 +1,5 @@
-use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
-
-use core::num::traits::Zero;
 use alexandria_storage::{List, ListTrait};
-use openzeppelin::access::ownable::OwnableComponent;
-use openzeppelin::introspection::src5::SRC5Component;
-use openzeppelin::token::erc721::ERC721Component;
-use openzeppelin::token::erc721::extensions::ERC721EnumerableComponent;
-use openzeppelin::upgrades::interface::IUpgradeable;
-use openzeppelin::upgrades::UpgradeableComponent;
-use super::{interfaces::ITimeCapsule, types::TimeCapsule};
+use core::num::traits::Zero;
 // use alexandria_storage::List;
 // use openzeppelin::access::accesscontrol::{AccessControlComponent};
 // use openzeppelin::access::ownable::interface::IOwnable;
@@ -16,24 +7,33 @@ use super::{interfaces::ITimeCapsule, types::TimeCapsule};
 // use openzeppelin::token::erc721::interface::ERC721ABIDispatcher;
 // use openzeppelin::token::erc721::interface::ERC721ABIDispatcherTrait;
 use core::traits::*;
+use openzeppelin::access::ownable::OwnableComponent;
+use openzeppelin::introspection::src5::SRC5Component;
+use openzeppelin::token::erc721::ERC721Component;
+use openzeppelin::token::erc721::extensions::ERC721EnumerableComponent;
+use openzeppelin::upgrades::UpgradeableComponent;
+use openzeppelin::upgrades::interface::IUpgradeable;
+use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
+use super::interfaces::ITimeCapsule;
+use super::types::TimeCapsule;
 // use core::traits::Drop;
 
 #[starknet::contract]
 pub mod IPTimeCapsule {
-    use super::ERC721Component::InternalTrait;
-    use starknet::storage::StoragePointerReadAccess;
-    use super::Zero;
-    use super::*;
-    use starknet::storage::StoragePointerWriteAccess;
-    use starknet::storage::{Map, StorageMapReadAccess, StorageMapWriteAccess};
     // use openzeppelin::token::erc721::ERC721Component::InternalTrait;
     use starknet::ClassHash;
+    use starknet::storage::{
+        Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
+        StoragePointerWriteAccess,
+    };
+    use super::ERC721Component::InternalTrait;
+    use super::{*, Zero};
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
     component!(
-        path: ERC721EnumerableComponent, storage: erc721_enumerable, event: ERC721EnumerableEvent
+        path: ERC721EnumerableComponent, storage: erc721_enumerable, event: ERC721EnumerableEvent,
     );
     component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
 
@@ -45,56 +45,62 @@ pub mod IPTimeCapsule {
     impl ERC721EnumerableImpl =
         ERC721EnumerableComponent::ERC721EnumerableImpl<ContractState>;
 
-        impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
-        // impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
-        impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
-        impl ERC721EnumerableInternalImpl = ERC721EnumerableComponent::InternalImpl<ContractState>;
-        impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
+    impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
+    // impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
+    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
+    impl ERC721EnumerableInternalImpl = ERC721EnumerableComponent::InternalImpl<ContractState>;
+    impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
 
     #[storage]
     struct Storage {
-       time_capsule: Map<u256, TimeCapsule>,
-       token_id_count: u256,
-       metadata_hash: felt252,
-       user_tokens: Map<ContractAddress, List<u256>>,
-       #[substorage(v0)]
-       erc721: ERC721Component::Storage,
-       #[substorage(v0)]
-       src5: SRC5Component::Storage,
-       #[substorage(v0)]
-       ownable: OwnableComponent::Storage,
-       #[substorage(v0)]
-       erc721_enumerable: ERC721EnumerableComponent::Storage,
-       #[substorage(v0)]
-       upgradeable: UpgradeableComponent::Storage
+        time_capsule: Map<u256, TimeCapsule>,
+        token_id_count: u256,
+        metadata_hash: felt252,
+        user_tokens: Map<ContractAddress, List<u256>>,
+        #[substorage(v0)]
+        erc721: ERC721Component::Storage,
+        #[substorage(v0)]
+        src5: SRC5Component::Storage,
+        #[substorage(v0)]
+        ownable: OwnableComponent::Storage,
+        #[substorage(v0)]
+        erc721_enumerable: ERC721EnumerableComponent::Storage,
+        #[substorage(v0)]
+        upgradeable: UpgradeableComponent::Storage,
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
-      #[flat]
-      ERC721Event: ERC721Component::Event,
-      #[flat]
-      SRC5Event: SRC5Component::Event,
-      #[flat]
-      OwnableEvent: OwnableComponent::Event,
-      #[flat]
-      ERC721EnumerableEvent: ERC721EnumerableComponent::Event,
-      #[flat]
-      UpgradeableEvent: UpgradeableComponent::Event,
-      TimeCapsuleMinted: TimeCapsuleMinted
+        #[flat]
+        ERC721Event: ERC721Component::Event,
+        #[flat]
+        SRC5Event: SRC5Component::Event,
+        #[flat]
+        OwnableEvent: OwnableComponent::Event,
+        #[flat]
+        ERC721EnumerableEvent: ERC721EnumerableComponent::Event,
+        #[flat]
+        UpgradeableEvent: UpgradeableComponent::Event,
+        TimeCapsuleMinted: TimeCapsuleMinted,
     }
 
     #[derive(Drop, starknet::Event)]
     struct TimeCapsuleMinted {
-       token_id: u256,
-       to: ContractAddress,
-       metadata_hash: felt252,
-       unvesting_timestamp: u64
+        token_id: u256,
+        to: ContractAddress,
+        metadata_hash: felt252,
+        unvesting_timestamp: u64,
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, name: ByteArray, symbol: ByteArray, base_uri: ByteArray, owner: ContractAddress) {
+    fn constructor(
+        ref self: ContractState,
+        name: ByteArray,
+        symbol: ByteArray,
+        base_uri: ByteArray,
+        owner: ContractAddress,
+    ) {
         self.erc721.initializer(name, symbol, base_uri);
         self.ownable.initializer(owner);
         self.erc721_enumerable.initializer();
@@ -126,11 +132,14 @@ pub mod IPTimeCapsule {
                         new_tokens.append(token.expect('List get failed'));
                     }
                     i += 1;
-                };
-                let mut new_from_tokens: List<u256> = ListTrait::new(0, starknet::storage_access::storage_base_address_from_felt252(0));
+                }
+                let mut new_from_tokens: List<u256> = ListTrait::new(
+                    0, starknet::storage_access::storage_base_address_from_felt252(0),
+                );
                 for token in new_tokens {
-                    ListTrait::append(ref new_from_tokens, token).expect('should to new_from_tokens');
-                };
+                    ListTrait::append(ref new_from_tokens, token)
+                        .expect('should to new_from_tokens');
+                }
                 contract_state.user_tokens.write(auth, new_from_tokens);
             }
         }
@@ -150,30 +159,35 @@ pub mod IPTimeCapsule {
             ref self: ContractState,
             recipient: ContractAddress,
             metadata_hash: felt252,
-            unvesting_timestamp: u64
+            unvesting_timestamp: u64,
         ) -> u256 {
             let caller = get_caller_address();
             assert(caller.is_non_zero(), 'Caller is zero address');
             assert(recipient.is_non_zero(), 'Recipient is zero address');
             let current_timestamp = get_block_timestamp();
             assert(unvesting_timestamp > current_timestamp, 'Unvesting date in past');
-        
+
             let token_id = self.token_id_count.read() + 1;
             self.token_id_count.write(token_id);
-        
+
             self.erc721.mint(recipient, token_id);
-            self.time_capsule.write(token_id, TimeCapsule {
-                owner: recipient,
-                metadata_hash,
-                unvesting_timestamp,
-            });
-        
+            self
+                .time_capsule
+                .write(
+                    token_id, TimeCapsule { owner: recipient, metadata_hash, unvesting_timestamp },
+                );
+
             let mut user_tokens = self.user_tokens.read(recipient);
             ListTrait::append(ref user_tokens, token_id).expect('Append to user_tokens failed');
             self.user_tokens.write(recipient, user_tokens);
-        
-            self.emit(TimeCapsuleMinted { token_id, to: recipient, metadata_hash, unvesting_timestamp });
-        
+
+            self
+                .emit(
+                    TimeCapsuleMinted {
+                        token_id, to: recipient, metadata_hash, unvesting_timestamp,
+                    },
+                );
+
             token_id
         }
 
@@ -198,7 +212,44 @@ pub mod IPTimeCapsule {
             let current_timpstamp = get_block_timestamp();
             assert(current_timpstamp >= capsule.unvesting_timestamp, 'Not yet Unvested');
 
-            self.time_capsule.write(token_id, TimeCapsule { owner: capsule.owner, metadata_hash, unvesting_timestamp: capsule.unvesting_timestamp, })
+            self
+                .time_capsule
+                .write(
+                    token_id,
+                    TimeCapsule {
+                        owner: capsule.owner,
+                        metadata_hash,
+                        unvesting_timestamp: capsule.unvesting_timestamp,
+                    },
+                )
+        }
+
+        fn list_user_tokens(self: @ContractState, owner: ContractAddress) -> Array<u256> {
+            let user_tokens = self.user_tokens.read(owner);
+            let mut token_ids: Array<u256> = array![];
+            let len = user_tokens.len();
+            let mut i: u32 = 0;
+        
+            while i < len {
+                match user_tokens.get(i) {
+                    Result::Ok(token_option) => {
+                        match token_option {
+                            Option::Some(token_id) => {
+                                token_ids.append(token_id);
+                            },
+                            Option::None => {
+                               
+                            }
+                        }
+                    },
+                    Result::Err(_) => {
+                        break;
+                    }
+                }
+                i += 1;
+            }
+        
+            token_ids
         }
     }
 }
