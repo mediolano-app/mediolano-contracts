@@ -63,7 +63,7 @@ pub enum WorkType {
     Architectural, // Building designs
     Photographic, // Photos, visual art
     Cinematographic, // Films, videos
-    Software, // Computer programs (some jurisdictions)
+    Software, // Computer programs
     Database // Compiled databases
 }
 
@@ -84,7 +84,6 @@ impl WorkTypeIntoFelt252 of Into<WorkType, felt252> {
     }
 }
 
-// Enhanced compliance status with your original enum
 #[derive(Drop, Serde, starknet::Store)]
 pub enum ComplianceStatus {
     Pending,
@@ -125,7 +124,7 @@ impl Felt252TryIntoComplianceStatus of TryInto<felt252, ComplianceStatus> {
 pub struct ComplianceAuthority {
     pub authority_address: ContractAddress,
     pub authority_name: ByteArray,
-    pub authorized_countries_count: u32, // Countries they can verify for
+    pub authorized_countries_count: u32,
     pub authority_type: felt252, // 'GOVERNMENT', 'CERTIFIED_ORG', 'LEGAL_EXPERT'
     pub is_active: bool,
     pub verification_count: u256, // Number of verifications performed
@@ -133,62 +132,7 @@ pub struct ComplianceAuthority {
     pub credentials_uri: ByteArray // Link to authority credentials
 }
 
-// #[derive(Drop, Serde, starknet::Store)]
-// pub enum BerneComplianceStatus {
-//     Pending,
-//     BerneCompliant,
-//     BerneCompliantRegistered,
-//     NonCompliant,
-//     UnderReview,
-//     ConditionalCompliance,
-//     ProtectionExpired,
-//     PublicDomain,
-//     OrphanWork,
-// }
-
-// impl BerneComplianceStatusIntoFelt252 of Into<BerneComplianceStatus, felt252> {
-//     fn into(self: BerneComplianceStatus) -> felt252 {
-//         match self {
-//             BerneComplianceStatus::Pending => 'PENDING',
-//             BerneComplianceStatus::BerneCompliant => 'BERNE_COMPLIANT',
-//             BerneComplianceStatus::BerneCompliantRegistered => 'BERNE_REGISTERED',
-//             BerneComplianceStatus::NonCompliant => 'NON_COMPLIANT',
-//             BerneComplianceStatus::UnderReview => 'UNDER_REVIEW',
-//             BerneComplianceStatus::ConditionalCompliance => 'CONDITIONAL',
-//             BerneComplianceStatus::ProtectionExpired => 'EXPIRED',
-//             BerneComplianceStatus::PublicDomain => 'PUBLIC_DOMAIN',
-//             BerneComplianceStatus::OrphanWork => 'ORPHAN_WORK',
-//         }
-//     }
-// }
-
-// impl Felt252TryIntoBerneComplianceStatus of TryInto<felt252, BerneComplianceStatus> {
-//     fn try_into(self: felt252) -> Option<BerneComplianceStatus> {
-//         if self == 'PENDING' {
-//             Option::Some(BerneComplianceStatus::Pending)
-//         } else if self == 'BERNE_COMPLIANT' {
-//             Option::Some(BerneComplianceStatus::BerneCompliant)
-//         } else if self == 'BERNE_REGISTERED' {
-//             Option::Some(BerneComplianceStatus::BerneCompliantRegistered)
-//         } else if self == 'NON_COMPLIANT' {
-//             Option::Some(BerneComplianceStatus::NonCompliant)
-//         } else if self == 'UNDER_REVIEW' {
-//             Option::Some(BerneComplianceStatus::UnderReview)
-//         } else if self == 'CONDITIONAL' {
-//             Option::Some(BerneComplianceStatus::ConditionalCompliance)
-//         } else if self == 'EXPIRED' {
-//             Option::Some(BerneComplianceStatus::ProtectionExpired)
-//         } else if self == 'PUBLIC_DOMAIN' {
-//             Option::Some(BerneComplianceStatus::PublicDomain)
-//         } else if self == 'ORPHAN_WORK' {
-//             Option::Some(BerneComplianceStatus::OrphanWork)
-//         } else {
-//             Option::None
-//         }
-//     }
-// }
-
-// Events for compliance system
+// Events
 #[derive(Drop, starknet::Event)]
 pub struct ComplianceVerificationRequested {
     pub request_id: u256,

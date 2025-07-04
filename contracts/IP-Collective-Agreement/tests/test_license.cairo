@@ -538,12 +538,12 @@ fn test_usage_limit_exceeded_panics() {
     licensing_dispatcher.execute_license(license_id);
     stop_cheat_caller_address(contract_address);
 
-    // Use the license once (should succeed)
+    // Use the license once
     start_cheat_caller_address(contract_address, licensee);
     licensing_dispatcher.report_usage_revenue(license_id, 1000_u256, 1_u256);
     stop_cheat_caller_address(contract_address);
 
-    // Try to use again (should panic)
+    // Try to use again
     start_cheat_caller_address(contract_address, licensee);
     licensing_dispatcher.report_usage_revenue(license_id, 1000_u256, 1_u256);
     stop_cheat_caller_address(contract_address);
@@ -1062,7 +1062,6 @@ fn test_integration_with_corrected_flow() {
     ) =
         setup();
 
-    // === PHASE 1: IP ASSET CREATION ===
     let artist1 = deploy_erc1155_receiver();
     let artist2 = deploy_erc1155_receiver();
     let studio = deploy_erc1155_receiver();
@@ -1083,7 +1082,6 @@ fn test_integration_with_corrected_flow() {
         );
     stop_cheat_caller_address(contract_address);
 
-    // === PHASE 2: LICENSE OFFER CREATION ===
     let streaming_service = USER();
     let erc20 = erc20_dispatcher.contract_address;
 
@@ -1110,7 +1108,6 @@ fn test_integration_with_corrected_flow() {
     licensing_dispatcher.set_default_license_terms(asset_id, default_terms);
     stop_cheat_caller_address(contract_address);
 
-    // === PHASE 3: CREATE STREAMING LICENSE OFFER ===
     start_cheat_caller_address(contract_address, artist1);
     let license_id = licensing_dispatcher
         .create_license_request(
@@ -1133,7 +1130,6 @@ fn test_integration_with_corrected_flow() {
     assert!(license_info.is_approved, "Non-exclusive license should be auto-approved");
     assert!(!license_info.is_active, "License should not be active until executed");
 
-    // === PHASE 4: STREAMING SERVICE DISCOVERS AND ACCEPTS OFFER ===
     let available_licenses = licensing_dispatcher.get_available_licenses(asset_id);
     assert!(available_licenses.len() == 1, "Should have 1 available license");
 
@@ -1155,7 +1151,6 @@ fn test_integration_with_corrected_flow() {
     assert!(artist2_pending == 52, "Artist2 should receive 35% of license fee");
     assert!(studio_pending == 37, "Studio should receive 25% of license fee");
 
-    // === PHASE 5: USAGE & ROYALTY REPORTING ===
     start_cheat_caller_address(contract_address, streaming_service);
 
     // Month 1: 100K streams generating $2000 revenue
@@ -1166,7 +1161,6 @@ fn test_integration_with_corrected_flow() {
 
     stop_cheat_caller_address(contract_address);
 
-    // === PHASE 6: ROYALTY PAYMENTS ===
     let total_royalties_due = licensing_dispatcher.calculate_due_royalties(license_id);
     assert!(total_royalties_due == 150, "Should owe 3% of $5000 = $150");
 
@@ -1175,7 +1169,6 @@ fn test_integration_with_corrected_flow() {
     licensing_dispatcher.pay_royalties(license_id, total_royalties_due);
     stop_cheat_caller_address(contract_address);
 
-    // === PHASE 7: VERIFY FINAL REVENUE DISTRIBUTION ===
     let artist1_final = revenue_dispatcher.get_pending_revenue(asset_id, artist1, erc20);
     let artist2_final = revenue_dispatcher.get_pending_revenue(asset_id, artist2, erc20);
     let studio_final = revenue_dispatcher.get_pending_revenue(asset_id, studio, erc20);
@@ -1540,7 +1533,6 @@ fn test_double_voting_prevention() {
     licensing_dispatcher.vote_on_license_proposal(proposal_id, false); // Should panic
 }
 
-// ========== USAGE LIMITS EDGE CASES ==========
 
 #[test]
 fn test_zero_usage_limit_means_unlimited() {
@@ -1632,7 +1624,6 @@ fn test_usage_exactly_at_limit() {
     assert!(terms.current_usage_count == 10, "Usage count should be exactly at limit");
 }
 
-// ========== ROYALTY CALCULATION EDGE CASES ==========
 
 #[test]
 fn test_zero_royalty_rate() {
@@ -1724,8 +1715,6 @@ fn test_fractional_royalty_calculation() {
     assert!(due_royalties == 9, "Fractional royalty should be handled correctly");
 }
 
-// ========== PAYMENT AND TRANSFER EDGE CASES ==========
-
 #[test]
 #[should_panic(expected: "Only licensee can transfer")]
 fn test_transfer_license_by_non_licensee() {
@@ -1816,4 +1805,3 @@ fn test_partial_royalty_payments() {
     let final_due = licensing_dispatcher.calculate_due_royalties(license_id);
     assert!(final_due == 0, "Should owe nothing after full payment");
 }
-

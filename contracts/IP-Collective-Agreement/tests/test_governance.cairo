@@ -23,8 +23,6 @@ use super::test_utils::{
     create_default_governance_settings, create_and_execute_license,
 };
 
-// ========== GOVERNANCE SETTINGS TESTS ==========
-
 #[test]
 fn test_set_and_get_governance_settings() {
     let (contract_address, _, asset_dispatcher, _, _, _, governance_dispatcher, _, owner_address) =
@@ -60,6 +58,7 @@ fn test_set_and_get_governance_settings() {
     );
     assert!(retrieved_settings.execution_delay == 172800, "Execution delay should be 2 days");
 }
+
 #[test]
 fn test_default_governance_settings() {
     let (contract_address, _, asset_dispatcher, _, _, _, governance_dispatcher, _, owner_address) =
@@ -127,7 +126,6 @@ fn test_invalid_governance_settings() {
     governance_dispatcher.set_governance_settings(asset_id, invalid_settings);
 }
 
-// ========== ASSET MANAGEMENT PROPOSAL TESTS ==========
 
 #[test]
 fn test_asset_management_proposal_creation_and_execution() {
@@ -248,8 +246,6 @@ fn test_asset_management_proposal_fails_without_quorum() {
     stop_cheat_block_timestamp(contract_address);
 }
 
-// ========== REVENUE POLICY PROPOSAL TESTS ==========
-
 #[test]
 fn test_revenue_policy_proposal() {
     let (
@@ -309,8 +305,6 @@ fn test_revenue_policy_proposal() {
 
     stop_cheat_block_timestamp(contract_address);
 }
-
-// ========== EMERGENCY PROPOSAL TESTS ==========
 
 #[test]
 fn test_emergency_proposal_license_suspension() {
@@ -406,8 +400,6 @@ fn test_emergency_proposal_license_suspension() {
     stop_cheat_block_timestamp(contract_address);
 }
 
-// ========== QUORUM AND VOTING TESTS ==========
-
 #[test]
 fn test_quorum_calculation_and_participation_rate() {
     let (contract_address, _, asset_dispatcher, _, _, _, governance_dispatcher, _, owner_address) =
@@ -486,11 +478,9 @@ fn test_double_voting_prevention() {
     // Vote once
     governance_dispatcher.vote_on_governance_proposal(proposal_id, true);
 
-    // Try to vote again (should panic)
+    // Try to vote again
     governance_dispatcher.vote_on_governance_proposal(proposal_id, false);
 }
-
-// ========== EXECUTION TIMING TESTS ==========
 
 #[test]
 fn test_execution_before_voting_ends_fails() {

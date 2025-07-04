@@ -86,7 +86,6 @@ pub struct RoyaltyInfo {
     pub next_payment_due: u64,
 }
 
-// Conversion implementations for LicenseType
 impl LicenseTypeIntoFelt252 of Into<LicenseType, felt252> {
     fn into(self: LicenseType) -> felt252 {
         match self {
@@ -114,7 +113,6 @@ impl Felt252TryIntoLicenseType of TryInto<felt252, LicenseType> {
     }
 }
 
-// Conversion implementations for UsageRights
 impl UsageRightsIntoFelt252 of Into<UsageRights, felt252> {
     fn into(self: UsageRights) -> felt252 {
         match self {

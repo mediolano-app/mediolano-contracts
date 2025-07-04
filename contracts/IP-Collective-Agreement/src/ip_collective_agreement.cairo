@@ -1,19 +1,48 @@
+/// # Collective IP Core Contract
+///
+/// A comprehensive smart contract system for managing intellectual property assets
+/// through collective ownership, licensing, revenue distribution, and compliance tracking.
+///
+/// ## Features
+///
+/// - **Collective Ownership**: Multiple owners with configurable ownership percentages and
+/// governance weights - **Asset Management**: Registration and management of various IP asset types
+/// with ERC1155 token representation - **Revenue Distribution**: Automated distribution of revenue
+/// to asset owners based on ownership percentages - **Licensing System**: Create, approve, execute,
+/// and manage various types of IP licenses - **Governance**: Proposal-based decision making for
+/// asset management, licensing, and policy changes - **Berne Convention Compliance**: Full
+/// compliance tracking and verification system for international IP protection
+///
+/// ## Architecture
+///
+/// The contract is built using OpenZeppelin components and follows modular design principles:
+/// - ERC1155 for tokenized IP asset representation
+/// - Ownable for access control
+/// - Custom interfaces for each functional domain
+///
+/// ## Usage
+///
+/// 1. Register IP assets with collective ownership structure
+/// 2. Create licensing proposals and execute approved licenses
+/// 3. Receive and distribute revenue automatically
+/// 4. Manage governance through weighted voting
+/// 5. Maintain compliance with international IP laws
 #[starknet::contract]
 mod CollectiveIPCore {
     use ip_collective_agreement::types::{
-        OwnershipInfo, IPAssetInfo, IPAssetType, ComplianceStatus, RevenueInfo, OwnerRevenueInfo,
+        OwnershipInfo, IPAssetInfo, ComplianceStatus, RevenueInfo, OwnerRevenueInfo,
         RevenueReceived, RevenueDistributed, RevenueWithdrawn, CollectiveOwnershipRegistered,
-        IPOwnershipTransferred, AssetRegistered, LicenseInfo, LicenseType, UsageRights,
-        LicenseStatus, LicenseTerms, LicenseProposal, RoyaltyInfo, MetadataUpdated,
-        LicenseOfferCreated, LicenseApproved, LicenseExecuted, LicenseRevoked, LicenseSuspended,
-        LicenseTransferred, RoyaltyPaid, UsageReported, LicenseProposalCreated,
-        LicenseProposalVoted, LicenseProposalExecuted, LicenseReactivated, GovernanceProposal,
-        AssetManagementProposal, RevenuePolicyProposal, EmergencyProposal, GovernanceSettings,
-        ProposalType, GovernanceProposalCreated, ProposalQuorumReached, AssetManagementExecuted,
-        RevenuePolicyUpdated, EmergencyActionExecuted, GovernanceSettingsUpdated, ComplianceRecord,
-        ComplianceVerificationRequest, CountryComplianceRequirements, ComplianceAuthority, WorkType, ComplianceVerificationRequested, ComplianceVerified,
-        ComplianceAuthorityRegistered, ProtectionRenewalRequired, ProtectionExpired,
-        CrossBorderProtectionUpdated,
+        IPOwnershipTransferred, AssetRegistered, LicenseInfo, LicenseTerms, LicenseProposal,
+        RoyaltyInfo, MetadataUpdated, LicenseOfferCreated, LicenseApproved, LicenseExecuted,
+        LicenseRevoked, LicenseSuspended, LicenseTransferred, RoyaltyPaid, UsageReported,
+        LicenseProposalCreated, LicenseProposalVoted, LicenseProposalExecuted, LicenseReactivated,
+        GovernanceProposal, AssetManagementProposal, RevenuePolicyProposal, EmergencyProposal,
+        GovernanceSettings, ProposalType, GovernanceProposalCreated, ProposalQuorumReached,
+        AssetManagementExecuted, RevenuePolicyUpdated, EmergencyActionExecuted,
+        GovernanceSettingsUpdated, ComplianceRecord, ComplianceVerificationRequest,
+        CountryComplianceRequirements, ComplianceAuthority, WorkType,
+        ComplianceVerificationRequested, ComplianceVerified, ComplianceAuthorityRegistered,
+        ProtectionRenewalRequired, ProtectionExpired, CrossBorderProtectionUpdated,
     };
     use ip_collective_agreement::interface::{
         IOwnershipRegistry, IIPAssetManager, IRevenueDistribution, ILicenseManager, IGovernance,
@@ -48,6 +77,12 @@ mod CollectiveIPCore {
     impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
     impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
 
+    /// # Contract Storage
+    ///
+    /// Comprehensive storage structure organizing all contract state across multiple functional
+    /// domains.
+    /// Uses Maps for efficient key-value storage and supports complex relationships between
+    /// entities.
     #[storage]
     struct Storage {
         // OpenZeppelin Components
@@ -57,88 +92,161 @@ mod CollectiveIPCore {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         ownable: OwnableComponent::Storage,
-        // Ownership Registry Storage
+        ///////////////////
+        // Ownership Storage
+        ///////////////////
+
+        /// Maps asset ID to ownership information including total owners and registration status
         ownership_info: Map<u256, OwnershipInfo>,
+        /// Maps (asset_id, owner_address) to ownership percentage (0-100)
         owner_percentage: Map<(u256, ContractAddress), u256>,
+        /// Maps (asset_id, owner_address) to governance voting weight
         governance_weight: Map<(u256, ContractAddress), u256>,
+        /// Maps (asset_id, owner_index) to owner address for enumeration
         asset_owners: Map<(u256, u32), ContractAddress>, // (asset_id, owner_index) -> owner_address
-        // IP Asset Manager Storage
+        ///////////////////
+        // Asset Storage
+        ///////////////////
+
+        /// Maps asset ID to complete asset information including metadata and compliance status
         asset_info: Map<u256, IPAssetInfo>,
+        /// Maps (asset_id, creator_index) to creator address for enumeration
         asset_creators: Map<
             (u256, u32), ContractAddress,
         >, // (asset_id, creator_index) -> creator_address
-        // Global state
+        /// Global counter for generating unique asset IDs
         next_asset_id: u256,
+        /// Contract pause state for emergency stops
         paused: bool,
+        ///////////////////
+        // Revenue Storage
+        ///////////////////
+
+        /// Maps (asset_id, token_address) to revenue tracking information
         revenue_info: Map<(u256, ContractAddress), RevenueInfo>,
+        /// Maps (asset_id, owner, token) to pending withdrawal amount
         pending_revenue: Map<
             (u256, ContractAddress, ContractAddress), u256,
         >, // (asset_id, owner, token) -> amount
+        /// Maps (asset_id, owner, token) to owner's revenue statistics
         owner_revenue_info: Map<
             (u256, ContractAddress, ContractAddress), OwnerRevenueInfo,
         >, // (asset_id, owner, token) -> info
         ///////////////////
-        // Licensing ////
-        //////////////////////
+        // Licensing Storage
+        ///////////////////
+
+        /// Maps license ID to complete license information
         license_info: Map<u256, LicenseInfo>,
+        /// Maps license ID to specific license terms and conditions
         license_terms: Map<u256, LicenseTerms>,
+        /// Global counter for generating unique license IDs
         next_license_id: u256,
         // Asset licensing mappings
+        /// Maps (asset_id, index) to license ID for asset enumeration
         asset_licenses: Map<(u256, u32), u256>, // (asset_id, index) -> license_id
+        /// Maps asset ID to total number of licenses created for that asset
         asset_license_count: Map<u256, u32>, // asset_id -> count
         // Licensee mappings (populated during execution)
+        /// Maps (licensee, index) to license ID for licensee enumeration
         licensee_licenses: Map<(ContractAddress, u32), u256>, // (licensee, index) -> license_id
+        /// Maps licensee address to total number of licenses they hold
         licensee_license_count: Map<ContractAddress, u32>, // licensee -> count
         // Royalty tracking (created during execution)
+        /// Maps license ID to royalty payment tracking information
         royalty_info: Map<u256, RoyaltyInfo>, // license_id -> royalty info
         // Governance proposals for licensing
+        /// Maps proposal ID to license proposal information
         license_proposals: Map<u256, LicenseProposal>,
+        /// Maps (proposal_id, voter) to their vote (true=for, false=against)
         proposal_votes: Map<(u256, ContractAddress), bool>, // (proposal_id, voter) -> vote
+        /// Maps proposal ID to the proposed license details
         proposed_licenses: Map<u256, LicenseInfo>, // (proposal_id) -> proposed license
+        /// Maps proposal ID to proposed license terms
         proposal_terms: Map<u256, LicenseTerms>, // (proposal_id) -> proposed terms
+        /// Global counter for generating unique proposal IDs
         next_proposal_id: u256,
+        /// Maps (proposal_id, voter) to whether they have already voted
         has_voted: Map<(u256, ContractAddress), bool>,
         // Default terms
+        /// Maps asset ID to default license terms for that asset
         default_license_terms: Map<u256, LicenseTerms>, // asset_id -> default terms
+        /// Total number of assets created (for enumeration)
         total_assets: u256, // Track total number of assets created
+        ///////////////////
+        // Governance Storage
+        ///////////////////
+
+        /// Maps proposal ID to governance proposal details
         governance_proposals: Map<u256, GovernanceProposal>,
+        /// Maps proposal ID to asset management proposal specifics
         asset_management_proposals: Map<u256, AssetManagementProposal>,
+        /// Maps proposal ID to revenue policy proposal specifics
         revenue_policy_proposals: Map<u256, RevenuePolicyProposal>,
+        /// Maps proposal ID to emergency proposal specifics
         emergency_proposals: Map<u256, EmergencyProposal>,
+        /// Maps asset ID to governance settings (quorum, voting duration, etc.)
         governance_settings: Map<u256, GovernanceSettings>, // asset_id -> settings
+        /// Maps (proposal_id, voter) to their governance vote
         governance_proposal_votes: Map<
             (u256, ContractAddress), bool,
         >, // (proposal_id, voter) -> vote
+        /// Maps (proposal_id, voter) to whether they have voted on governance proposal
         governance_has_voted: Map<
             (u256, ContractAddress), bool,
         >, // (proposal_id, voter) -> has_voted
+        /// Global counter for generating unique governance proposal IDs
         next_governance_proposal_id: u256,
+        /// Maps (asset_id, index) to proposal ID for asset enumeration
         active_proposals_for_asset: Map<(u256, u32), u256>, // (asset_id, index) -> proposal_id
+        /// Maps asset ID to number of active proposals
         active_proposal_count: Map<u256, u32>, // asset_id -> count
+        ///////////////////
+        // Compliance Storage
+        ///////////////////
+
+        /// Maps asset ID to compliance record including verification and protection status
         compliance_records: Map<u256, ComplianceRecord>, // asset_id -> record
+        /// Maps authority address to their registration and authorization information
         compliance_authorities: Map<ContractAddress, ComplianceAuthority>, // authority -> info
+        /// Maps country code to that country's compliance requirements
         country_requirements: Map<
             felt252, CountryComplianceRequirements,
         >, // country -> requirements
+        /// Maps request ID to compliance verification request details
         compliance_verification_requests: Map<
             u256, ComplianceVerificationRequest,
         >, // request_id -> request
+        /// Global counter for generating unique verification request IDs
         next_verification_request_id: u256,
-        // Array storage mappings
+        /// Maps (authority, index) to authorized country for enumeration
         authority_countries: Map<(ContractAddress, u32), felt252>, // (authority, index) -> country
+        /// Maps (asset_id, index) to country with automatic protection
         automatic_protection_countries: Map<(u256, u32), felt252>, // (asset_id, index) -> country
+        /// Maps (asset_id, index) to country requiring manual registration
         manual_registration_countries: Map<(u256, u32), felt252>, // (asset_id, index) -> country
+        /// Maps (request_id, index) to author address for verification requests
         verification_authors: Map<(u256, u32), ContractAddress>, // (request_id, index) -> author
-        // Query helper mappings
+        /// Maps (authority, index) to pending request ID for enumeration
         authority_pending_requests: Map<
             (ContractAddress, u32), u256,
         >, // (authority, index) -> request_id
+        /// Maps authority to number of pending requests
         authority_request_count: Map<ContractAddress, u32>, // authority -> count
+        /// Maps (status, index) to asset ID for status-based enumeration
         assets_by_status: Map<(felt252, u32), u256>, // (status, index) -> asset_id
+        /// Maps compliance status to number of assets with that status
         asset_status_count: Map<felt252, u32>, // status -> count
+        /// Maps (asset_id, country) to protection status in that country
         international_protection: Map<(u256, felt252), bool> // (asset_id, country) -> protected
     }
 
+    /// # Contract Events
+    ///
+    /// Comprehensive event system for tracking all contract activities across different functional
+    /// domains.
+    /// Events are emitted for ownership changes, asset management, revenue distribution, licensing
+    /// actions, governance decisions, and compliance verification.
     #[event]
     #[derive(Drop, starknet::Event)]
     enum Event {
@@ -148,13 +256,17 @@ mod CollectiveIPCore {
         SRC5Event: SRC5Component::Event,
         #[flat]
         OwnableEvent: OwnableComponent::Event,
+        // Ownership Events
         CollectiveOwnershipRegistered: CollectiveOwnershipRegistered,
         IPOwnershipTransferred: IPOwnershipTransferred,
+        // Asset Events
         AssetRegistered: AssetRegistered,
         MetadataUpdated: MetadataUpdated,
+        // Revenue Events
         RevenueReceived: RevenueReceived,
         RevenueDistributed: RevenueDistributed,
         RevenueWithdrawn: RevenueWithdrawn,
+        // Licensing Events
         LicenseOfferCreated: LicenseOfferCreated,
         LicenseApproved: LicenseApproved,
         LicenseExecuted: LicenseExecuted,
@@ -167,12 +279,14 @@ mod CollectiveIPCore {
         LicenseProposalVoted: LicenseProposalVoted,
         LicenseProposalExecuted: LicenseProposalExecuted,
         LicenseReactivated: LicenseReactivated,
+        // Governance Events
         GovernanceProposalCreated: GovernanceProposalCreated,
         ProposalQuorumReached: ProposalQuorumReached,
         AssetManagementExecuted: AssetManagementExecuted,
         RevenuePolicyUpdated: RevenuePolicyUpdated,
         EmergencyActionExecuted: EmergencyActionExecuted,
         GovernanceSettingsUpdated: GovernanceSettingsUpdated,
+        // Compliance Events
         ComplianceVerificationRequested: ComplianceVerificationRequested,
         ComplianceVerified: ComplianceVerified,
         ComplianceAuthorityRegistered: ComplianceAuthorityRegistered,
@@ -181,6 +295,7 @@ mod CollectiveIPCore {
         CrossBorderProtectionUpdated: CrossBorderProtectionUpdated,
     }
 
+    /// # Contract Constructor
     #[constructor]
     fn constructor(ref self: ContractState, owner: ContractAddress, base_uri: ByteArray) {
         self.ownable.initializer(owner);
@@ -1503,82 +1618,6 @@ mod CollectiveIPCore {
         }
     }
 
-    #[generate_trait]
-    impl InternalFunctions of InternalFunctionsTrait {
-        fn only_owner(self: @ContractState) {
-            self.ownable.assert_only_owner();
-        }
-
-        fn pause(ref self: ContractState) {
-            self.only_owner();
-            self.paused.write(true);
-        }
-
-        fn unpause(ref self: ContractState) {
-            self.only_owner();
-            self.paused.write(false);
-        }
-
-        fn get_asset_owners(self: @ContractState, asset_id: u256) -> Array<ContractAddress> {
-            let ownership_info = self.ownership_info.read(asset_id);
-            let mut owners = ArrayTrait::new();
-            let mut i = 0;
-
-            loop {
-                if i >= ownership_info.total_owners {
-                    break;
-                }
-                let owner = self.asset_owners.read((asset_id, i));
-                owners.append(owner);
-                i += 1;
-            };
-
-            owners
-        }
-
-        fn get_asset_creators(self: @ContractState, asset_id: u256) -> Array<ContractAddress> {
-            let asset_info = self.asset_info.read(asset_id);
-            let mut creators = ArrayTrait::new();
-            let mut i = 0;
-
-            let ownership_info = self.ownership_info.read(asset_id);
-            loop {
-                if i >= ownership_info.total_owners {
-                    break;
-                }
-                let creator = self.asset_creators.read((asset_id, i));
-                if creator.is_non_zero() {
-                    creators.append(creator);
-                }
-                i += 1;
-            };
-
-            creators
-        }
-
-        fn get_asset_owners_with_percentages(
-            self: @ContractState, asset_id: u256,
-        ) -> (Span<ContractAddress>, Span<u256>) {
-            let ownership_info = self.ownership_info.read(asset_id);
-            let mut owners = ArrayTrait::new();
-            let mut percentages = ArrayTrait::new();
-            let mut i = 0;
-
-            loop {
-                if i >= ownership_info.total_owners {
-                    break;
-                }
-                let owner = self.asset_owners.read((asset_id, i));
-                let percentage = self.owner_percentage.read((asset_id, owner));
-                owners.append(owner);
-                percentages.append(percentage);
-                i += 1;
-            };
-
-            (owners.span(), percentages.span())
-        }
-    }
-
     #[abi(embed_v0)]
     impl GovernanceImpl of IGovernance<ContractState> {
         fn set_governance_settings(
@@ -1991,13 +2030,13 @@ mod CollectiveIPCore {
 
             self.compliance_authorities.write(authority_address, authority);
             let mut i = 0;
-loop {
-    if i >= authorized_countries.len() {
-        break;
-    }
-    self.authority_countries.write((authority_address, i), *authorized_countries.at(i));
-    i += 1;
-};
+            loop {
+                if i >= authorized_countries.len() {
+                    break;
+                }
+                self.authority_countries.write((authority_address, i), *authorized_countries.at(i));
+                i += 1;
+            };
 
             self
                 .emit(
@@ -2156,13 +2195,13 @@ loop {
 
             self.compliance_verification_requests.write(request_id, request);
             let mut i = 0;
-loop {
-    if i >= authors.len() {
-        break;
-    }
-    self.verification_authors.write((request_id, i), *authors.at(i));
-    i += 1;
-};
+            loop {
+                if i >= authors.len() {
+                    break;
+                }
+                self.verification_authors.write((request_id, i), *authors.at(i));
+                i += 1;
+            };
 
             self
                 .emit(
@@ -2229,8 +2268,6 @@ loop {
                     },
                 };
 
-                println!("next_renewal_date {}", compliance_record.next_renewal_date.clone());
-
                 self.compliance_records.write(request.asset_id, compliance_record);
 
                 // Update asset compliance status
@@ -2256,22 +2293,26 @@ loop {
                 };
 
                 let mut i = 0;
-loop {
-    if i >= automatic_protection_countries.len() {
-        break;
-    }
-    self.automatic_protection_countries.write((request.asset_id, i), *automatic_protection_countries.at(i));
-    i += 1;
-};
+                loop {
+                    if i >= automatic_protection_countries.len() {
+                        break;
+                    }
+                    self
+                        .automatic_protection_countries
+                        .write((request.asset_id, i), *automatic_protection_countries.at(i));
+                    i += 1;
+                };
 
-let mut i = 0;
-loop {
-    if i >= manual_registration_required.len() {
-        break;
-    }
-    self.manual_registration_countries.write((request.asset_id, i), *manual_registration_required.at(i));
-    i += 1;
-};
+                let mut i = 0;
+                loop {
+                    if i >= manual_registration_required.len() {
+                        break;
+                    }
+                    self
+                        .manual_registration_countries
+                        .write((request.asset_id, i), *manual_registration_required.at(i));
+                    i += 1;
+                };
 
                 self
                     .emit(
@@ -2348,7 +2389,7 @@ loop {
             let requirements = self.get_country_requirements(country_code);
             let years = requirements.protection_duration_years;
 
-            // Convert years to seconds (approximate)
+            // Convert years to seconds
             let seconds_per_year: u64 = 31536000_u64; // 365 days
             let duration: u64 = seconds_per_year * years.into();
 
@@ -2380,7 +2421,7 @@ loop {
             assert!(compliance_record.asset_id != 0, "No compliance record found");
             assert!(compliance_record.renewal_required, "Renewal not required");
 
-            // Update renewal date (typically extends for another period)
+            // Update renewal date
             let current_time = get_block_timestamp();
             compliance_record.next_renewal_date = current_time + 31536000; // 1 year
             compliance_record.compliance_evidence_uri = renewal_evidence_uri;
@@ -2627,7 +2668,7 @@ loop {
                 return false;
             }
 
-            // Check if explicitly marked as public domain (we can track this in separate field)
+            // Check if explicitly marked as public domain
             if compliance_record.protection_duration > 0 {
                 let current_time = get_block_timestamp();
                 let protection_end = compliance_record.publication_date
@@ -2769,7 +2810,81 @@ loop {
         }
     }
 
-    // Internal helper functions for compliance system
+    #[generate_trait]
+    impl InternalFunctions of InternalFunctionsTrait {
+        fn only_owner(self: @ContractState) {
+            self.ownable.assert_only_owner();
+        }
+
+        fn pause(ref self: ContractState) {
+            self.only_owner();
+            self.paused.write(true);
+        }
+
+        fn unpause(ref self: ContractState) {
+            self.only_owner();
+            self.paused.write(false);
+        }
+
+        fn get_asset_owners(self: @ContractState, asset_id: u256) -> Array<ContractAddress> {
+            let ownership_info = self.ownership_info.read(asset_id);
+            let mut owners = ArrayTrait::new();
+            let mut i = 0;
+
+            loop {
+                if i >= ownership_info.total_owners {
+                    break;
+                }
+                let owner = self.asset_owners.read((asset_id, i));
+                owners.append(owner);
+                i += 1;
+            };
+
+            owners
+        }
+
+        fn get_asset_creators(self: @ContractState, asset_id: u256) -> Array<ContractAddress> {
+            let mut creators = ArrayTrait::new();
+            let mut i = 0;
+
+            let ownership_info = self.ownership_info.read(asset_id);
+            loop {
+                if i >= ownership_info.total_owners {
+                    break;
+                }
+                let creator = self.asset_creators.read((asset_id, i));
+                if creator.is_non_zero() {
+                    creators.append(creator);
+                }
+                i += 1;
+            };
+
+            creators
+        }
+
+        fn get_asset_owners_with_percentages(
+            self: @ContractState, asset_id: u256,
+        ) -> (Span<ContractAddress>, Span<u256>) {
+            let ownership_info = self.ownership_info.read(asset_id);
+            let mut owners = ArrayTrait::new();
+            let mut percentages = ArrayTrait::new();
+            let mut i = 0;
+
+            loop {
+                if i >= ownership_info.total_owners {
+                    break;
+                }
+                let owner = self.asset_owners.read((asset_id, i));
+                let percentage = self.owner_percentage.read((asset_id, owner));
+                owners.append(owner);
+                percentages.append(percentage);
+                i += 1;
+            };
+
+            (owners.span(), percentages.span())
+        }
+    }
+
     #[generate_trait]
     impl ComplianceInternalFunctions of ComplianceInternalFunctionsTrait {
         fn _add_to_status_index(ref self: ContractState, asset_id: u256, status: felt252) {
@@ -2779,45 +2894,46 @@ loop {
         }
 
         fn _check_protection_expiry_batch(ref self: ContractState) {
-            // This function would be called periodically to check for expired protections
-            // In a real implementation, this might be triggered by a keeper network or cron job
             let current_time = get_block_timestamp();
             let total_assets = self.total_assets.read();
             let mut asset_id = 1;
-        
+
             loop {
                 if asset_id > total_assets {
                     break;
                 }
-        
+
                 let compliance_record = self.compliance_records.read(asset_id);
                 if compliance_record.asset_id != 0 && compliance_record.protection_duration > 0 {
                     let protection_end = compliance_record.publication_date
                         + compliance_record.protection_duration;
-        
+
                     if current_time >= protection_end
-                        && compliance_record.compliance_status != ComplianceStatus::NonCompliant.into() {
+                        && compliance_record
+                            .compliance_status != ComplianceStatus::NonCompliant
+                            .into() {
                         // Mark as expired
                         let mut updated_record = compliance_record.clone();
                         updated_record.compliance_status = ComplianceStatus::NonCompliant.into();
                         self.compliance_records.write(asset_id, updated_record);
-        
+
                         // Update asset info
                         let mut asset_info: IPAssetInfo = self.asset_info.read(asset_id);
                         asset_info.compliance_status = ComplianceStatus::NonCompliant.into();
                         self.asset_info.write(asset_id, asset_info);
-        
-                        self.emit(
-                            ProtectionExpired {
-                                asset_id,
-                                previous_status: compliance_record.compliance_status,
-                                expiration_timestamp: protection_end,
-                                timestamp: current_time,
-                            },
-                        );
+
+                        self
+                            .emit(
+                                ProtectionExpired {
+                                    asset_id,
+                                    previous_status: compliance_record.compliance_status,
+                                    expiration_timestamp: protection_end,
+                                    timestamp: current_time,
+                                },
+                            );
                     }
                 }
-        
+
                 asset_id += 1;
             };
         }

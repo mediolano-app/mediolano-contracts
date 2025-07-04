@@ -79,7 +79,6 @@ pub trait ILicenseManager<TContractState> {
 
     fn get_proposed_license(self: @TContractState, proposal_id: u256) -> LicenseInfo;
 
-    // Helper functions for license discovery
     fn get_available_licenses(self: @TContractState, asset_id: u256) -> Array<u256>;
 
     fn get_pending_licenses_for_licensee(

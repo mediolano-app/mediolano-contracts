@@ -1,6 +1,5 @@
 use starknet::ContractAddress;
 
-// Enhanced proposal types
 #[derive(Drop, Serde, starknet::Store)]
 pub enum ProposalType {
     LicenseApproval, // Original license proposals

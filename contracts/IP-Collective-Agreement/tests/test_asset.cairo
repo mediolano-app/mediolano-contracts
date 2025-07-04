@@ -10,7 +10,6 @@ use ip_collective_agreement::interface::{
     IRevenueDistributionDispatcherTrait,
 };
 use openzeppelin::token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
-// use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
 use core::num::traits::Bounded;
 
 use super::test_utils::{
@@ -742,7 +741,6 @@ fn test_mint_additional_tokens_overflow_protection() {
     let initial_supply = asset_dispatcher.get_total_supply(asset_id);
     let very_large_amount = Bounded::<u256>::MAX - initial_supply - 1;
 
-    // This should work (just under overflow)
     start_cheat_caller_address(contract_address, creator1);
     let success = asset_dispatcher.mint_additional_tokens(asset_id, recipient, very_large_amount);
     stop_cheat_caller_address(contract_address);

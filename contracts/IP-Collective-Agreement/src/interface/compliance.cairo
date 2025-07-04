@@ -28,7 +28,6 @@ pub trait IBerneCompliance<TContractState> {
         self: @TContractState, authority_address: ContractAddress, country_code: felt252,
     ) -> bool;
 
-    // Country Requirements Management
     fn set_country_requirements(
         ref self: TContractState,
         country_code: felt252,
@@ -41,7 +40,6 @@ pub trait IBerneCompliance<TContractState> {
 
     fn get_berne_signatory_countries(self: @TContractState) -> Span<felt252>;
 
-    // Compliance Verification Workflow
     fn request_compliance_verification(
         ref self: TContractState,
         asset_id: u256,
@@ -64,7 +62,6 @@ pub trait IBerneCompliance<TContractState> {
         manual_registration_required: Span<felt252>,
     ) -> bool;
 
-    // Compliance Status Management
     fn update_compliance_status(
         ref self: TContractState, asset_id: u256, new_status: felt252, evidence_uri: ByteArray,
     ) -> bool;
@@ -75,7 +72,6 @@ pub trait IBerneCompliance<TContractState> {
         self: @TContractState, asset_id: u256, country_code: felt252,
     ) -> bool;
 
-    // Protection Duration and Renewal
     fn calculate_protection_duration(
         self: @TContractState,
         country_code: felt252,
@@ -94,7 +90,6 @@ pub trait IBerneCompliance<TContractState> {
 
     fn mark_protection_expired(ref self: TContractState, asset_id: u256) -> bool;
 
-    // Cross-Border Protection
     fn register_international_protection(
         ref self: TContractState,
         asset_id: u256,
@@ -106,7 +101,6 @@ pub trait IBerneCompliance<TContractState> {
         self: @TContractState, asset_id: u256,
     ) -> (Span<felt252>, Span<felt252>); // (protected_countries, registration_required)
 
-    // Licensing Compliance Integration
     fn validate_license_compliance(
         self: @TContractState,
         asset_id: u256,
@@ -117,9 +111,8 @@ pub trait IBerneCompliance<TContractState> {
 
     fn get_licensing_restrictions(
         self: @TContractState, asset_id: u256, target_country: felt252,
-    ) -> Span<felt252>; // Array of restricted usage types
+    ) -> Span<felt252>;
 
-    // Query Functions
     fn get_compliance_verification_request(
         self: @TContractState, request_id: u256,
     ) -> ComplianceVerificationRequest;
@@ -132,7 +125,6 @@ pub trait IBerneCompliance<TContractState> {
 
     fn get_expiring_protections(self: @TContractState, within_days: u64) -> Span<u256>;
 
-    // Utility Functions
     fn is_work_in_public_domain(
         self: @TContractState, asset_id: u256, country_code: felt252,
     ) -> bool;
@@ -145,7 +137,6 @@ pub trait IBerneCompliance<TContractState> {
         self: @TContractState, asset_id: u256, base_fee: u256, target_countries: Span<felt252>,
     ) -> Span<u256>; // Adjusted fees per jurisdiction
 
-    // Helper functions to get stored arrays
     fn get_authority_countries(
         self: @TContractState, authority_address: ContractAddress,
     ) -> Span<felt252>;

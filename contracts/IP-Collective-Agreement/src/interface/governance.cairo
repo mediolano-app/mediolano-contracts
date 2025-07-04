@@ -1,7 +1,6 @@
-use starknet::ContractAddress;
 use ip_collective_agreement::types::{
     GovernanceProposal, AssetManagementProposal, RevenuePolicyProposal, EmergencyProposal,
-    GovernanceSettings, ProposalType,
+    GovernanceSettings,
 };
 
 #[starknet::interface]

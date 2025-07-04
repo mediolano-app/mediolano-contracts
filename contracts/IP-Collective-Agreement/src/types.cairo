@@ -24,7 +24,7 @@ pub use governance::{
 };
 pub use compliance::{
     ComplianceRecord, ComplianceVerificationRequest, CountryComplianceRequirements,
-    ComplianceAuthority, WorkType, ComplianceVerificationRequested,
-    ComplianceVerified, ComplianceAuthorityRegistered, ProtectionRenewalRequired, ProtectionExpired,
-    CrossBorderProtectionUpdated, ComplianceStatus
+    ComplianceAuthority, WorkType, ComplianceVerificationRequested, ComplianceVerified,
+    ComplianceAuthorityRegistered, ProtectionRenewalRequired, ProtectionExpired,
+    CrossBorderProtectionUpdated, ComplianceStatus,
 };
