@@ -6,7 +6,6 @@ pub mod license;
 pub mod governance;
 
 pub use asset::{IPAssetInfo, IPAssetType, AssetRegistered, MetadataUpdated};
-pub use compliance::{ComplianceStatus};
 pub use ownership::{
     OwnerRevenueInfo, OwnershipInfo, CollectiveOwnershipRegistered, IPOwnershipTransferred,
 };
@@ -22,4 +21,10 @@ pub use governance::{
     GovernanceSettings, ProposalType, GovernanceProposalCreated, ProposalQuorumReached,
     AssetManagementExecuted, RevenuePolicyUpdated, EmergencyActionExecuted,
     GovernanceSettingsUpdated,
+};
+pub use compliance::{
+    ComplianceRecord, ComplianceVerificationRequest, CountryComplianceRequirements,
+    ComplianceAuthority, WorkType, ComplianceVerificationRequested,
+    ComplianceVerified, ComplianceAuthorityRegistered, ProtectionRenewalRequired, ProtectionExpired,
+    CrossBorderProtectionUpdated, ComplianceStatus
 };

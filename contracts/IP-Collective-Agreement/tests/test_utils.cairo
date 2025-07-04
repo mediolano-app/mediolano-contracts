@@ -4,13 +4,13 @@ use snforge_std::{
     stop_cheat_caller_address, start_cheat_block_timestamp, stop_cheat_block_timestamp,
 };
 use ip_collective_agreement::types::{
-    LicenseInfo, LicenseTerms, LicenseType, UsageRights, GovernanceSettings,
+    LicenseInfo, LicenseTerms, LicenseType, UsageRights, GovernanceSettings, WorkType, ComplianceStatus
 };
 use ip_collective_agreement::interface::{
     IOwnershipRegistryDispatcher, IOwnershipRegistryDispatcherTrait, IIPAssetManagerDispatcher,
     IIPAssetManagerDispatcherTrait, IRevenueDistributionDispatcher,
     IRevenueDistributionDispatcherTrait, ILicenseManagerDispatcher, ILicenseManagerDispatcherTrait,
-    IGovernanceDispatcher, IGovernanceDispatcherTrait,
+    IGovernanceDispatcher, IGovernanceDispatcherTrait,IBerneComplianceDispatcher, IBerneComplianceDispatcherTrait
 };
 use openzeppelin::token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
 use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
@@ -333,4 +333,82 @@ pub fn create_and_execute_license(
     stop_cheat_caller_address(contract_address);
 
     license_id
+}
+
+
+pub fn setup_with_compliance() -> (
+    ContractAddress,
+    IOwnershipRegistryDispatcher,
+    IIPAssetManagerDispatcher,
+    IERC1155Dispatcher,
+    IRevenueDistributionDispatcher,
+    ILicenseManagerDispatcher,
+    IGovernanceDispatcher,
+    IBerneComplianceDispatcher,
+    IERC20Dispatcher,
+    ContractAddress,
+) {
+    let (contract_address, ownership_dispatcher, asset_dispatcher, erc1155_dispatcher,
+         revenue_dispatcher, licensing_dispatcher, governance_dispatcher, erc20_dispatcher, owner_address) = setup_with_governance();
+    
+    let compliance_dispatcher = IBerneComplianceDispatcher { contract_address };
+    
+    (contract_address, ownership_dispatcher, asset_dispatcher, erc1155_dispatcher,
+     revenue_dispatcher, licensing_dispatcher, governance_dispatcher, compliance_dispatcher, erc20_dispatcher, owner_address)
+}
+
+pub fn register_test_authority(
+    contract_address: ContractAddress,
+    compliance_dispatcher: IBerneComplianceDispatcher,
+    owner_address: ContractAddress
+) -> ContractAddress {
+    let authority_address = deploy_erc1155_receiver();
+    let authorized_countries = array!['US', 'CA', 'MX'].span();
+    
+    start_cheat_caller_address(contract_address, owner_address);
+    compliance_dispatcher.register_compliance_authority(
+        authority_address, "Test Copyright Authority", authorized_countries, 'GOVERNMENT', "ipfs://test-creds"
+    );
+    stop_cheat_caller_address(contract_address);
+    
+    authority_address
+}
+
+pub fn create_and_approve_verification(
+    contract_address: ContractAddress,
+    compliance_dispatcher: IBerneComplianceDispatcher,
+    asset_id: u256,
+    requester: ContractAddress,
+    authority_address: ContractAddress
+) -> u256 {
+    // Create verification request
+    start_cheat_caller_address(contract_address, requester);
+    let request_id = compliance_dispatcher.request_compliance_verification(
+        asset_id, ComplianceStatus::BerneCompliant.into(), "ipfs://evidence",
+        'US', 1640995200, WorkType::Musical.into(), true, array![requester].span()
+    );
+    stop_cheat_caller_address(contract_address);
+    
+    // Process verification
+    start_cheat_caller_address(contract_address, authority_address);
+    compliance_dispatcher.process_compliance_verification(
+        request_id, true, "Approved for testing", 70 * 31536000,
+        array!['US', 'CA'].span(), array!['DE'].span()
+    );
+    stop_cheat_caller_address(contract_address);
+    
+    request_id
+}
+
+pub fn array_contains<T, +PartialEq<T>, +Copy<T>, +Drop<T>>(arr: Span<T>, value: T) -> bool {
+    let mut i = 0;
+    loop {
+        if i >= arr.len() {
+            break false;
+        }
+        if *arr.at(i) == value {
+            break true;
+        }
+        i += 1;
+    }
 }

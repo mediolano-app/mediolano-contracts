@@ -10,10 +10,14 @@ mod CollectiveIPCore {
         LicenseProposalVoted, LicenseProposalExecuted, LicenseReactivated, GovernanceProposal,
         AssetManagementProposal, RevenuePolicyProposal, EmergencyProposal, GovernanceSettings,
         ProposalType, GovernanceProposalCreated, ProposalQuorumReached, AssetManagementExecuted,
-        RevenuePolicyUpdated, EmergencyActionExecuted, GovernanceSettingsUpdated,
+        RevenuePolicyUpdated, EmergencyActionExecuted, GovernanceSettingsUpdated, ComplianceRecord,
+        ComplianceVerificationRequest, CountryComplianceRequirements, ComplianceAuthority, WorkType, ComplianceVerificationRequested, ComplianceVerified,
+        ComplianceAuthorityRegistered, ProtectionRenewalRequired, ProtectionExpired,
+        CrossBorderProtectionUpdated,
     };
     use ip_collective_agreement::interface::{
         IOwnershipRegistry, IIPAssetManager, IRevenueDistribution, ILicenseManager, IGovernance,
+        IBerneCompliance,
     };
     use ip_collective_agreement::constants::{THIRTY_DAYS, STANDARD_INITIAL_SUPPLY};
     use starknet::storage::{
@@ -110,7 +114,29 @@ mod CollectiveIPCore {
         >, // (proposal_id, voter) -> has_voted
         next_governance_proposal_id: u256,
         active_proposals_for_asset: Map<(u256, u32), u256>, // (asset_id, index) -> proposal_id
-        active_proposal_count: Map<u256, u32> // asset_id -> count
+        active_proposal_count: Map<u256, u32>, // asset_id -> count
+        compliance_records: Map<u256, ComplianceRecord>, // asset_id -> record
+        compliance_authorities: Map<ContractAddress, ComplianceAuthority>, // authority -> info
+        country_requirements: Map<
+            felt252, CountryComplianceRequirements,
+        >, // country -> requirements
+        compliance_verification_requests: Map<
+            u256, ComplianceVerificationRequest,
+        >, // request_id -> request
+        next_verification_request_id: u256,
+        // Array storage mappings
+        authority_countries: Map<(ContractAddress, u32), felt252>, // (authority, index) -> country
+        automatic_protection_countries: Map<(u256, u32), felt252>, // (asset_id, index) -> country
+        manual_registration_countries: Map<(u256, u32), felt252>, // (asset_id, index) -> country
+        verification_authors: Map<(u256, u32), ContractAddress>, // (request_id, index) -> author
+        // Query helper mappings
+        authority_pending_requests: Map<
+            (ContractAddress, u32), u256,
+        >, // (authority, index) -> request_id
+        authority_request_count: Map<ContractAddress, u32>, // authority -> count
+        assets_by_status: Map<(felt252, u32), u256>, // (status, index) -> asset_id
+        asset_status_count: Map<felt252, u32>, // status -> count
+        international_protection: Map<(u256, felt252), bool> // (asset_id, country) -> protected
     }
 
     #[event]
@@ -147,8 +173,13 @@ mod CollectiveIPCore {
         RevenuePolicyUpdated: RevenuePolicyUpdated,
         EmergencyActionExecuted: EmergencyActionExecuted,
         GovernanceSettingsUpdated: GovernanceSettingsUpdated,
+        ComplianceVerificationRequested: ComplianceVerificationRequested,
+        ComplianceVerified: ComplianceVerified,
+        ComplianceAuthorityRegistered: ComplianceAuthorityRegistered,
+        ProtectionRenewalRequired: ProtectionRenewalRequired,
+        ProtectionExpired: ProtectionExpired,
+        CrossBorderProtectionUpdated: CrossBorderProtectionUpdated,
     }
-
 
     #[constructor]
     fn constructor(ref self: ContractState, owner: ContractAddress, base_uri: ByteArray) {
@@ -160,6 +191,7 @@ mod CollectiveIPCore {
         self.next_proposal_id.write(1);
         self.total_assets.write(0);
         self.next_governance_proposal_id.write(1);
+        self.next_verification_request_id.write(1);
     }
 
     #[abi(embed_v0)]
@@ -1922,6 +1954,891 @@ mod CollectiveIPCore {
             };
 
             proposals
+        }
+    }
+
+    #[abi(embed_v0)]
+    impl BerneComplianceImpl of IBerneCompliance<ContractState> {
+        fn register_compliance_authority(
+            ref self: ContractState,
+            authority_address: ContractAddress,
+            authority_name: ByteArray,
+            authorized_countries: Span<felt252>,
+            authority_type: felt252,
+            credentials_uri: ByteArray,
+        ) -> bool {
+            // Only contract owner can register authorities initially
+            self.only_owner();
+
+            assert!(authority_address.is_non_zero(), "Invalid authority address");
+            assert!(
+                authority_type == 'GOVERNMENT'
+                    || authority_type == 'CERTIFIED_ORG'
+                    || authority_type == 'LEGAL_EXPERT',
+                "Invalid authority type",
+            );
+
+            let authority = ComplianceAuthority {
+                authority_address,
+                authority_name: authority_name.clone(),
+                authorized_countries_count: authorized_countries.len(),
+                authority_type,
+                is_active: true,
+                verification_count: 0,
+                registration_timestamp: get_block_timestamp(),
+                credentials_uri: credentials_uri.clone(),
+            };
+
+            self.compliance_authorities.write(authority_address, authority);
+            let mut i = 0;
+loop {
+    if i >= authorized_countries.len() {
+        break;
+    }
+    self.authority_countries.write((authority_address, i), *authorized_countries.at(i));
+    i += 1;
+};
+
+            self
+                .emit(
+                    ComplianceAuthorityRegistered {
+                        authority_address,
+                        authority_name,
+                        authority_type,
+                        authorized_countries_count: authorized_countries.len(),
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn deactivate_compliance_authority(
+            ref self: ContractState, authority_address: ContractAddress,
+        ) -> bool {
+            self.only_owner();
+
+            let mut authority = self.compliance_authorities.read(authority_address);
+            assert!(authority.authority_address.is_non_zero(), "Authority not found");
+
+            authority.is_active = false;
+            self.compliance_authorities.write(authority_address, authority);
+
+            true
+        }
+
+        fn get_compliance_authority(
+            self: @ContractState, authority_address: ContractAddress,
+        ) -> ComplianceAuthority {
+            self.compliance_authorities.read(authority_address)
+        }
+
+        fn is_authorized_for_country(
+            self: @ContractState, authority_address: ContractAddress, country_code: felt252,
+        ) -> bool {
+            let authority = self.compliance_authorities.read(authority_address);
+            if !authority.is_active {
+                return false;
+            }
+
+            let mut res = false;
+            let mut i = 0;
+            while i <= authority.authorized_countries_count {
+                let country = self.authority_countries.read((authority_address, i));
+                if country == country_code {
+                    res = true;
+                }
+                i += 1;
+            };
+
+            res
+        }
+
+        fn set_country_requirements(
+            ref self: ContractState,
+            country_code: felt252,
+            requirements: CountryComplianceRequirements,
+        ) -> bool {
+            self.only_owner();
+
+            assert!(country_code != 0, "Invalid country code");
+            self.country_requirements.write(country_code, requirements);
+
+            true
+        }
+
+        fn get_country_requirements(
+            self: @ContractState, country_code: felt252,
+        ) -> CountryComplianceRequirements {
+            let requirements = self.country_requirements.read(country_code);
+
+            // Return default if not set (assumes Berne Convention standards)
+            if requirements.country_code == 0 {
+                CountryComplianceRequirements {
+                    country_code,
+                    is_berne_signatory: true,
+                    automatic_protection: true,
+                    registration_required: false,
+                    protection_duration_years: 70, // Life + 70 years (modern standard)
+                    notice_required: false,
+                    deposit_required: false,
+                    translation_rights_duration: 10,
+                    moral_rights_protected: true,
+                }
+            } else {
+                requirements
+            }
+        }
+
+        fn get_berne_signatory_countries(self: @ContractState) -> Span<felt252> {
+            // TODO: form a comprehensive list
+            array![
+                'US',
+                'UK',
+                'FR',
+                'DE',
+                'JP',
+                'CA',
+                'AU',
+                'IT',
+                'ES',
+                'NL',
+                'SE',
+                'CH',
+                'NO',
+                'DK',
+                'FI',
+                'AT',
+                'BE',
+                'PT',
+                'GR',
+                'IE',
+            ]
+                .span()
+        }
+
+        fn request_compliance_verification(
+            ref self: ContractState,
+            asset_id: u256,
+            requested_status: felt252,
+            evidence_uri: ByteArray,
+            country_of_origin: felt252,
+            publication_date: u64,
+            work_type: felt252,
+            is_original_work: bool,
+            authors: Span<ContractAddress>,
+        ) -> u256 {
+            let caller = get_caller_address();
+            assert!(self.is_owner(asset_id, caller), "Only asset owners can request verification");
+            assert(self.verify_asset_ownership(asset_id), 'Asset does not exist');
+            assert!(country_of_origin != 0, "Country of origin required");
+            assert!(publication_date > 0, "Publication date required");
+
+            let request_id = self.next_verification_request_id.read();
+            self.next_verification_request_id.write(request_id + 1);
+
+            let request = ComplianceVerificationRequest {
+                request_id,
+                asset_id,
+                requester: caller,
+                requested_status,
+                evidence_uri: evidence_uri.clone(),
+                country_of_origin,
+                publication_date,
+                work_type,
+                is_original_work,
+                authors_count: authors.len(),
+                request_timestamp: get_block_timestamp(),
+                is_processed: false,
+                is_approved: false,
+                verifier_notes: "",
+            };
+
+            self.compliance_verification_requests.write(request_id, request);
+            let mut i = 0;
+loop {
+    if i >= authors.len() {
+        break;
+    }
+    self.verification_authors.write((request_id, i), *authors.at(i));
+    i += 1;
+};
+
+            self
+                .emit(
+                    ComplianceVerificationRequested {
+                        request_id,
+                        asset_id,
+                        requester: caller,
+                        requested_status,
+                        country_of_origin,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            request_id
+        }
+
+        fn process_compliance_verification(
+            ref self: ContractState,
+            request_id: u256,
+            approved: bool,
+            verifier_notes: ByteArray,
+            protection_duration: u64,
+            automatic_protection_countries: Span<felt252>,
+            manual_registration_required: Span<felt252>,
+        ) -> bool {
+            let caller = get_caller_address();
+            let authority = self.compliance_authorities.read(caller);
+            assert!(authority.is_active, "Not an active compliance authority");
+
+            let mut request = self.compliance_verification_requests.read(request_id);
+            assert!(request.request_id != 0, "Verification request not found");
+            assert!(!request.is_processed, "Request already processed");
+            assert!(
+                self.is_authorized_for_country(caller, request.country_of_origin),
+                "Not authorized for this country",
+            );
+
+            // Update request
+            request.is_processed = true;
+            request.is_approved = approved;
+            request.verifier_notes = verifier_notes.clone();
+            self.compliance_verification_requests.write(request_id, request.clone());
+
+            if approved {
+                // Create or update compliance record
+                let compliance_record = ComplianceRecord {
+                    asset_id: request.asset_id,
+                    compliance_status: request.requested_status,
+                    country_of_origin: request.country_of_origin,
+                    publication_date: request.publication_date,
+                    registration_authority: caller,
+                    verification_timestamp: get_block_timestamp(),
+                    compliance_evidence_uri: request.evidence_uri.clone(),
+                    automatic_protection_count: automatic_protection_countries.len(),
+                    manual_registration_count: manual_registration_required.len(),
+                    protection_duration,
+                    is_anonymous_work: false, // Could be derived from authors
+                    is_collective_work: request.authors_count > 1,
+                    renewal_required: protection_duration > 0,
+                    next_renewal_date: if protection_duration > 0 {
+                        get_block_timestamp() + protection_duration
+                    } else {
+                        0
+                    },
+                };
+
+                println!("next_renewal_date {}", compliance_record.next_renewal_date.clone());
+
+                self.compliance_records.write(request.asset_id, compliance_record);
+
+                // Update asset compliance status
+                let mut asset_info = self.asset_info.read(request.asset_id);
+                asset_info.compliance_status = request.requested_status;
+                self.asset_info.write(request.asset_id, asset_info);
+
+                // Update authority stats
+                let mut updated_authority = authority;
+                updated_authority.verification_count += 1;
+                self.compliance_authorities.write(caller, updated_authority);
+
+                // Set international protection
+                let mut i = 0;
+                loop {
+                    if i >= automatic_protection_countries.len() {
+                        break;
+                    }
+                    self
+                        .international_protection
+                        .write((request.asset_id, *automatic_protection_countries.at(i)), true);
+                    i += 1;
+                };
+
+                let mut i = 0;
+loop {
+    if i >= automatic_protection_countries.len() {
+        break;
+    }
+    self.automatic_protection_countries.write((request.asset_id, i), *automatic_protection_countries.at(i));
+    i += 1;
+};
+
+let mut i = 0;
+loop {
+    if i >= manual_registration_required.len() {
+        break;
+    }
+    self.manual_registration_countries.write((request.asset_id, i), *manual_registration_required.at(i));
+    i += 1;
+};
+
+                self
+                    .emit(
+                        ComplianceVerified {
+                            asset_id: request.asset_id,
+                            new_status: request.requested_status,
+                            verified_by: caller,
+                            country_of_origin: request.country_of_origin,
+                            protection_duration,
+                            timestamp: get_block_timestamp(),
+                        },
+                    );
+            }
+
+            true
+        }
+
+        fn update_compliance_status(
+            ref self: ContractState, asset_id: u256, new_status: felt252, evidence_uri: ByteArray,
+        ) -> bool {
+            let caller = get_caller_address();
+            let authority = self.compliance_authorities.read(caller);
+            assert!(authority.is_active, "Not an active compliance authority");
+
+            let mut compliance_record = self.compliance_records.read(asset_id);
+            assert!(compliance_record.asset_id != 0, "No compliance record found");
+
+            compliance_record.compliance_status = new_status;
+            compliance_record.compliance_evidence_uri = evidence_uri;
+            compliance_record.verification_timestamp = get_block_timestamp();
+            self.compliance_records.write(asset_id, compliance_record);
+
+            // Update asset info
+            let mut asset_info = self.asset_info.read(asset_id);
+            asset_info.compliance_status = new_status;
+            self.asset_info.write(asset_id, asset_info);
+
+            true
+        }
+
+        fn get_compliance_record(self: @ContractState, asset_id: u256) -> ComplianceRecord {
+            self.compliance_records.read(asset_id)
+        }
+
+        fn check_protection_validity(
+            self: @ContractState, asset_id: u256, country_code: felt252,
+        ) -> bool {
+            let compliance_record = self.compliance_records.read(asset_id);
+            if compliance_record.asset_id == 0 {
+                return false;
+            }
+
+            // Check if protection has expired
+            if compliance_record.protection_duration > 0 {
+                let current_time = get_block_timestamp();
+                let protection_end = compliance_record.publication_date
+                    + compliance_record.protection_duration;
+                if current_time >= protection_end {
+                    return false;
+                }
+            }
+
+            // Check international protection
+            self.international_protection.read((asset_id, country_code))
+        }
+
+        fn calculate_protection_duration(
+            self: @ContractState,
+            country_code: felt252,
+            work_type: felt252,
+            publication_date: u64,
+            is_anonymous: bool,
+        ) -> u64 {
+            let requirements = self.get_country_requirements(country_code);
+            let years = requirements.protection_duration_years;
+
+            // Convert years to seconds (approximate)
+            let seconds_per_year: u64 = 31536000_u64; // 365 days
+            let duration: u64 = seconds_per_year * years.into();
+
+            // Anonymous works often have different duration
+            if is_anonymous {
+                // Typically 70 years from publication for anonymous works
+                70 * seconds_per_year
+            } else {
+                duration
+            }
+        }
+
+        fn check_renewal_requirements(self: @ContractState, asset_id: u256) -> (bool, u64) {
+            let compliance_record = self.compliance_records.read(asset_id);
+            if compliance_record.asset_id == 0 {
+                return (false, 0);
+            }
+
+            (compliance_record.renewal_required, compliance_record.next_renewal_date)
+        }
+
+        fn renew_protection(
+            ref self: ContractState, asset_id: u256, renewal_evidence_uri: ByteArray,
+        ) -> bool {
+            let caller = get_caller_address();
+            assert!(self.is_owner(asset_id, caller), "Only asset owners can renew protection");
+
+            let mut compliance_record = self.compliance_records.read(asset_id);
+            assert!(compliance_record.asset_id != 0, "No compliance record found");
+            assert!(compliance_record.renewal_required, "Renewal not required");
+
+            // Update renewal date (typically extends for another period)
+            let current_time = get_block_timestamp();
+            compliance_record.next_renewal_date = current_time + 31536000; // 1 year
+            compliance_record.compliance_evidence_uri = renewal_evidence_uri;
+
+            self.compliance_records.write(asset_id, compliance_record);
+
+            true
+        }
+
+        fn mark_protection_expired(ref self: ContractState, asset_id: u256) -> bool {
+            let caller = get_caller_address();
+            let authority = self.compliance_authorities.read(caller);
+            assert!(authority.is_active, "Not an active compliance authority");
+
+            let mut compliance_record = self.compliance_records.read(asset_id);
+            assert!(compliance_record.asset_id != 0, "No compliance record found");
+
+            let previous_status = compliance_record.compliance_status;
+            compliance_record.compliance_status = ComplianceStatus::NonCompliant.into();
+            self.compliance_records.write(asset_id, compliance_record);
+
+            // Update asset info
+            let mut asset_info = self.asset_info.read(asset_id);
+            asset_info.compliance_status = ComplianceStatus::NonCompliant.into();
+            self.asset_info.write(asset_id, asset_info);
+
+            self
+                .emit(
+                    ProtectionExpired {
+                        asset_id,
+                        previous_status,
+                        expiration_timestamp: get_block_timestamp(),
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+
+            true
+        }
+
+        fn register_international_protection(
+            ref self: ContractState,
+            asset_id: u256,
+            target_countries: Span<felt252>,
+            registration_evidence: Span<ByteArray>,
+        ) -> bool {
+            let caller = get_caller_address();
+            assert!(
+                self.is_owner(asset_id, caller),
+                "Only asset owners can register international protection",
+            );
+            assert!(
+                target_countries.len() == registration_evidence.len(), "Evidence count mismatch",
+            );
+
+            let mut i = 0;
+            loop {
+                if i >= target_countries.len() {
+                    break;
+                }
+                let country = *target_countries.at(i);
+                self.international_protection.write((asset_id, country), true);
+
+                self
+                    .emit(
+                        CrossBorderProtectionUpdated {
+                            asset_id,
+                            country_code: country,
+                            protection_status: true,
+                            updated_by: caller,
+                            timestamp: get_block_timestamp(),
+                        },
+                    );
+                i += 1;
+            };
+
+            true
+        }
+
+        fn check_international_protection_status(
+            self: @ContractState, asset_id: u256,
+        ) -> (Span<felt252>, Span<felt252>) {
+            let compliance_record = self.compliance_records.read(asset_id);
+            if compliance_record.asset_id == 0 {
+                return (array![].span(), array![].span());
+            }
+
+            let automatic_countries = self.get_automatic_protection_countries(asset_id);
+            let manual_countries = self.get_manual_registration_countries(asset_id);
+
+            (automatic_countries, manual_countries)
+        }
+
+        fn validate_license_compliance(
+            self: @ContractState,
+            asset_id: u256,
+            licensee_country: felt252,
+            license_territory: felt252,
+            usage_rights: felt252,
+        ) -> bool {
+            let compliance_record = self.compliance_records.read(asset_id);
+            if compliance_record.asset_id == 0 {
+                return false;
+            }
+
+            // Check if work is protected in the licensee's country
+            if !self.check_protection_validity(asset_id, licensee_country) {
+                return false;
+            }
+
+            // Check if license territory has valid protection
+            if license_territory != 'GLOBAL'
+                && !self.check_protection_validity(asset_id, license_territory) {
+                return false;
+            }
+
+            // Check specific usage restrictions based on country requirements
+            let country_reqs = self.get_country_requirements(licensee_country);
+
+            // Some countries may have moral rights restrictions
+            if !country_reqs.moral_rights_protected && usage_rights == 'DERIVATIVE' {
+                return false;
+            }
+
+            true
+        }
+
+        fn get_licensing_restrictions(
+            self: @ContractState, asset_id: u256, target_country: felt252,
+        ) -> Span<felt252> {
+            let mut restrictions = array![];
+            let compliance_record = self.compliance_records.read(asset_id);
+
+            if compliance_record.asset_id == 0 {
+                restrictions.append('NO_COMPLIANCE_RECORD');
+                return restrictions.span();
+            }
+
+            // Check if protection exists in target country
+            if !self.check_protection_validity(asset_id, target_country) {
+                restrictions.append('NO_PROTECTION');
+                return restrictions.span();
+            }
+
+            let country_reqs = self.get_country_requirements(target_country);
+
+            // Add country-specific restrictions
+            if country_reqs.notice_required {
+                restrictions.append('NOTICE_REQUIRED');
+            }
+
+            if !country_reqs.moral_rights_protected {
+                restrictions.append('NO_MORAL_RIGHTS');
+            }
+
+            // Check if registration is required but not completed
+            if country_reqs.registration_required
+                && !self.international_protection.read((asset_id, target_country)) {
+                restrictions.append('REGISTRATION_REQUIRED');
+            }
+
+            restrictions.span()
+        }
+
+        fn get_compliance_verification_request(
+            self: @ContractState, request_id: u256,
+        ) -> ComplianceVerificationRequest {
+            self.compliance_verification_requests.read(request_id)
+        }
+
+        fn get_pending_verification_requests(
+            self: @ContractState, authority_address: ContractAddress,
+        ) -> Span<u256> {
+            let request_count = self.authority_request_count.read(authority_address);
+            let mut pending_requests = array![];
+            let mut i = 0;
+
+            loop {
+                if i >= request_count {
+                    break;
+                }
+                let request_id = self.authority_pending_requests.read((authority_address, i));
+                let request = self.compliance_verification_requests.read(request_id);
+
+                if !request.is_processed
+                    && self
+                        .is_authorized_for_country(authority_address, request.country_of_origin) {
+                    pending_requests.append(request_id);
+                }
+                i += 1;
+            };
+
+            pending_requests.span()
+        }
+
+        fn get_assets_by_compliance_status(self: @ContractState, status: felt252) -> Span<u256> {
+            let asset_count = self.asset_status_count.read(status);
+            let mut assets = array![];
+            let mut i = 0;
+
+            loop {
+                if i >= asset_count {
+                    break;
+                }
+                let asset_id = self.assets_by_status.read((status, i));
+                assets.append(asset_id);
+                i += 1;
+            };
+
+            assets.span()
+        }
+
+        fn get_expiring_protections(self: @ContractState, within_days: u64) -> Span<u256> {
+            let mut expiring_assets = array![];
+            let current_time = get_block_timestamp();
+            let threshold_time = current_time + (within_days * 86400); // Convert days to seconds
+
+            let total_assets = self.total_assets.read();
+            let mut asset_id = 1;
+
+            loop {
+                if asset_id > total_assets {
+                    break;
+                }
+
+                let compliance_record = self.compliance_records.read(asset_id);
+                if compliance_record.asset_id != 0 && compliance_record.renewal_required {
+                    if compliance_record.next_renewal_date <= threshold_time
+                        && compliance_record.next_renewal_date > current_time {
+                        expiring_assets.append(asset_id);
+                    }
+                }
+
+                asset_id += 1;
+            };
+
+            expiring_assets.span()
+        }
+
+        fn is_work_in_public_domain(
+            self: @ContractState, asset_id: u256, country_code: felt252,
+        ) -> bool {
+            let compliance_record = self.compliance_records.read(asset_id);
+            if compliance_record.asset_id == 0 {
+                return false;
+            }
+
+            // Check if explicitly marked as public domain (we can track this in separate field)
+            if compliance_record.protection_duration > 0 {
+                let current_time = get_block_timestamp();
+                let protection_end = compliance_record.publication_date
+                    + compliance_record.protection_duration;
+                if current_time >= protection_end {
+                    return true;
+                }
+            }
+
+            false
+        }
+
+        fn get_moral_rights_status(
+            self: @ContractState, asset_id: u256, country_code: felt252,
+        ) -> bool {
+            let country_reqs = self.get_country_requirements(country_code);
+            let compliance_record = self.compliance_records.read(asset_id);
+
+            // Moral rights exist if country protects them and work is still under protection
+            country_reqs.moral_rights_protected
+                && compliance_record.asset_id != 0
+                && self.check_protection_validity(asset_id, country_code)
+        }
+
+        fn calculate_licensing_fees_by_jurisdiction(
+            self: @ContractState, asset_id: u256, base_fee: u256, target_countries: Span<felt252>,
+        ) -> Span<u256> {
+            let mut adjusted_fees = array![];
+            let mut i = 0;
+
+            loop {
+                if i >= target_countries.len() {
+                    break;
+                }
+
+                let country = *target_countries.at(i);
+                let mut adjusted_fee = base_fee;
+
+                // Apply country-specific adjustments
+                let country_reqs = self.get_country_requirements(country);
+
+                // Higher fees for countries requiring registration
+                if country_reqs.registration_required {
+                    adjusted_fee = (adjusted_fee * 120) / 100; // 20% increase
+                }
+
+                // Lower fees for countries with shorter protection
+                if country_reqs.protection_duration_years < 70 {
+                    adjusted_fee = (adjusted_fee * 90) / 100; // 10% decrease
+                }
+
+                // Check if additional compliance costs apply
+                let restrictions = self.get_licensing_restrictions(asset_id, country);
+                if restrictions.len() > 0 {
+                    adjusted_fee = (adjusted_fee * 110) / 100; // 10% compliance overhead
+                }
+
+                adjusted_fees.append(adjusted_fee);
+                i += 1;
+            };
+
+            adjusted_fees.span()
+        }
+
+        fn get_authority_countries(
+            self: @ContractState, authority_address: ContractAddress,
+        ) -> Span<felt252> {
+            let authority = self.compliance_authorities.read(authority_address);
+            let mut countries = array![];
+            let mut i = 0;
+
+            loop {
+                if i >= authority.authorized_countries_count {
+                    break;
+                }
+                let country = self.authority_countries.read((authority_address, i));
+                countries.append(country);
+                i += 1;
+            };
+
+            countries.span()
+        }
+
+        fn get_automatic_protection_countries(
+            self: @ContractState, asset_id: u256,
+        ) -> Span<felt252> {
+            let compliance_record = self.compliance_records.read(asset_id);
+            let mut countries = array![];
+            let mut i = 0;
+
+            loop {
+                if i >= compliance_record.automatic_protection_count {
+                    break;
+                }
+                let country = self.automatic_protection_countries.read((asset_id, i));
+                countries.append(country);
+                i += 1;
+            };
+
+            countries.span()
+        }
+
+        fn get_manual_registration_countries(
+            self: @ContractState, asset_id: u256,
+        ) -> Span<felt252> {
+            let compliance_record = self.compliance_records.read(asset_id);
+            let mut countries = array![];
+            let mut i = 0;
+
+            loop {
+                if i >= compliance_record.manual_registration_count {
+                    break;
+                }
+                let country = self.manual_registration_countries.read((asset_id, i));
+                countries.append(country);
+                i += 1;
+            };
+
+            countries.span()
+        }
+
+        fn get_verification_authors(
+            self: @ContractState, request_id: u256,
+        ) -> Span<ContractAddress> {
+            let request = self.compliance_verification_requests.read(request_id);
+            let mut authors = array![];
+            let mut i = 0;
+
+            loop {
+                if i >= request.authors_count {
+                    break;
+                }
+                let author = self.verification_authors.read((request_id, i));
+                authors.append(author);
+                i += 1;
+            };
+
+            authors.span()
+        }
+    }
+
+    // Internal helper functions for compliance system
+    #[generate_trait]
+    impl ComplianceInternalFunctions of ComplianceInternalFunctionsTrait {
+        fn _add_to_status_index(ref self: ContractState, asset_id: u256, status: felt252) {
+            let current_count = self.asset_status_count.read(status);
+            self.assets_by_status.write((status, current_count), asset_id);
+            self.asset_status_count.write(status, current_count + 1);
+        }
+
+        fn _check_protection_expiry_batch(ref self: ContractState) {
+            // This function would be called periodically to check for expired protections
+            // In a real implementation, this might be triggered by a keeper network or cron job
+            let current_time = get_block_timestamp();
+            let total_assets = self.total_assets.read();
+            let mut asset_id = 1;
+        
+            loop {
+                if asset_id > total_assets {
+                    break;
+                }
+        
+                let compliance_record = self.compliance_records.read(asset_id);
+                if compliance_record.asset_id != 0 && compliance_record.protection_duration > 0 {
+                    let protection_end = compliance_record.publication_date
+                        + compliance_record.protection_duration;
+        
+                    if current_time >= protection_end
+                        && compliance_record.compliance_status != ComplianceStatus::NonCompliant.into() {
+                        // Mark as expired
+                        let mut updated_record = compliance_record.clone();
+                        updated_record.compliance_status = ComplianceStatus::NonCompliant.into();
+                        self.compliance_records.write(asset_id, updated_record);
+        
+                        // Update asset info
+                        let mut asset_info: IPAssetInfo = self.asset_info.read(asset_id);
+                        asset_info.compliance_status = ComplianceStatus::NonCompliant.into();
+                        self.asset_info.write(asset_id, asset_info);
+        
+                        self.emit(
+                            ProtectionExpired {
+                                asset_id,
+                                previous_status: compliance_record.compliance_status,
+                                expiration_timestamp: protection_end,
+                                timestamp: current_time,
+                            },
+                        );
+                    }
+                }
+        
+                asset_id += 1;
+            };
+        }
+
+        fn _validate_berne_compliance_requirements(
+            self: @ContractState, work_type: felt252, country_of_origin: felt252, is_original: bool,
+        ) -> bool {
+            let country_reqs = self.get_country_requirements(country_of_origin);
+
+            // Must be from a Berne signatory country
+            if !country_reqs.is_berne_signatory {
+                return false;
+            }
+
+            // Original works get stronger protection
+            if !is_original && work_type == WorkType::Software.into() {
+                // Some jurisdictions don't protect derivative software works
+                return false;
+            }
+
+            true
         }
     }
 

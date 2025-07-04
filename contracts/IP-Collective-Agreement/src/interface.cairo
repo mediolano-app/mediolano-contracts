@@ -3,6 +3,7 @@ pub mod ownership;
 pub mod revenue;
 pub mod license;
 pub mod governance;
+pub mod compliance;
 
 pub use asset::{IIPAssetManager, IIPAssetManagerDispatcher, IIPAssetManagerDispatcherTrait};
 pub use ownership::{
@@ -13,3 +14,4 @@ pub use revenue::{
 };
 pub use license::{ILicenseManager, ILicenseManagerDispatcher, ILicenseManagerDispatcherTrait};
 pub use governance::{IGovernance, IGovernanceDispatcher, IGovernanceDispatcherTrait};
+pub use compliance::{IBerneCompliance, IBerneComplianceDispatcher, IBerneComplianceDispatcherTrait};
