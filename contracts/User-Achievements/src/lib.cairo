@@ -27,7 +27,7 @@ pub struct Certificate {
     pub is_valid: bool,
 }
 
-#[derive(Drop, Serde, PartialEq,  starknet::Store)]
+#[derive(Drop, Serde, PartialEq, starknet::Store)]
 pub struct LeaderboardEntry {
     pub user: ContractAddress,
     pub total_points: u32,
@@ -132,10 +132,7 @@ pub trait IUserAchievements<TContractState> {
 
     // Query functions
     fn get_user_achievements(
-        self: @TContractState,
-        user: ContractAddress,
-        start_index: u32,
-        count: u32,
+        self: @TContractState, user: ContractAddress, start_index: u32, count: u32,
     ) -> Array<Achievement>;
 
     fn get_user_activity_count(self: @TContractState, user: ContractAddress) -> u32;
@@ -145,19 +142,13 @@ pub trait IUserAchievements<TContractState> {
 
     // Leaderboard functions
     fn get_leaderboard(
-        self: @TContractState,
-        start_index: u32,
-        count: u32,
+        self: @TContractState, start_index: u32, count: u32,
     ) -> Array<LeaderboardEntry>;
 
     fn get_user_rank(self: @TContractState, user: ContractAddress) -> u32;
 
     // Configuration functions (owner only)
-    fn set_activity_points(
-        ref self: TContractState,
-        activity_type: ActivityType,
-        points: u32,
-    );
+    fn set_activity_points(ref self: TContractState, activity_type: ActivityType, points: u32);
 
     fn set_owner(ref self: TContractState, new_owner: ContractAddress);
 }
@@ -166,16 +157,13 @@ pub trait IUserAchievements<TContractState> {
 #[starknet::contract]
 pub mod UserAchievements {
     // Always use full paths for core library imports.
-    use starknet::get_caller_address;
-    use starknet::ContractAddress;
-    use starknet::get_block_timestamp;
-    
-    // Always add all storage imports
-    use starknet::storage::*;
     use core::array::ArrayTrait;
     use core::option::OptionTrait;
-    use super::*;
 
+    // Always add all storage imports
+    use starknet::storage::*;
+    use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
+    use super::*;
 
 
     #[storage]
@@ -188,16 +176,13 @@ pub mod UserAchievements {
         user_certificates: Map<(ContractAddress, u32), Certificate>,
         user_badge_count: Map<ContractAddress, u32>,
         user_certificate_count: Map<ContractAddress, u32>,
-
         // Leaderboard tracking
         leaderboard_entries: Map<u32, LeaderboardEntry>,
         leaderboard_count: u32,
         user_rank: Map<ContractAddress, u32>,
-
         // Configuration
         activity_points: Map<u32, u32>, // Maps activity_type_id to points
         owner: ContractAddress,
-
         // Statistics
         total_users: u32,
         total_achievements: u32,
@@ -281,12 +266,12 @@ pub mod UserAchievements {
         self.activity_points.write(0, 10); // AssetMinted
         self.activity_points.write(1, 25); // AssetSold
         self.activity_points.write(2, 20); // AssetLicensed
-        self.activity_points.write(3, 5);  // AssetTransferred
+        self.activity_points.write(3, 5); // AssetTransferred
         self.activity_points.write(4, 15); // CollectionCreated
         self.activity_points.write(5, 12); // CollaborationJoined
         self.activity_points.write(6, 50); // InnovationAwarded
-        self.activity_points.write(7, 8);  // CommunityContribution
-        self.activity_points.write(8, 5);  // CustomActivity
+        self.activity_points.write(7, 8); // CommunityContribution
+        self.activity_points.write(8, 5); // CustomActivity
     }
 
     #[abi(embed_v0)]
@@ -296,7 +281,7 @@ pub mod UserAchievements {
             user: ContractAddress,
             achievement_type: AchievementType,
             metadata_id: felt252,
-            asset_id: Option<felt252>,      // TODO: add asset_id
+            asset_id: Option<felt252>, // TODO: add asset_id
             category: Option<felt252>,
             points: u32,
         ) {
@@ -309,12 +294,7 @@ pub mod UserAchievements {
 
             // Create achievement
             let achievement = Achievement {
-                achievement_type,
-                timestamp,
-                metadata_id,
-                asset_id,
-                category,
-                points,
+                achievement_type, timestamp, metadata_id, asset_id, category, points,
             };
 
             // Store achievement
@@ -333,18 +313,19 @@ pub mod UserAchievements {
             self._update_leaderboard(user, new_points);
 
             // Emit events
-            self.emit(Event::AchievementRecorded(AchievementRecorded {
-                user,
-                achievement_type,
-                points,
-                timestamp,
-            }));
+            self
+                .emit(
+                    Event::AchievementRecorded(
+                        AchievementRecorded { user, achievement_type, points, timestamp },
+                    ),
+                );
 
-            self.emit(Event::PointsUpdated(PointsUpdated {
-                user,
-                new_total: new_points,
-                change: points,
-            }));
+            self
+                .emit(
+                    Event::PointsUpdated(
+                        PointsUpdated { user, new_total: new_points, change: points },
+                    ),
+                );
         }
 
         fn record_activity_event(
@@ -368,21 +349,18 @@ pub mod UserAchievements {
             let achievement_type = self._activity_to_achievement_type(activity_type);
 
             // Record as achievement
-            self.record_achievement(
-                user,
-                achievement_type,
-                metadata_id,
-                asset_id,
-                category,
-                points,
-            );
+            self
+                .record_achievement(
+                    user, achievement_type, metadata_id, asset_id, category, points,
+                );
 
             // Emit activity event
-            self.emit(Event::ActivityEventRecorded(ActivityEventRecorded {
-                user,
-                activity_type,
-                timestamp,
-            }));
+            self
+                .emit(
+                    Event::ActivityEventRecorded(
+                        ActivityEventRecorded { user, activity_type, timestamp },
+                    ),
+                );
         }
 
         fn mint_badge(
@@ -398,22 +376,13 @@ pub mod UserAchievements {
             let timestamp = get_block_timestamp();
             let current_count = self.user_badge_count.read(user);
 
-            let badge = Badge {
-                badge_type,
-                timestamp,
-                metadata_id,
-                is_active: true,
-            };
+            let badge = Badge { badge_type, timestamp, metadata_id, is_active: true };
 
             self.user_badges.write((user, current_count), badge);
             self.user_badge_count.write(user, current_count + 1);
             self.total_badges_minted.write(self.total_badges_minted.read() + 1);
 
-            self.emit(Event::BadgeMinted(BadgeMinted {
-                user,
-                badge_type,
-                timestamp,
-            }));
+            self.emit(Event::BadgeMinted(BadgeMinted { user, badge_type, timestamp }));
         }
 
         fn mint_certificate(
@@ -431,29 +400,23 @@ pub mod UserAchievements {
             let current_count = self.user_certificate_count.read(user);
 
             let certificate = Certificate {
-                certificate_type,
-                timestamp,
-                metadata_id,
-                expiry_date,
-                is_valid: true,
+                certificate_type, timestamp, metadata_id, expiry_date, is_valid: true,
             };
 
             self.user_certificates.write((user, current_count), certificate);
             self.user_certificate_count.write(user, current_count + 1);
             self.total_certificates_minted.write(self.total_certificates_minted.read() + 1);
 
-            self.emit(Event::CertificateMinted(CertificateMinted {
-                user,
-                certificate_type,
-                timestamp,
-            }));
+            self
+                .emit(
+                    Event::CertificateMinted(
+                        CertificateMinted { user, certificate_type, timestamp },
+                    ),
+                );
         }
 
         fn get_user_achievements(
-            self: @ContractState,
-            user: ContractAddress,
-            start_index: u32,
-            count: u32,
+            self: @ContractState, user: ContractAddress, start_index: u32, count: u32,
         ) -> Array<Achievement> {
             let mut achievements = ArrayTrait::new();
             let total_count = self.user_activity_count.read(user);
@@ -468,7 +431,7 @@ pub mod UserAchievements {
                 let achievement = self.user_achievements.read((user, i));
                 achievements.append(achievement);
                 i += 1;
-            };
+            }
 
             achievements
         }
@@ -486,16 +449,18 @@ pub mod UserAchievements {
             let count = self.user_badge_count.read(user);
 
             let mut i = 0;
-            while i !=  count {
+            while i != count {
                 let badge = self.user_badges.read((user, i));
                 badges.append(badge);
                 i += 1;
-            };
+            }
 
             badges
         }
 
-        fn get_user_certificates(self: @ContractState, user: ContractAddress) -> Array<Certificate> {
+        fn get_user_certificates(
+            self: @ContractState, user: ContractAddress,
+        ) -> Array<Certificate> {
             let mut certificates = ArrayTrait::new();
             let count = self.user_certificate_count.read(user);
 
@@ -504,15 +469,13 @@ pub mod UserAchievements {
                 let certificate = self.user_certificates.read((user, i));
                 certificates.append(certificate);
                 i += 1;
-            };
+            }
 
             certificates
         }
 
         fn get_leaderboard(
-            self: @ContractState,
-            start_index: u32,
-            count: u32,
+            self: @ContractState, start_index: u32, count: u32,
         ) -> Array<LeaderboardEntry> {
             let mut entries = ArrayTrait::new();
             let total_count = self.leaderboard_count.read();
@@ -527,7 +490,7 @@ pub mod UserAchievements {
                 let entry = self.leaderboard_entries.read(i);
                 entries.append(entry);
                 i += 1;
-            };
+            }
 
             entries
         }
@@ -536,11 +499,7 @@ pub mod UserAchievements {
             self.user_rank.read(user)
         }
 
-        fn set_activity_points(
-            ref self: ContractState,
-            activity_type: ActivityType,
-            points: u32,
-        ) {
+        fn set_activity_points(ref self: ContractState, activity_type: ActivityType, points: u32) {
             // Only owner can modify activity points
             let caller = get_caller_address();
             assert!(caller == self.owner.read(), "Only owner can set activity points");
@@ -557,10 +516,7 @@ pub mod UserAchievements {
             let old_owner = self.owner.read();
             self.owner.write(new_owner);
 
-            self.emit(Event::OwnerChanged(OwnerChanged {
-                old_owner,
-                new_owner,
-            }));
+            self.emit(Event::OwnerChanged(OwnerChanged { old_owner, new_owner }));
         }
     }
 
@@ -580,7 +536,9 @@ pub mod UserAchievements {
             }
         }
 
-        fn _activity_to_achievement_type(self: @ContractState, activity_type: ActivityType) -> AchievementType {
+        fn _activity_to_achievement_type(
+            self: @ContractState, activity_type: ActivityType,
+        ) -> AchievementType {
             match activity_type {
                 ActivityType::AssetMinted => AchievementType::Mint,
                 ActivityType::AssetSold => AchievementType::Sale,
@@ -608,7 +566,8 @@ pub mod UserAchievements {
                 certificates_count,
             };
 
-            // Simple leaderboard update - in a production system, you might want more sophisticated ranking
+            // Simple leaderboard update - in a production system, you might want more sophisticated
+            // ranking
             if current_rank == 0 {
                 // New user, add to leaderboard
                 let count = self.leaderboard_count.read();
@@ -621,12 +580,14 @@ pub mod UserAchievements {
                 self.leaderboard_entries.write(current_rank - 1, entry);
             }
 
-            self.emit(Event::LeaderboardUpdated(LeaderboardUpdated {
-                user,
-                new_rank: current_rank,
-                total_points: new_points,
-            }));
+            self
+                .emit(
+                    Event::LeaderboardUpdated(
+                        LeaderboardUpdated {
+                            user, new_rank: current_rank, total_points: new_points,
+                        },
+                    ),
+                );
         }
     }
-
 }
