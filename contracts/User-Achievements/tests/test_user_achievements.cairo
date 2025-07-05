@@ -521,7 +521,7 @@ fn test_owner_management() {
 
     stop_cheat_caller_address(dispatcher.contract_address);
     
-    start_cheat_caller_address(dispatcher.contract_address, owner);
+    start_cheat_caller_address(dispatcher.contract_address, new_owner);
     // Test that new owner can record achievements
     dispatcher.record_achievement(
         new_owner,
