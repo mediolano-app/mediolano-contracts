@@ -1,11 +1,5 @@
 use alexandria_storage::{List, ListTrait};
 use core::num::traits::Zero;
-// use alexandria_storage::List;
-// use openzeppelin::access::accesscontrol::{AccessControlComponent};
-// use openzeppelin::access::ownable::interface::IOwnable;
-// use openzeppelin::token::erc721::ERC721ReceiverComponent;
-// use openzeppelin::token::erc721::interface::ERC721ABIDispatcher;
-// use openzeppelin::token::erc721::interface::ERC721ABIDispatcherTrait;
 use core::traits::*;
 use openzeppelin::access::ownable::OwnableComponent;
 use openzeppelin::introspection::src5::SRC5Component;
@@ -21,6 +15,7 @@ use super::types::TimeCapsule;
 #[starknet::contract]
 pub mod IPTimeCapsule {
     // use openzeppelin::token::erc721::ERC721Component::InternalTrait;
+    use alexandria_storage::ListTrait;
     use starknet::ClassHash;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
@@ -177,10 +172,6 @@ pub mod IPTimeCapsule {
                     token_id, TimeCapsule { owner: recipient, metadata_hash, unvesting_timestamp },
                 );
 
-            let mut user_tokens = self.user_tokens.read(recipient);
-            ListTrait::append(ref user_tokens, token_id).expect('Append to user_tokens failed');
-            self.user_tokens.write(recipient, user_tokens);
-
             self
                 .emit(
                     TimeCapsuleMinted {
@@ -226,30 +217,55 @@ pub mod IPTimeCapsule {
 
         fn list_user_tokens(self: @ContractState, owner: ContractAddress) -> Array<u256> {
             let user_tokens = self.user_tokens.read(owner);
+            let token_array_result = user_tokens.array();
             let mut token_ids: Array<u256> = array![];
-            let len = user_tokens.len();
-            let mut i: u32 = 0;
-        
-            while i < len {
-                match user_tokens.get(i) {
-                    Result::Ok(token_option) => {
-                        match token_option {
-                            Option::Some(token_id) => {
-                                token_ids.append(token_id);
-                            },
-                            Option::None => {
-                               
+
+            if let Result::Ok(token_array) = token_array_result {
+                let len = token_array.len();
+                let mut i: u32 = 0;
+                while i < len {
+                    match user_tokens.get(i) {
+                        Result::Ok(token_option) => {
+                            match token_option {
+                                Option::Some(token_id) => { token_ids.append(token_id); },
+                                Option::None => {},
                             }
-                        }
-                    },
-                    Result::Err(_) => {
-                        break;
+                        },
+                        Result::Err(_) => { break; },
                     }
+                    i += 1;
                 }
-                i += 1;
             }
-        
+
             token_ids
+            // OR YOU CAN USE THIS INSTEAD
+
+            // let user_tokens = self.user_tokens.read(owner);
+        // let token_array_result = user_tokens.array();
+        // let mut token_ids: Array<u256> = array![];
+
+            // match token_array_result {
+        //     Result::Ok(token_array) => {
+        //         let len = token_array.len();
+        //         let mut i: u32 = 0;
+        //         while i < len {
+        //             match user_tokens.get(i) {
+        //                 Result::Ok(token_option) => {
+        //                     match token_option {
+        //                         Option::Some(token_id) => { token_ids.append(token_id); },
+        //                         Option::None => {},
+        //                     }
+        //                 },
+        //                 Result::Err(_) => { break; },
+        //             }
+        //             i += 1;
+        //         }
+        //     },
+        //     Result::Err(_) => {// handle error, maybe return empty array
+        //     },
+        // }
+
+            // token_ids
         }
     }
 }
