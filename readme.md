@@ -43,7 +43,7 @@ The platform also introduces advanced monetization, enabling diverse approaches 
 
 - [x] MIP Dapp @ Starknet Sepolia **25.06**
 
-- [ ] MIP Protocol v2 @ Starknet Sepolia **25.06**
+- [X] MIP Protocol v2 @ Starknet Sepolia **25.07**
 
 - [ ] MIP Protocol v2 @ Starknet Mainnet **25.07**
 
