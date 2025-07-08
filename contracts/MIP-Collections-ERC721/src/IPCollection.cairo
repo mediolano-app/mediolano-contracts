@@ -8,8 +8,8 @@ pub mod IPCollection {
     use starknet::{
         ClassHash, ContractAddress, get_caller_address, get_contract_address, get_block_timestamp,
         storage::{
-            Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
-            StoragePointerReadAccess, StoragePointerWriteAccess,
+            Map, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
+            StoragePointerWriteAccess,
         },
     };
 
@@ -38,6 +38,8 @@ pub mod IPCollection {
         collection_count: u256,
         collection_stats: Map<u256, CollectionStats>,
         ip_nft_class_hash: ClassHash,
+        user_collections: Map<u256, u256>,
+        user_collection_index: u256,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
         #[substorage(v0)]
@@ -138,7 +140,6 @@ pub mod IPCollection {
     #[constructor]
     fn constructor(ref self: ContractState, owner: ContractAddress, ip_nft_class_hash: ClassHash) {
         self.ownable.initializer(owner);
-        self.collection_count.write(0);
         self.ip_nft_class_hash.write(ip_nft_class_hash);
     }
 
@@ -204,6 +205,11 @@ pub mod IPCollection {
             self.collections.entry(collection_id).write(collection);
             self.collection_count.write(collection_id);
 
+            let user_collection_index = self.user_collection_index.read();
+
+            self.user_collections.entry(user_collection_index).write(collection_id);
+            self.user_collection_index.write(user_collection_index + 1);
+
             self.emit(CollectionCreated { collection_id, owner: caller, name, symbol, base_uri });
 
             collection_id
@@ -242,7 +248,7 @@ pub mod IPCollection {
 
             let token_uri = ip_nft.get_token_uri(next_token_id);
 
-            self.collection_stats.write(collection_id, collection_stats);
+            self.collection_stats.entry(collection_id).write(collection_stats);
 
             self
                 .emit(
@@ -308,7 +314,7 @@ pub mod IPCollection {
             collection_stats.total_minted += n.into();
             collection_stats.last_mint_time = timestamp;
 
-            self.collection_stats.write(collection_id, collection_stats);
+            self.collection_stats.entry(collection_id).write(collection_stats);
 
             // Emit batch event
             self
@@ -339,6 +345,10 @@ pub mod IPCollection {
 
             let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
 
+            let token_owner = ip_nft.get_token_owner(token.token_id);
+
+            assert(token_owner == get_caller_address(), 'Caller not token owner');
+
             ip_nft.burn(token.token_id);
 
             let timestamp = get_block_timestamp();
@@ -348,7 +358,7 @@ pub mod IPCollection {
             collection_stats.total_burned += 1;
             collection_stats.last_burn_time = timestamp;
 
-            self.collection_stats.write(token.collection_id, collection_stats);
+            self.collection_stats.entry(token.collection_id).write(collection_stats);
 
             // Emit burn event
             self
@@ -369,6 +379,9 @@ pub mod IPCollection {
         /// - `tokens`: Array of ByteArrays of tokens to burn.
         fn batch_burn(ref self: ContractState, tokens: Array<ByteArray>) {
             let n = tokens.len();
+
+            assert(n > 0, 'Tokens array is empty');
+
             let mut i: u32 = 0;
 
             let timestamp = get_block_timestamp();
@@ -385,7 +398,7 @@ pub mod IPCollection {
                 collection_stats.total_burned += 1;
                 collection_stats.last_burn_time = timestamp;
 
-                self.collection_stats.write(token.collection_id, collection_stats);
+                self.collection_stats.entry(token.collection_id).write(collection_stats);
 
                 i += 1;
             };
@@ -417,7 +430,11 @@ pub mod IPCollection {
 
             let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
 
-            ip_nft.transfer(from, to, token.collection_id);
+            let approved = ip_nft.is_approved_for_token(token.token_id, get_contract_address());
+
+            assert(approved, 'Contract not approved');
+
+            ip_nft.transfer(from, to, token.token_id);
 
             self
                 .emit(
@@ -444,6 +461,9 @@ pub mod IPCollection {
             tokens: Array<ByteArray>,
         ) {
             let n = tokens.len();
+
+            assert(n > 0, 'Tokens array is empty');
+
             let mut i: u32 = 0;
 
             while i < n {
@@ -490,15 +510,27 @@ pub mod IPCollection {
             ip_nft.get_all_user_tokens(user)
         }
 
-        /// Lists all collection IDs owned by a user.
-        /// (Currently returns an empty array; to be implemented.)
+        /// Returns a span containing all collection IDs owned by the specified user.
         ///
-        /// Params:
-        /// - `user`: Address of the user.
+        /// # Arguments
+        /// - `user`: The address of the user whose collection IDs are to be listed.
         ///
-        /// Returns: Span of collection IDs.
+        /// # Returns
+        /// - `Span<felt252>`: A span containing the collection IDs owned by the user.
         fn list_user_collections(self: @ContractState, user: ContractAddress) -> Span<u256> {
-            return array![].span();
+            let user_collection_index = self.user_collection_index.read();
+
+            let mut collections = array![];
+
+            let mut i: u256 = 0;
+
+            while i < user_collection_index {
+                let collection_id = self.user_collections.entry(i).read();
+                collections.append(collection_id);
+                i += 1;
+            };
+
+            return collections.span();
         }
 
         /// Retrieves the metadata and configuration of a specific collection.

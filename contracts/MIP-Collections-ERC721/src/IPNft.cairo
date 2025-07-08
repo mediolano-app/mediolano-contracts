@@ -9,8 +9,7 @@ pub mod IPNft {
     use openzeppelin::upgrades::UpgradeableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
     use starknet::{
-        ClassHash, ContractAddress, get_caller_address, contract_address_const,
-        storage::{StoragePointerReadAccess, StoragePointerWriteAccess},
+        ClassHash, ContractAddress, storage::{StoragePointerReadAccess, StoragePointerWriteAccess},
     };
 
     use crate::interfaces::IIPNFT::IIPNft;
@@ -134,7 +133,8 @@ pub mod IPNft {
         /// # Arguments
         /// * `token_id` - The unique identifier for the token to be burned.
         fn burn(ref self: ContractState, token_id: u256) {
-            self.erc721.update(contract_address_const::<0>(), token_id, get_caller_address());
+            self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
+            self.erc721.burn(token_id);
         }
 
         /// Transfers an ERC721 token from one address to another.
@@ -146,7 +146,7 @@ pub mod IPNft {
         fn transfer(
             ref self: ContractState, from: ContractAddress, to: ContractAddress, token_id: u256,
         ) {
-            self.erc721.transfer(from, to, token_id);
+            self.erc721.transfer_from(from, to, token_id);
         }
 
         /// Returns the collection ID associated with this contract.
@@ -204,6 +204,21 @@ pub mod IPNft {
         /// * `ContractAddress` - The address of the token owner.
         fn get_token_owner(self: @ContractState, token_id: u256) -> ContractAddress {
             self.erc721.owner_of(token_id)
+        }
+
+        /// Checks if a given address is approved for a specific token.
+        ///
+        /// # Arguments
+        /// * `token_id` - The unique identifier for the token.
+        /// * `spender` - The address to check for approval.
+        ///
+        /// # Returns
+        /// * `bool` - True if `spender` is approved for `token_id`, false otherwise.
+        fn is_approved_for_token(
+            self: @ContractState, token_id: u256, spender: ContractAddress,
+        ) -> bool {
+            let approved = self.erc721.get_approved(token_id);
+            approved == spender
         }
     }
 }

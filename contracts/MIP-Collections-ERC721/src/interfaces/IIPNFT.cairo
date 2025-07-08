@@ -69,4 +69,18 @@ pub trait IIPNft<ContractState> {
     /// # Returns
     /// * `ContractAddress` - The address of the token owner.
     fn get_token_owner(self: @ContractState, token_id: u256) -> ContractAddress;
+
+    /// Checks if a given spender is approved to manage a specific token.
+    ///
+    /// # Arguments
+    /// - `self`: The contract state.
+    /// - `token_id`: The unique identifier of the token (u256).
+    /// - `spender`: The address of the spender to check approval for.
+    ///
+    /// # Returns
+    /// - `bool`: Returns `true` if the spender is approved for the specified token, otherwise
+    /// `false`.
+    fn is_approved_for_token(
+        self: @ContractState, token_id: u256, spender: ContractAddress,
+    ) -> bool;
 }
