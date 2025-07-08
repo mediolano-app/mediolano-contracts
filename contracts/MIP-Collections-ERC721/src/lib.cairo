@@ -1,6 +1,9 @@
 pub mod IPCollection;
+pub mod IPNft;
+pub mod types;
 
-#[cfg(test)]
-mod test {
-    mod IPCollectionTest;
+pub mod interfaces {
+    pub mod IIPCollection;
+    pub mod IIPNFT;
 }
+

@@ -1,142 +1,49 @@
-use starknet::ContractAddress;
-
-#[starknet::interface]
-pub trait IIPCollection<ContractState> {
-    fn create_collection(
-        ref self: ContractState, name: ByteArray, symbol: ByteArray, base_uri: ByteArray,
-    ) -> u256;
-    fn mint(ref self: ContractState, collection_id: u256, recipient: ContractAddress) -> u256;
-    fn burn(ref self: ContractState, token_id: u256);
-    fn list_user_tokens(self: @ContractState, owner: ContractAddress) -> Array<u256>;
-    fn transfer_token(
-        ref self: ContractState, from: ContractAddress, to: ContractAddress, token_id: u256,
-    );
-    fn list_user_collections(self: @ContractState, owner: ContractAddress) -> Array<u256>;
-    fn get_collection(self: @ContractState, collection_id: u256) -> Collection;
-    fn get_token(self: @ContractState, token_id: u256) -> Token;
-    fn list_all_tokens(self: @ContractState) -> Array<u256>;
-    fn list_collection_tokens(self: @ContractState, collection_id: u256) -> Array<u256>;
-    fn mint_batch(
-        ref self: ContractState, collection_id: u256, recipients: Array<ContractAddress>,
-    ) -> Array<u256>;
-    fn burn_batch(ref self: ContractState, token_ids: Array<u256>);
-    fn transfer_batch(
-        ref self: ContractState, from: ContractAddress, to: ContractAddress, token_ids: Array<u256>,
-    );
-    fn update_collection_metadata(
-        ref self: ContractState,
-        collection_id: u256,
-        name: ByteArray,
-        symbol: ByteArray,
-        base_uri: ByteArray,
-    );
-    fn get_collection_stats(self: @ContractState, collection_id: u256) -> CollectionStats;
-    fn is_valid_collection(self: @ContractState, collection_id: u256) -> bool;
-    fn is_valid_token(self: @ContractState, token_id: u256) -> bool;
-    fn is_collection_owner(
-        self: @ContractState, collection_id: u256, owner: ContractAddress,
-    ) -> bool;
-}
-
-#[derive(Drop, Serde, starknet::Store)]
-pub struct Collection {
-    pub name: ByteArray,
-    pub symbol: ByteArray,
-    pub base_uri: ByteArray,
-    pub owner: ContractAddress,
-    pub is_active: bool,
-}
-
-#[derive(Drop, Serde, starknet::Store)]
-pub struct Token {
-    pub collection_id: u256,
-    pub token_id: u256,
-    pub owner: ContractAddress,
-    pub metadata_uri: ByteArray,
-}
-
-#[derive(Drop, Serde, starknet::Store)]
-pub struct CollectionStats {
-    pub total_supply: u256,
-    pub minted: u256,
-    pub burned: u256,
-    pub last_mint_batch_id: u256,
-    pub last_mint_time: u64,
-}
-
 #[starknet::contract]
 pub mod IPCollection {
-    // use alexandria_storage::List;
-    // use alexandria_storage::ListTrait;
     use core::num::traits::Zero;
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::introspection::src5::SRC5Component;
-    use openzeppelin::token::erc721::ERC721Component;
-    use openzeppelin::token::erc721::ERC721Component::InternalTrait;
-    use openzeppelin::token::erc721::extensions::ERC721EnumerableComponent;
     use openzeppelin::upgrades::UpgradeableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
     use starknet::{
-        ClassHash, ContractAddress, get_caller_address, get_contract_address,
-        contract_address_const,
+        ClassHash, ContractAddress, get_caller_address, get_contract_address, get_block_timestamp,
         storage::{
-            Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePathEntry,
-            StoragePointerReadAccess, StoragePointerWriteAccess,
+            Map, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
+            StoragePointerWriteAccess,
         },
     };
 
-    use super::{Collection, IIPCollection, Token, CollectionStats};
+    use starknet::syscalls::deploy_syscall;
 
-    component!(path: ERC721Component, storage: erc721, event: ERC721Event);
+    use crate::types::{Collection, CollectionStats, TokenData, TokenTrait};
+    use crate::interfaces::{
+        IIPCollection::IIPCollection, IIPNFT::{IIPNftDispatcher, IIPNftDispatcherTrait},
+    };
+
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
-    component!(
-        path: ERC721EnumerableComponent, storage: erc721_enumerable, event: ERC721EnumerableEvent,
-    );
+
     component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
 
     #[abi(embed_v0)]
-    impl ERC721MixinImpl = ERC721Component::ERC721MixinImpl<ContractState>;
-    #[abi(embed_v0)]
     impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
-    #[abi(embed_v0)]
-    impl ERC721EnumerableImpl =
-        ERC721EnumerableComponent::ERC721EnumerableImpl<ContractState>;
 
-    impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
     impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
-    impl ERC721EnumerableInternalImpl = ERC721EnumerableComponent::InternalImpl<ContractState>;
+
     impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
 
     #[storage]
     struct Storage {
         collections: Map<u256, Collection>,
         collection_count: u256,
-        tokens: Map<u256, Token>,
-        // Removed: owned_collections, owned_collection_count, owned_tokens, owned_token_count,
-        // user_tokens, user_token_count Operator approvals: (owner, operator) -> bool
-        operator_approvals: Map<(ContractAddress, ContractAddress), bool>,
-        // Token approvals: token_id -> approved address
-        token_approvals: Map<u256, ContractAddress>,
-        // Batch operation tracking: batch_id -> timestamp
-        mint_batch_timestamps: Map<u256, u64>,
-        burn_batch_timestamps: Map<u256, u64>,
-        transfer_batch_timestamps: Map<u256, u64>,
-        // Collection stats: collection_id -> CollectionStats
         collection_stats: Map<u256, CollectionStats>,
-        // Global token tracking
-        all_tokens: Map<u256, u256>, // index -> token_id
-        all_token_count: u256, // total number of tokens
-        collection_tokens: Map<(u256, u256), u256>, // (collection_id, index) -> token_id
-        collection_token_count: Map<u256, u256>, // collection_id -> number of tokens
-        #[substorage(v0)]
-        erc721: ERC721Component::Storage,
+        ip_nft_class_hash: ClassHash,
+        user_collections: Map<u256, u256>,
+        user_collection_index: u256,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         ownable: OwnableComponent::Storage,
-        #[substorage(v0)]
-        erc721_enumerable: ERC721EnumerableComponent::Storage,
         #[substorage(v0)]
         upgradeable: UpgradeableComponent::Storage,
     }
@@ -145,20 +52,18 @@ pub mod IPCollection {
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         #[flat]
-        ERC721Event: ERC721Component::Event,
-        #[flat]
         SRC5Event: SRC5Component::Event,
         #[flat]
         OwnableEvent: OwnableComponent::Event,
-        #[flat]
-        ERC721EnumerableEvent: ERC721EnumerableComponent::Event,
         #[flat]
         UpgradeableEvent: UpgradeableComponent::Event,
         CollectionCreated: CollectionCreated,
         CollectionUpdated: CollectionUpdated,
         TokenMinted: TokenMinted,
         TokenMintedBatch: TokenMintedBatch,
+        TokenBurned: TokenBurned,
         TokenBurnedBatch: TokenBurnedBatch,
+        TokenTransferred: TokenTransferred,
         TokenTransferredBatch: TokenTransferredBatch,
     }
 
@@ -173,14 +78,6 @@ pub mod IPCollection {
     }
 
     #[derive(Drop, starknet::Event)]
-    pub struct TokenMinted {
-        pub collection_id: u256,
-        pub token_id: u256,
-        pub owner: ContractAddress,
-        pub metadata_uri: ByteArray,
-    }
-
-    #[derive(Drop, starknet::Event)]
     pub struct CollectionUpdated {
         pub collection_id: u256,
         pub owner: ContractAddress,
@@ -191,17 +88,34 @@ pub mod IPCollection {
     }
 
     #[derive(Drop, starknet::Event)]
+    pub struct TokenMinted {
+        pub collection_id: u256,
+        pub token_id: u256,
+        pub owner: ContractAddress,
+        pub metadata_uri: ByteArray,
+    }
+
+    #[derive(Drop, starknet::Event)]
     pub struct TokenMintedBatch {
         pub collection_id: u256,
-        pub token_ids: Array<u256>,
+        pub token_ids: Span<u256>,
         pub owners: Array<ContractAddress>,
+        pub operator: ContractAddress,
+        pub timestamp: u64,
+    }
+
+
+    #[derive(Drop, starknet::Event)]
+    pub struct TokenBurned {
+        pub collection_id: u256,
+        pub token_id: u256,
         pub operator: ContractAddress,
         pub timestamp: u64,
     }
 
     #[derive(Drop, starknet::Event)]
     pub struct TokenBurnedBatch {
-        pub token_ids: Array<u256>,
+        pub tokens: Array<ByteArray>,
         pub operator: ContractAddress,
         pub timestamp: u64,
     }
@@ -210,36 +124,25 @@ pub mod IPCollection {
     pub struct TokenTransferredBatch {
         pub from: ContractAddress,
         pub to: ContractAddress,
-        pub token_ids: Array<u256>,
+        pub tokens: Array<ByteArray>,
+        pub operator: ContractAddress,
+        pub timestamp: u64,
+    }
+
+    #[derive(Drop, starknet::Event)]
+    pub struct TokenTransferred {
+        pub collection_id: u256,
+        pub token_id: u256,
         pub operator: ContractAddress,
         pub timestamp: u64,
     }
 
     #[constructor]
-    fn constructor(
-        ref self: ContractState,
-        name: ByteArray,
-        symbol: ByteArray,
-        base_uri: ByteArray,
-        owner: ContractAddress,
-    ) {
-        self.erc721.initializer(name, symbol, base_uri);
+    fn constructor(ref self: ContractState, owner: ContractAddress, ip_nft_class_hash: ClassHash) {
         self.ownable.initializer(owner);
-        self.erc721_enumerable.initializer();
-        self.collection_count.write(0);
+        self.ip_nft_class_hash.write(ip_nft_class_hash);
     }
 
-    impl ERC721HooksImpl of ERC721Component::ERC721HooksTrait<ContractState> {
-        fn before_update(
-            ref self: ERC721Component::ComponentState<ContractState>,
-            to: ContractAddress,
-            token_id: u256,
-            auth: ContractAddress,
-        ) {
-            let mut contract_state = self.get_contract_mut();
-            contract_state.erc721_enumerable.before_update(to, token_id);
-        }
-    }
 
     #[abi(embed_v0)]
     impl UpgradeableImpl of IUpgradeable<ContractState> {
@@ -249,14 +152,19 @@ pub mod IPCollection {
         }
     }
 
-    // This avoids using string operations and just returns the base URI as-is
-    fn get_token_uri(base_uri: ByteArray, _token_id: u256) -> ByteArray {
-        // You would need to implement proper string conversion in a production contract
-        base_uri.clone()
-    }
 
     #[abi(embed_v0)]
-    impl IPCollection of IIPCollection<ContractState> {
+    impl IPCollectionImpl of IIPCollection<ContractState> {
+        /// Creates a new NFT collection with the given name, symbol, and base URI.
+        /// Deploys a new NFT contract for the collection and assigns the caller as the owner.
+        /// Emits a `CollectionCreated` event.
+        ///
+        /// Params:
+        /// - `name`: Name of the collection.
+        /// - `symbol`: Symbol of the collection.
+        /// - `base_uri`: Base URI for token metadata.
+        ///
+        /// Returns: The unique collection ID.
         fn create_collection(
             ref self: ContractState, name: ByteArray, symbol: ByteArray, base_uri: ByteArray,
         ) -> u256 {
@@ -264,291 +172,454 @@ pub mod IPCollection {
             assert(!caller.is_zero(), 'Caller is zero address');
 
             let collection_id = self.collection_count.read() + 1;
+
+            let collection_manager = get_contract_address();
+
+            let mut constructor_calldata: Array::<felt252> = array![];
+
+            // Serialize constructor arguments for NFT contract
+            (
+                name.clone(),
+                symbol.clone(),
+                base_uri.clone(),
+                caller,
+                collection_id.clone(),
+                collection_manager,
+            )
+                .serialize(ref constructor_calldata);
+
+            let (ip_nft_adddress, _) = deploy_syscall(
+                self.ip_nft_class_hash.read(), 0, constructor_calldata.span(), false,
+            )
+                .unwrap();
+
             let collection = Collection {
                 name: name.clone(),
                 symbol: symbol.clone(),
                 base_uri: base_uri.clone(),
                 owner: caller,
+                ip_nft: ip_nft_adddress,
                 is_active: true,
             };
 
             self.collections.entry(collection_id).write(collection);
             self.collection_count.write(collection_id);
 
+            let user_collection_index = self.user_collection_index.read();
+
+            self.user_collections.entry(user_collection_index).write(collection_id);
+            self.user_collection_index.write(user_collection_index + 1);
+
             self.emit(CollectionCreated { collection_id, owner: caller, name, symbol, base_uri });
 
             collection_id
         }
 
+
+        /// Mints a new token in the specified collection to the recipient address.
+        /// Only the collection owner can mint.
+        /// Emits a `TokenMinted` event.
+        ///
+        /// Params:
+        /// - `collection_id`: ID of the collection to mint from.
+        /// - `recipient`: Address to receive the minted token.
+        ///
+        /// Returns: The token ID of the newly minted token.
         fn mint(ref self: ContractState, collection_id: u256, recipient: ContractAddress) -> u256 {
-            self.ownable.assert_only_owner();
             assert(!recipient.is_zero(), 'Recipient is zero address');
 
             let collection = self.collections.read(collection_id);
 
-            let caller = get_caller_address();
-            assert(caller != Zero::zero(), 'Caller is zero address');
+            assert(get_caller_address() == collection.owner, 'Only collection owner can mint');
 
-            let token_id = self.all_token_count.read() + 1;
-            let metadata_uri = get_token_uri(collection.base_uri, token_id);
+            assert(collection.is_active, 'Collection is not active');
 
-            self.erc721.mint(recipient, token_id);
+            // read collection stats
+            let mut collection_stats = self.collection_stats.read(collection_id);
+            let next_token_id = collection_stats.total_minted;
 
-            let token = Token {
-                collection_id, token_id, owner: recipient, metadata_uri: metadata_uri.clone(),
-            };
+            let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
 
-            self.tokens.write(token_id, token);
+            ip_nft.mint(recipient, next_token_id);
 
-            let all_token_count = self.all_token_count.read();
-            self.all_tokens.entry(all_token_count).write(token_id);
-            self.all_token_count.write(all_token_count + 1);
+            // update collection stats
+            collection_stats.total_minted = next_token_id + 1;
+            collection_stats.last_mint_time = get_block_timestamp();
 
-            let collection_token_count = self.collection_token_count.read(collection_id);
-            self.collection_tokens.entry((collection_id, collection_token_count)).write(token_id);
-            self.collection_token_count.entry(collection_id).write(collection_token_count + 1);
+            let token_uri = ip_nft.get_token_uri(next_token_id);
+
+            self.collection_stats.entry(collection_id).write(collection_stats);
 
             self
                 .emit(
                     TokenMinted {
-                        collection_id, token_id, owner: recipient, metadata_uri: metadata_uri,
+                        collection_id,
+                        token_id: next_token_id,
+                        owner: recipient,
+                        metadata_uri: token_uri,
                     },
                 );
 
-            token_id
+            next_token_id
         }
 
-        fn burn(ref self: ContractState, token_id: u256) {
-            self.erc721.update(contract_address_const::<0>(), token_id, get_caller_address());
-        }
-
-        fn list_user_tokens(self: @ContractState, owner: ContractAddress) -> Array<u256> {
-            return array![];
-        }
-
-        fn transfer_token(
-            ref self: ContractState, from: ContractAddress, to: ContractAddress, token_id: u256,
-        ) {
-            let caller = get_caller_address();
-            assert(caller != Zero::zero(), 'Caller is zero address');
-
-            let approved = self.erc721.get_approved(token_id);
-
-            assert(approved == get_contract_address(), 'Contract not approved');
-
-            self.erc721.transfer(from, to, token_id);
-        }
-
-        fn list_user_collections(self: @ContractState, owner: ContractAddress) -> Array<u256> {
-            return array![];
-        }
-
-        fn get_collection(self: @ContractState, collection_id: u256) -> Collection {
-            return self.collections.read(collection_id);
-        }
-
-        fn get_token(self: @ContractState, token_id: u256) -> Token {
-            return self.tokens.read(token_id);
-        }
-
-        // NEW: Function to list all tokens in the contract
-        fn list_all_tokens(self: @ContractState) -> Array<u256> {
-            let mut token_ids: Array<u256> = array![];
-            let count = self.all_token_count.read();
-            let mut i: u256 = 0;
-            while i < count {
-                let token_id = self.all_tokens.read(i);
-                token_ids.append(token_id);
-                i += 1;
-            };
-            token_ids
-        }
-
-        // NEW: Function to list all tokens in a specific collection
-        fn list_collection_tokens(self: @ContractState, collection_id: u256) -> Array<u256> {
-            let mut token_ids: Array<u256> = array![];
-            let count = self.collection_token_count.read(collection_id);
-            let mut i: u256 = 0;
-            while i < count {
-                let token_id = self.collection_tokens.read((collection_id, i));
-                token_ids.append(token_id);
-                i += 1;
-            };
-            token_ids
-        }
-
-        fn mint_batch(
+        /// Batch mints tokens in the specified collection to multiple recipients.
+        /// Only the collection owner can batch mint.
+        /// Emits a `TokenMintedBatch` event.
+        ///
+        /// Params:
+        /// - `collection_id`: ID of the collection to mint from.
+        /// - `recipients`: Array of recipient addresses.
+        ///
+        /// Returns: Span of minted token IDs.
+        fn batch_mint(
             ref self: ContractState, collection_id: u256, recipients: Array<ContractAddress>,
-        ) -> Array<u256> {
-            self.ownable.assert_only_owner();
+        ) -> Span<u256> {
             let n = recipients.len();
+
             assert(n > 0, 'Recipients array is empty');
 
             let collection = self.collections.read(collection_id);
+
             assert(collection.is_active, 'Collection is not active');
 
-            let mut token_ids: Array<u256> = array![];
+            let operator = get_caller_address();
+
+            assert(operator == collection.owner, 'Only collection owner can mint');
+
+            // read collection stats
+            let mut collection_stats = self.collection_stats.read(collection_id);
+
+            let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+
             let mut i: u32 = 0;
-            let mut all_token_count = self.all_token_count.read();
-            let mut collection_token_count = self.collection_token_count.read(collection_id);
-            let operator: ContractAddress = get_caller_address();
-            let timestamp = 0; // TODO: Replace with block timestamp if available
+
+            let mut token_ids: Array<u256> = array![];
 
             while i < n {
                 let recipient: ContractAddress = *recipients.at(i);
                 assert(!recipient.is_zero(), 'Recipient is zero address');
+                let next_token_id = collection_stats.total_minted + i.into();
 
-                let token_id = all_token_count + 1;
-                let metadata_uri = get_token_uri(collection.base_uri.clone(), token_id);
+                ip_nft.mint(recipient, next_token_id);
 
-                self.erc721.mint(recipient, token_id);
+                token_ids.append(next_token_id);
 
-                let token = Token {
-                    collection_id, token_id, owner: recipient, metadata_uri: metadata_uri.clone(),
-                };
-                self.tokens.write(token_id, token);
-
-                self.all_tokens.entry(all_token_count).write(token_id);
-                all_token_count += 1;
-
-                self
-                    .collection_tokens
-                    .entry((collection_id, collection_token_count))
-                    .write(token_id);
-                collection_token_count += 1;
-
-                token_ids.append(token_id);
                 i += 1;
             };
-            self.all_token_count.write(all_token_count);
-            self.collection_token_count.entry(collection_id).write(collection_token_count);
+
+            let timestamp = get_block_timestamp();
+
+            // update collection stats
+            collection_stats.total_minted += n.into();
+            collection_stats.last_mint_time = timestamp;
+
+            self.collection_stats.entry(collection_id).write(collection_stats);
 
             // Emit batch event
             self
                 .emit(
                     TokenMintedBatch {
                         collection_id,
-                        token_ids: token_ids.clone(),
+                        token_ids: token_ids.span().clone(),
                         owners: recipients.clone(),
                         operator,
                         timestamp,
                     },
                 );
 
-            token_ids
+            token_ids.span()
         }
 
-        fn burn_batch(ref self: ContractState, token_ids: Array<u256>) {
-            self.ownable.assert_only_owner();
-            let n = token_ids.len();
-            assert(n > 0, 'Token IDs array is empty');
+        /// Burns a specific token, removing it from circulation.
+        /// Updates collection stats and emits a `TokenBurned` event.
+        ///
+        /// Params:
+        /// - `token`: ByteArray of token <collection_id:token_id>.
+        fn burn(ref self: ContractState, token: ByteArray) {
+            let token = TokenTrait::from_bytes(token);
 
-            let operator: ContractAddress = get_caller_address();
-            let timestamp = 0; // TODO: Replace with block timestamp if available
+            let collection = self.collections.read(token.collection_id);
+
+            assert(collection.is_active, 'Collection is not active');
+
+            let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+
+            let token_owner = ip_nft.get_token_owner(token.token_id);
+
+            assert(token_owner == get_caller_address(), 'Caller not token owner');
+
+            ip_nft.burn(token.token_id);
+
+            let timestamp = get_block_timestamp();
+
+            // update collection stats
+            let mut collection_stats = self.collection_stats.read(token.collection_id);
+            collection_stats.total_burned += 1;
+            collection_stats.last_burn_time = timestamp;
+
+            self.collection_stats.entry(token.collection_id).write(collection_stats);
+
+            // Emit burn event
+            self
+                .emit(
+                    TokenBurned {
+                        collection_id: token.collection_id,
+                        token_id: token.token_id,
+                        operator: get_caller_address(),
+                        timestamp,
+                    },
+                );
+        }
+
+        /// Batch burns multiple tokens.
+        /// Updates collection stats and emits a `TokenBurnedBatch` event.
+        ///
+        /// Params:
+        /// - `tokens`: Array of ByteArrays of tokens to burn.
+        fn batch_burn(ref self: ContractState, tokens: Array<ByteArray>) {
+            let n = tokens.len();
+
+            assert(n > 0, 'Tokens array is empty');
+
             let mut i: u32 = 0;
+
+            let timestamp = get_block_timestamp();
             while i < n {
-                let token_id: u256 = *token_ids.at(i);
-                // Validate token exists (optional: check not already burned)
-                let _ = self.tokens.read(token_id);
-                // Burn the token using ERC721 logic
-                self.erc721.update(contract_address_const::<0>(), token_id, operator);
-                // Optionally update your own mappings/stats here
+                let token = TokenTrait::from_bytes(tokens.at(i).clone());
+                let collection = self.collections.read(token.collection_id);
+                assert(collection.is_active, 'Collection is not active');
+
+                let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+
+                ip_nft.burn(token.token_id);
+
+                let mut collection_stats = self.collection_stats.read(token.collection_id);
+                collection_stats.total_burned += 1;
+                collection_stats.last_burn_time = timestamp;
+
+                self.collection_stats.entry(token.collection_id).write(collection_stats);
+
                 i += 1;
             };
+
             // Emit batch event
-            self.emit(TokenBurnedBatch { token_ids: token_ids.clone(), operator, timestamp });
+            self
+                .emit(
+                    TokenBurnedBatch {
+                        tokens: tokens.clone(), operator: get_caller_address(), timestamp,
+                    },
+                );
         }
 
-        fn transfer_batch(
+        // Transfers a token from one address to another.
+        /// Emits a `TokenTransferred` event.
+        ///
+        /// Params:
+        /// - `from`: Current owner address.
+        /// - `to`: Recipient address.
+        /// - `token`: ByteArray of the token.
+        fn transfer_token(
+            ref self: ContractState, from: ContractAddress, to: ContractAddress, token: ByteArray,
+        ) {
+            let token = TokenTrait::from_bytes(token);
+
+            let collection = self.collections.read(token.collection_id);
+
+            assert(collection.is_active, 'Collection is not active');
+
+            let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+
+            let approved = ip_nft.is_approved_for_token(token.token_id, get_contract_address());
+
+            assert(approved, 'Contract not approved');
+
+            ip_nft.transfer(from, to, token.token_id);
+
+            self
+                .emit(
+                    TokenTransferred {
+                        collection_id: token.collection_id,
+                        token_id: token.token_id,
+                        operator: get_caller_address(),
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+        }
+
+        /// Batch transfers multiple tokens from one address to another.
+        /// Emits a `TokenTransferredBatch` event.
+        ///
+        /// Params:
+        /// - `from`: Current owner address.
+        /// - `to`: Recipient address.
+        /// - `tokens`: Array of ByteArrays of the tokens.
+        fn batch_transfer(
             ref self: ContractState,
             from: ContractAddress,
             to: ContractAddress,
-            token_ids: Array<u256>,
+            tokens: Array<ByteArray>,
         ) {
-            let n = token_ids.len();
-            assert(n > 0, 'Token IDs array is empty');
-            assert(!from.is_zero(), 'From address is zero');
-            assert(!to.is_zero(), 'To address is zero');
+            let n = tokens.len();
 
-            let operator: ContractAddress = get_caller_address();
-            let timestamp = 0; // TODO: Replace with block timestamp if available
+            assert(n > 0, 'Tokens array is empty');
+
             let mut i: u32 = 0;
+
             while i < n {
-                let token_id: u256 = *token_ids.at(i);
-                // Validate token exists and belongs to 'from'
-                let token = self.tokens.read(token_id);
-                assert(token.owner == from, 'Token not from address');
-                // Transfer the token using ERC721 logic
-                self.erc721.transfer(from, to, token_id);
-                // Update token owner in your storage
-                let mut updated_token = token;
-                updated_token.owner = to;
-                self.tokens.write(token_id, updated_token);
+                let token = TokenTrait::from_bytes(tokens.at(i).clone());
+                let collection = self.collections.read(token.collection_id);
+                assert(collection.is_active, 'Collection is not active');
+
+                let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+
+                ip_nft.transfer(from, to, token.token_id);
                 i += 1;
             };
+
             // Emit batch event
             self
                 .emit(
                     TokenTransferredBatch {
-                        from, to, token_ids: token_ids.clone(), operator, timestamp,
+                        from,
+                        to,
+                        tokens: tokens.clone(),
+                        operator: get_caller_address(),
+                        timestamp: get_block_timestamp(),
                     },
                 );
         }
 
-        fn update_collection_metadata(
-            ref self: ContractState,
-            collection_id: u256,
-            name: ByteArray,
-            symbol: ByteArray,
-            base_uri: ByteArray,
-        ) {
-            // Only collection owner can call
-            let caller = get_caller_address();
-            let mut collection = self.collections.read(collection_id);
-            assert(collection.owner == caller, 'Caller is not owner');
-            assert(name.len() > 0, 'Name cannot be empty');
-            assert(symbol.len() > 0, 'Symbol cannot be empty');
-            assert(base_uri.len() > 0, 'Base URI cannot be empty');
+        /// Lists all token IDs owned by a user in a specific collection.
+        ///
+        /// Params:
+        /// - `collection_id`: ID of the collection.
+        /// - `user`: Address of the user.
+        ///
+        /// Returns: Span of token IDs owned by the user in the collection.
+        fn list_user_tokens_per_collection(
+            self: @ContractState, collection_id: u256, user: ContractAddress,
+        ) -> Span<u256> {
+            let collection = self.collections.read(collection_id);
 
-            collection.name = name.clone();
-            collection.symbol = symbol.clone();
-            collection.base_uri = base_uri.clone();
-            self.collections.entry(collection_id).write(collection);
-
-            let timestamp = 0; // TODO: Replace with block timestamp if available
-            self
-                .emit(
-                    CollectionUpdated {
-                        collection_id, owner: caller, name, symbol, base_uri, timestamp,
-                    },
-                );
-        }
-
-        fn get_collection_stats(self: @ContractState, collection_id: u256) -> CollectionStats {
-            // Read stats from storage
-            let total_supply = self.collection_token_count.read(collection_id);
-            let stats = self.collection_stats.read(collection_id);
-            CollectionStats {
-                total_supply,
-                minted: stats.minted,
-                burned: stats.burned,
-                last_mint_batch_id: stats.last_mint_batch_id,
-                last_mint_time: stats.last_mint_time,
+            if !collection.is_active {
+                return array![].span();
             }
+
+            let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+            ip_nft.get_all_user_tokens(user)
         }
 
+        /// Returns a span containing all collection IDs owned by the specified user.
+        ///
+        /// # Arguments
+        /// - `user`: The address of the user whose collection IDs are to be listed.
+        ///
+        /// # Returns
+        /// - `Span<felt252>`: A span containing the collection IDs owned by the user.
+        fn list_user_collections(self: @ContractState, user: ContractAddress) -> Span<u256> {
+            let user_collection_index = self.user_collection_index.read();
+
+            let mut collections = array![];
+
+            let mut i: u256 = 0;
+
+            while i < user_collection_index {
+                let collection_id = self.user_collections.entry(i).read();
+                collections.append(collection_id);
+                i += 1;
+            };
+
+            return collections.span();
+        }
+
+        /// Retrieves the metadata and configuration of a specific collection.
+        ///
+        /// Params:
+        /// - `collection_id`: ID of the collection.
+        ///
+        /// Returns: The `Collection` struct.
+        fn get_collection(self: @ContractState, collection_id: u256) -> Collection {
+            return self.collections.read(collection_id);
+        }
+
+        /// Retrieves statistics for a specific collection (e.g., total minted, burned).
+        ///
+        /// Params:
+        /// - `collection_id`: ID of the collection.
+        ///
+        /// Returns: The `CollectionStats` struct.
+        fn get_collection_stats(self: @ContractState, collection_id: u256) -> CollectionStats {
+            self.collection_stats.read(collection_id)
+        }
+
+        /// Checks if a collection is valid (exists and is active).
+        ///
+        /// Params:
+        /// - `collection_id`: ID of the collection.
+        ///
+        /// Returns: `true` if the collection is active, `false` otherwise.
         fn is_valid_collection(self: @ContractState, collection_id: u256) -> bool {
-            // Try to read the collection; if it exists and is active, return true
             let collection = self.collections.read(collection_id);
             collection.is_active
         }
 
-        fn is_valid_token(self: @ContractState, token_id: u256) -> bool {
-            // Try to read the token; if it exists and owner is not zero, return true
-            let token = self.tokens.read(token_id);
-            !token.owner.is_zero()
+        /// Checks if a token is valid (exists and belongs to an active collection).
+        ///
+        /// Params:
+        /// - `token`: ByteArray encoding the token.
+        ///
+        /// Returns: `true` if the token is valid, `false` otherwise.
+        fn is_valid_token(self: @ContractState, token: ByteArray) -> bool {
+            let token = TokenTrait::from_bytes(token);
+
+            let collection = self.collections.read(token.collection_id);
+            if !collection.is_active {
+                return false;
+            };
+
+            let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+
+            !ip_nft.get_token_owner(token.token_id).is_zero()
         }
 
+        /// Retrieves metadata and ownership information for a specific token.
+        ///
+        /// Params:
+        /// - `token`: ByteArray encoding the token.
+        ///
+        /// Returns: The `TokenData` struct.
+        fn get_token(self: @ContractState, token: ByteArray) -> TokenData {
+            let token = TokenTrait::from_bytes(token);
+            let collection = self.collections.read(token.collection_id);
+
+            if !collection.is_active {
+                return TokenData {
+                    collection_id: 0, token_id: 0, owner: Zero::zero(), metadata_uri: "",
+                };
+            };
+
+            let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+
+            let token_uri = ip_nft.get_token_uri(token.token_id);
+
+            let owner = ip_nft.get_token_owner(token.token_id);
+
+            TokenData {
+                collection_id: token.collection_id,
+                token_id: token.token_id,
+                owner,
+                metadata_uri: token_uri,
+            }
+        }
+
+        /// Checks if a given address is the owner of a specific collection.
+        ///
+        /// Params:
+        /// - `collection_id`: ID of the collection.
+        /// - `owner`: Address to check.
+        ///
+        /// Returns: `true` if the address is the owner, `false` otherwise.
         fn is_collection_owner(
             self: @ContractState, collection_id: u256, owner: ContractAddress,
         ) -> bool {
@@ -557,4 +628,3 @@ pub mod IPCollection {
         }
     }
 }
-
