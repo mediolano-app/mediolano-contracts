@@ -1,28 +1,5 @@
-use starknet::ContractAddress;
-
-#[starknet::interface]
-pub trait IIPNft<ContractState> {
-    fn mint(ref self: ContractState, recipient: ContractAddress, token_id: u256);
-    fn batch_mint(
-        ref self: ContractState, recipients: Array<ContractAddress>, start_id: u256,
-    ) -> Span<u256>;
-    fn burn(ref self: ContractState, token_id: u256);
-    fn batch_burn(ref self: ContractState, token_ids: Array<u256>);
-    fn transfer(
-        ref self: ContractState, from: ContractAddress, to: ContractAddress, token_id: u256,
-    );
-    fn batch_transfer(
-        ref self: ContractState, from: ContractAddress, to: ContractAddress, token_ids: Array<u256>,
-    );
-    fn get_collection_id(self: @ContractState) -> u256;
-    fn get_collection_manager(self: @ContractState) -> ContractAddress;
-    fn get_all_user_tokens(self: @ContractState, user: ContractAddress) -> Span<u256>;
-    fn get_total_supply(self: @ContractState) -> u256;
-}
-
 #[starknet::contract]
 pub mod IPNft {
-    use core::num::traits::Zero;
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::access::accesscontrol::{AccessControlComponent, DEFAULT_ADMIN_ROLE};
     use openzeppelin::introspection::src5::SRC5Component;
@@ -36,7 +13,7 @@ pub mod IPNft {
         storage::{StoragePointerReadAccess, StoragePointerWriteAccess},
     };
 
-    use super::IIPNft;
+    use crate::interfaces::IIPNFT::IIPNft;
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
@@ -141,84 +118,92 @@ pub mod IPNft {
 
     #[abi(embed_v0)]
     impl IPNFTIMpl of IIPNft<ContractState> {
+        /// Mints a new ERC721 token to the specified recipient.
+        /// Only callable by accounts with the DEFAULT_ADMIN_ROLE.
+        ///
+        /// # Arguments
+        /// * `recipient` - The address to receive the minted token.
+        /// * `token_id` - The unique identifier for the token to be minted.
         fn mint(ref self: ContractState, recipient: ContractAddress, token_id: u256) {
             self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
             self.erc721.mint(recipient, token_id);
         }
 
-        fn batch_mint(
-            ref self: ContractState, recipients: Array<ContractAddress>, start_id: u256,
-        ) -> Span<u256> {
-            self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
-            let n = recipients.len();
-            let mut i: u32 = 0;
-
-            let mut token_ids: Array<u256> = array![];
-
-            while i < n {
-                let recipient: ContractAddress = *recipients.at(i);
-                assert(!recipient.is_zero(), 'Recipient is zero address');
-                let next_token_id = start_id + i.into();
-                self.erc721.mint(recipient, next_token_id);
-                token_ids.append(next_token_id);
-                i += 1;
-            };
-
-           token_ids.span()
-        }
-
+        /// Burns (removes) an ERC721 token.
+        ///
+        /// # Arguments
+        /// * `token_id` - The unique identifier for the token to be burned.
         fn burn(ref self: ContractState, token_id: u256) {
             self.erc721.update(contract_address_const::<0>(), token_id, get_caller_address());
         }
 
-        fn batch_burn(ref self: ContractState, token_ids: Array<u256>) {
-            let n = token_ids.len();
-            let mut i: u32 = 0;
-            let caller = get_caller_address();
-
-            while i < n {
-                let token_id: u256 = *token_ids.at(i);
-                self.erc721.update(contract_address_const::<0>(), token_id, caller);
-                i += 1;
-            };
-        }
-
+        /// Transfers an ERC721 token from one address to another.
+        ///
+        /// # Arguments
+        /// * `from` - The address sending the token.
+        /// * `to` - The address receiving the token.
+        /// * `token_id` - The unique identifier for the token to be transferred.
         fn transfer(
             ref self: ContractState, from: ContractAddress, to: ContractAddress, token_id: u256,
         ) {
             self.erc721.transfer(from, to, token_id);
         }
 
-        fn batch_transfer(
-            ref self: ContractState,
-            from: ContractAddress,
-            to: ContractAddress,
-            token_ids: Array<u256>,
-        ) {
-            let n = token_ids.len();
-            let mut i: u32 = 0;
-
-            while i < n {
-                let token_id: u256 = *token_ids.at(i);
-                self.erc721.transfer(from, to, token_id);
-                i += 1;
-            };
-        }
-
+        /// Returns the collection ID associated with this contract.
+        ///
+        /// # Returns
+        /// * `u256` - The collection ID.
         fn get_collection_id(self: @ContractState) -> u256 {
             self.collection_id.read()
         }
 
+        /// Returns the address of the collection manager.
+        ///
+        /// # Returns
+        /// * `ContractAddress` - The address of the collection manager.
         fn get_collection_manager(self: @ContractState) -> ContractAddress {
             self.collection_manager.read()
         }
 
+        /// Retrieves all token IDs owned by a specific user.
+        ///
+        /// # Arguments
+        /// * `user` - The address of the token owner.
+        ///
+        /// # Returns
+        /// * `Span<u256>` - A span containing all token IDs owned by the user.
         fn get_all_user_tokens(self: @ContractState, user: ContractAddress) -> Span<u256> {
             self.erc721_enumerable.all_tokens_of_owner(user)
         }
 
+        /// Returns the total supply of tokens in the collection.
+        ///
+        /// # Returns
+        /// * `u256` - The total number of tokens.
         fn get_total_supply(self: @ContractState) -> u256 {
             self.erc721_enumerable.total_supply()
+        }
+
+        /// Returns the URI for a specific token.
+        ///
+        /// # Arguments
+        /// * `token_id` - The unique identifier for the token.
+        ///
+        /// # Returns
+        /// * `ByteArray` - The URI of the token.
+        fn get_token_uri(self: @ContractState, token_id: u256) -> ByteArray {
+            self.erc721.token_uri(token_id)
+        }
+
+        /// Returns the owner address of a specific token.
+        ///
+        /// # Arguments
+        /// * `token_id` - The unique identifier for the token.
+        ///
+        /// # Returns
+        /// * `ContractAddress` - The address of the token owner.
+        fn get_token_owner(self: @ContractState, token_id: u256) -> ContractAddress {
+            self.erc721.owner_of(token_id)
         }
     }
 }
