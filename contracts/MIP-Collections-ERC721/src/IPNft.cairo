@@ -1,5 +1,6 @@
 #[starknet::contract]
 pub mod IPNft {
+    use starknet::storage::StorageMapWriteAccess;
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::access::accesscontrol::{AccessControlComponent, DEFAULT_ADMIN_ROLE};
     use openzeppelin::introspection::src5::SRC5Component;
@@ -9,8 +10,10 @@ pub mod IPNft {
     use openzeppelin::upgrades::UpgradeableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
     use starknet::{
-        ClassHash, ContractAddress, storage::{StoragePointerReadAccess, StoragePointerWriteAccess},
+        ClassHash, ContractAddress,
+        storage::{Map, StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess},
     };
+    use openzeppelin::token::erc721::interface::IERC721Metadata;
 
     use crate::interfaces::IIPNFT::IIPNft;
 
@@ -24,7 +27,12 @@ pub mod IPNft {
     component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
 
     #[abi(embed_v0)]
-    impl ERC721MixinImpl = ERC721Component::ERC721MixinImpl<ContractState>;
+    impl ERC721Impl = ERC721Component::ERC721Impl<ContractState>;
+    #[abi(embed_v0)]
+    impl ERC721CamelOnly = ERC721Component::ERC721CamelOnlyImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl ERC721MetadataCamelOnly =
+        ERC721Component::ERC721MetadataCamelOnlyImpl<ContractState>;
     #[abi(embed_v0)]
     impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
     #[abi(embed_v0)]
@@ -43,6 +51,7 @@ pub mod IPNft {
     struct Storage {
         collection_manager: ContractAddress,
         collection_id: u256,
+        uris: Map<u256, ByteArray>,
         #[substorage(v0)]
         erc721: ERC721Component::Storage,
         #[substorage(v0)]
@@ -116,16 +125,39 @@ pub mod IPNft {
     }
 
     #[abi(embed_v0)]
-    impl IPNFTIMpl of IIPNft<ContractState> {
+    impl ERC721Metadata of IERC721Metadata<ContractState> {
+        fn name(self: @ContractState) -> ByteArray {
+            self.erc721.ERC721_name.read()
+        }
+
+        fn symbol(self: @ContractState) -> ByteArray {
+            self.erc721.ERC721_symbol.read()
+        }
+
+        fn token_uri(self: @ContractState, token_id: u256) -> ByteArray {
+            self.erc721._require_owned(token_id);
+            self.uris.read(token_id)
+        }
+    }
+
+    #[abi(embed_v0)]
+    impl IPNftImpl of IIPNft<ContractState> {
         /// Mints a new ERC721 token to the specified recipient.
         /// Only callable by accounts with the DEFAULT_ADMIN_ROLE.
         ///
         /// # Arguments
         /// * `recipient` - The address to receive the minted token.
         /// * `token_id` - The unique identifier for the token to be minted.
-        fn mint(ref self: ContractState, recipient: ContractAddress, token_id: u256) {
+        /// * `token_uri` - The URI metadata associated with the token.
+        fn mint(
+            ref self: ContractState,
+            recipient: ContractAddress,
+            token_id: u256,
+            token_uri: ByteArray,
+        ) {
             self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
             self.erc721.mint(recipient, token_id);
+            self.uris.write(token_id, token_uri);
         }
 
         /// Burns (removes) an ERC721 token.
@@ -192,7 +224,7 @@ pub mod IPNft {
         /// # Returns
         /// * `ByteArray` - The URI of the token.
         fn get_token_uri(self: @ContractState, token_id: u256) -> ByteArray {
-            self.erc721.token_uri(token_id)
+            self.token_uri(token_id)
         }
 
         /// Returns the owner address of a specific token.

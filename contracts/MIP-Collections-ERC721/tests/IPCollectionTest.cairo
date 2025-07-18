@@ -102,9 +102,10 @@ fn test_mint_token() {
     let owner = OWNER();
     let recipient = USER1();
     let collection_id = setup_collection(dispatcher, ip_address);
+    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    let token_id = dispatcher.mint(collection_id, recipient);
+    let token_id = dispatcher.mint(collection_id, recipient, token_uri);
     assert(token_id == 0, 'Token ID should be 0');
 
     let token_id_arr = format!("{}:{}", collection_id, token_id);
@@ -123,9 +124,10 @@ fn test_mint_not_owner() {
     let non_owner = USER1();
     let recipient = USER2();
     let collection_id = setup_collection(dispatcher, address);
+    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
 
     start_cheat_caller_address(address, non_owner);
-    dispatcher.mint(collection_id, recipient);
+    dispatcher.mint(collection_id, recipient, token_uri);
 }
 
 #[test]
@@ -134,9 +136,10 @@ fn test_mint_to_zero_address() {
     let (dispatcher, address) = deploy_contract();
     let owner = OWNER();
     let collection_id = setup_collection(dispatcher, address);
+    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
 
     start_cheat_caller_address(address, owner);
-    dispatcher.mint(collection_id, contract_address_const::<0>());
+    dispatcher.mint(collection_id, contract_address_const::<0>(), token_uri);
 }
 
 #[test]
@@ -145,9 +148,10 @@ fn test_mint_zero_caller() {
     let (dispatcher, address) = deploy_contract();
     let recipient = USER1();
     let collection_id = setup_collection(dispatcher, address);
+    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
 
     start_cheat_caller_address(address, contract_address_const::<0>());
-    dispatcher.mint(collection_id, recipient);
+    dispatcher.mint(collection_id, recipient, token_uri);
 }
 
 #[test]
@@ -157,11 +161,12 @@ fn test_batch_mint_tokens() {
     let recipient1 = USER1();
     let recipient2 = USER2();
     let collection_id = setup_collection(dispatcher, ip_address);
+    let token_uris = array!["ipfs://QmCollectionBaseUri/0", "ipfs://QmCollectionBaseUri/1"];
 
     let recipients = array![recipient1, recipient2];
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    let token_ids = dispatcher.batch_mint(collection_id, recipients.clone());
+    let token_ids = dispatcher.batch_mint(collection_id, recipients.clone(), token_uris.clone());
 
     assert(token_ids.len() == 2, 'Should mint 2 tokens in batch');
     let token0 = dispatcher.get_token(format!("{}:{}", collection_id, *token_ids.at(0)));
@@ -182,9 +187,10 @@ fn test_batch_mint_empty_recipients() {
     let collection_id = setup_collection(dispatcher, ip_address);
 
     let recipients = array![];
+    let token_uris = array![];
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    dispatcher.batch_mint(collection_id, recipients);
+    dispatcher.batch_mint(collection_id, recipients, token_uris);
 }
 
 #[test]
@@ -193,11 +199,11 @@ fn test_batch_mint_zero_recipient() {
     let (dispatcher, ip_address) = deploy_contract();
     let owner = OWNER();
     let collection_id = setup_collection(dispatcher, ip_address);
-
+    let token_uris = array!["ipfs://QmCollectionBaseUri/0"];
     let recipients = array![contract_address_const::<0>()];
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    dispatcher.batch_mint(collection_id, recipients);
+    dispatcher.batch_mint(collection_id, recipients, token_uris);
 }
 
 #[test]
@@ -206,9 +212,10 @@ fn test_burn_token() {
     let owner = OWNER();
     let recipient = USER1();
     let collection_id = setup_collection(dispatcher, ip_address);
+    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    let token_id = dispatcher.mint(collection_id, recipient);
+    let token_id = dispatcher.mint(collection_id, recipient, token_uri);
 
     let token = format!("{}:{}", collection_id, token_id);
     cheat_caller_address(ip_address, recipient, CheatSpan::TargetCalls(1));
@@ -223,9 +230,10 @@ fn test_burn_not_owner() {
     let recipient = USER1();
     let non_owner = USER2();
     let collection_id = setup_collection(dispatcher, ip_address);
+    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    let token_id = dispatcher.mint(collection_id, recipient);
+    let token_id = dispatcher.mint(collection_id, recipient, token_uri);
 
     let token = format!("{}:{}", collection_id, token_id);
     cheat_caller_address(ip_address, non_owner, CheatSpan::TargetCalls(1));
@@ -239,10 +247,11 @@ fn test_transfer_token_success() {
     let from_user = USER1();
     let to_user = USER2();
     let collection_id = setup_collection(dispatcher, ip_address);
+    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
 
     // Mint token to from_user
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    let token_id = dispatcher.mint(collection_id, from_user);
+    let token_id = dispatcher.mint(collection_id, from_user, token_uri);
 
     let collection_data = dispatcher.get_collection(collection_id);
 
@@ -264,9 +273,10 @@ fn test_transfer_token_not_approved() {
     let from_user = USER1();
     let to_user = USER2();
     let collection_id = setup_collection(dispatcher, address);
+    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
 
     start_cheat_caller_address(address, owner);
-    let token_id = dispatcher.mint(collection_id, from_user);
+    let token_id = dispatcher.mint(collection_id, from_user, token_uri);
     stop_cheat_caller_address(address);
 
     start_cheat_caller_address(address, from_user);
@@ -281,10 +291,11 @@ fn test_transfer_token_inactive_collection() {
     let from_user = USER1();
     let to_user = USER2();
     let collection_id = setup_collection(dispatcher, ip_address);
+    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
 
     // Mint token to from_user
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    let token_id = dispatcher.mint(collection_id, from_user);
+    let token_id = dispatcher.mint(collection_id, from_user, token_uri);
 
     cheat_caller_address(ip_address, from_user, CheatSpan::TargetCalls(1));
     let token = format!("{}:{}", collection_id + 1, token_id);
@@ -311,7 +322,8 @@ fn test_batch_transfer_tokens_success() {
     // Mint two tokens to from_user
     let recipients = array![from_user, from_user];
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    let token_ids = dispatcher.batch_mint(collection_id, recipients.clone());
+    let token_uris = array!["ipfs://QmCollectionBaseUri/0", "ipfs://QmCollectionBaseUri/1"];
+    let token_ids = dispatcher.batch_mint(collection_id, recipients.clone(), token_uris);
 
     let collection_data = dispatcher.get_collection(collection_id);
     let erc721_dispatcher = IERC721Dispatcher { contract_address: collection_data.ip_nft };
@@ -344,10 +356,10 @@ fn test_batch_transfer_inactive_collection() {
     let from_user = USER1();
     let to_user = USER2();
     let collection_id = setup_collection(dispatcher, ip_address);
-
+    let token_uris = array!["ipfs://QmCollectionBaseUri/0"];
     // Mint token to from_user
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    let token_ids = dispatcher.batch_mint(collection_id, array![from_user]);
+    let token_ids = dispatcher.batch_mint(collection_id, array![from_user], token_uris);
 
     // Use wrong collection_id (inactive)
     let token = format!("{}:{}", collection_id + 1, *token_ids.at(0));
@@ -362,9 +374,10 @@ fn test_verification_functions() {
     let (dispatcher, address) = deploy_contract();
     let owner = OWNER();
     let collection_id = setup_collection(dispatcher, address);
+    let token_uri = "ipfs://QmCollectionBaseUri/0";
 
     start_cheat_caller_address(address, owner);
-    let token_id = dispatcher.mint(collection_id, USER1());
+    let token_id = dispatcher.mint(collection_id, USER1(), token_uri);
     let token = format!("{}:{}", collection_id, token_id);
     assert(dispatcher.is_valid_collection(collection_id), 'Collection should be valid');
     assert(dispatcher.is_valid_token(token), 'Token should be valid');

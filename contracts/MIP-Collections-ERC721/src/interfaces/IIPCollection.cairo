@@ -22,21 +22,31 @@ pub trait IIPCollection<ContractState> {
     /// # Arguments
     /// * `collection_id` - The identifier of the collection to mint in.
     /// * `recipient` - The address to receive the newly minted token.
+    /// * `token_uri` - The URI metadata associated with the token.
     ///
     /// # Returns
     /// The unique identifier (`u256`) of the minted token.
-    fn mint(ref self: ContractState, collection_id: u256, recipient: ContractAddress) -> u256;
+    fn mint(
+        ref self: ContractState,
+        collection_id: u256,
+        recipient: ContractAddress,
+        token_uri: ByteArray,
+    ) -> u256;
 
     /// Mints tokens in batch for the specified `collection_id` and `recipients`.
     ///
     /// # Arguments
     /// * `collection_id` - The identifier of the collection to mint in.
     /// * `recipients` - Array of addresses to receive the newly minted tokens.
+    /// * `token_uris` - Array of URIs metadata associated with each token.
     ///
     /// # Returns
     /// A Span of token IDs (`u256`) for the minted tokens.
     fn batch_mint(
-        ref self: ContractState, collection_id: u256, recipients: Array<ContractAddress>,
+        ref self: ContractState,
+        collection_id: u256,
+        recipients: Array<ContractAddress>,
+        token_uris: Array<ByteArray>,
     ) -> Span<u256>;
 
     /// Burns (destroys) the specified `token`.
