@@ -10,7 +10,10 @@ pub trait IIPNft<ContractState> {
     /// # Arguments
     /// * `recipient` - The address to receive the newly minted token.
     /// * `token_id` - The unique identifier for the token to be minted.
-    fn mint(ref self: ContractState, recipient: ContractAddress, token_id: u256);
+    /// * `token_uri` - The URI metadata associated with the token.
+    fn mint(
+        ref self: ContractState, recipient: ContractAddress, token_id: u256, token_uri: ByteArray,
+    );
 
     /// Burns (destroys) the token with the specified `token_id`.
     ///

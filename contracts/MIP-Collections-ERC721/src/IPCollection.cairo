@@ -39,7 +39,7 @@ pub mod IPCollection {
         collection_stats: Map<u256, CollectionStats>,
         ip_nft_class_hash: ClassHash,
         user_collections: Map<u256, u256>,
-        user_collection_index: u256,
+        user_collection_index: Map<ContractAddress, u256>,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
         #[substorage(v0)]
@@ -205,10 +205,10 @@ pub mod IPCollection {
             self.collections.entry(collection_id).write(collection);
             self.collection_count.write(collection_id);
 
-            let user_collection_index = self.user_collection_index.read();
+            let mut user_collection_index = self.user_collection_index.read(caller);
 
             self.user_collections.entry(user_collection_index).write(collection_id);
-            self.user_collection_index.write(user_collection_index + 1);
+            self.user_collection_index.entry(caller).write(user_collection_index + 1);
 
             self.emit(CollectionCreated { collection_id, owner: caller, name, symbol, base_uri });
 
@@ -225,7 +225,12 @@ pub mod IPCollection {
         /// - `recipient`: Address to receive the minted token.
         ///
         /// Returns: The token ID of the newly minted token.
-        fn mint(ref self: ContractState, collection_id: u256, recipient: ContractAddress) -> u256 {
+        fn mint(
+            ref self: ContractState,
+            collection_id: u256,
+            recipient: ContractAddress,
+            token_uri: ByteArray,
+        ) -> u256 {
             assert(!recipient.is_zero(), 'Recipient is zero address');
 
             let collection = self.collections.read(collection_id);
@@ -240,7 +245,7 @@ pub mod IPCollection {
 
             let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
 
-            ip_nft.mint(recipient, next_token_id);
+            ip_nft.mint(recipient, next_token_id, token_uri);
 
             // update collection stats
             collection_stats.total_minted = next_token_id + 1;
@@ -273,7 +278,10 @@ pub mod IPCollection {
         ///
         /// Returns: Span of minted token IDs.
         fn batch_mint(
-            ref self: ContractState, collection_id: u256, recipients: Array<ContractAddress>,
+            ref self: ContractState,
+            collection_id: u256,
+            recipients: Array<ContractAddress>,
+            token_uris: Array<ByteArray>,
         ) -> Span<u256> {
             let n = recipients.len();
 
@@ -298,10 +306,11 @@ pub mod IPCollection {
 
             while i < n {
                 let recipient: ContractAddress = *recipients.at(i);
+                let token_uri: ByteArray = token_uris.at(i).clone();
                 assert(!recipient.is_zero(), 'Recipient is zero address');
                 let next_token_id = collection_stats.total_minted + i.into();
 
-                ip_nft.mint(recipient, next_token_id);
+                ip_nft.mint(recipient, next_token_id, token_uri);
 
                 token_ids.append(next_token_id);
 
@@ -518,7 +527,7 @@ pub mod IPCollection {
         /// # Returns
         /// - `Span<felt252>`: A span containing the collection IDs owned by the user.
         fn list_user_collections(self: @ContractState, user: ContractAddress) -> Span<u256> {
-            let user_collection_index = self.user_collection_index.read();
+            let mut user_collection_index = self.user_collection_index.read(user);
 
             let mut collections = array![];
 
