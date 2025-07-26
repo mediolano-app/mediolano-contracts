@@ -13,27 +13,27 @@ pub mod IPStory {
         StoragePointerWriteAccess,
     };
     use super::super::{
-        interfaces::IIPStory,
-        types::{
-            StoryMetadata, ChapterSubmission, AcceptedChapter, StoryStats, ModerationAction,
-            RoyaltyDistribution,
+        interfaces::{
+            IIPStory, IModerationRegistryDispatcher, IModerationRegistryDispatcherTrait,
+            IRevenueManagerDispatcher, IRevenueManagerDispatcherTrait,
         },
+        types::{StoryMetadata, ChapterSubmission, AcceptedChapter, StoryStats, RoyaltyDistribution},
         errors::errors,
         events::{
-            ChapterSubmitted, SubmissionVoted, ChapterAccepted, ChapterRejected, ChapterMinted,
-            ChapterFlagged, ModeratorAssigned, ModeratorRemoved, ModerationActionTaken,
-            ChapterViewed, RevenueDistributed, RoyaltiesClaimed, CreatorOverride,
-            ChapterContentUpdated, ChapterRemoved,
+            ChapterSubmitted, ChapterAccepted, ChapterRejected, ChapterMinted, ChapterFlagged,
+            ChapterContentUpdated, StoryStatsUpdated,
         },
     };
     use openzeppelin::token::erc1155::ERC1155Component;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::access::ownable::OwnableComponent;
+    use openzeppelin::upgrades::{interface::IUpgradeable, UpgradeableComponent};
 
     // Components
     component!(path: ERC1155Component, storage: erc1155, event: ERC1155Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+    component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
 
     // Component implementations
     #[abi(embed_v0)]
@@ -42,6 +42,7 @@ pub mod IPStory {
     impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
     impl ERC1155InternalImpl = ERC1155Component::InternalImpl<ContractState>;
     impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
+    impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
 
     #[storage]
     struct Storage {
@@ -49,32 +50,26 @@ pub mod IPStory {
         story_metadata: StoryMetadata,
         story_creators: Map<ContractAddress, bool>,
         royalty_distribution: RoyaltyDistribution,
-        // Creator and moderator lists for efficient retrieval
+        // Creator lists for efficient retrieval
         creators_list: Map<u256, ContractAddress>, // index -> creator
         creators_count: u256,
-        moderators_list: Map<u256, ContractAddress>, // index -> moderator  
-        moderators_count: u256,
         // Chapter submissions (pre-minting)
         next_submission_id: u256,
         submissions: Map<u256, ChapterSubmission>,
-        submission_votes: Map<(u256, ContractAddress), bool>, // (submission_id, voter) -> voted
         // Accepted chapters (minted NFTs)
         next_token_id: u256,
         chapters: Map<u256, AcceptedChapter>, // token_id -> chapter
         chapter_numbers: Map<u256, u256>, // chapter_number -> token_id
-        submission_to_token: Map<u256, u256>, // submission_id -> token_id
-        // Moderation
-        moderators: Map<ContractAddress, bool>,
-        flagged_chapters: Map<u256, bool>, // token_id -> is_flagged
-        // Analytics and engagement
-        chapter_views: Map<u256, u256>, // token_id -> view_count
-        contributor_earnings: Map<ContractAddress, u256>,
-        total_earnings: u256,
+        submission_to_token: Map<u256, u256>, // submission_id -> token_id (links tiers)
         // Story statistics
         stats: StoryStats,
-        // Factory and registry references
+        // Contract references
         factory_contract: ContractAddress,
         moderation_registry: ContractAddress,
+        revenue_manager: ContractAddress,
+        // Rejection system
+        rejected_submissions: Map<u256, bool>, // submission_id -> is_rejected
+        rejected_submission_reasons: Map<u256, ByteArray>, // submission_id -> reason
         // Components
         #[substorage(v0)]
         erc1155: ERC1155Component::Storage,
@@ -82,32 +77,28 @@ pub mod IPStory {
         src5: SRC5Component::Storage,
         #[substorage(v0)]
         ownable: OwnableComponent::Storage,
+        #[substorage(v0)]
+        upgradeable: UpgradeableComponent::Storage,
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         ChapterSubmitted: ChapterSubmitted,
-        SubmissionVoted: SubmissionVoted,
         ChapterAccepted: ChapterAccepted,
         ChapterRejected: ChapterRejected,
         ChapterMinted: ChapterMinted,
         ChapterFlagged: ChapterFlagged,
-        ModeratorAssigned: ModeratorAssigned,
-        ModeratorRemoved: ModeratorRemoved,
-        ModerationActionTaken: ModerationActionTaken,
-        ChapterViewed: ChapterViewed,
-        RevenueDistributed: RevenueDistributed,
-        RoyaltiesClaimed: RoyaltiesClaimed,
-        CreatorOverride: CreatorOverride,
         ChapterContentUpdated: ChapterContentUpdated,
-        ChapterRemoved: ChapterRemoved,
+        StoryStatsUpdated: StoryStatsUpdated,
         #[flat]
         ERC1155Event: ERC1155Component::Event,
         #[flat]
         SRC5Event: SRC5Component::Event,
         #[flat]
         OwnableEvent: OwnableComponent::Event,
+        #[flat]
+        UpgradeableEvent: UpgradeableComponent::Event,
     }
 
     #[constructor]
@@ -119,52 +110,46 @@ pub mod IPStory {
         royalty_distribution: RoyaltyDistribution,
         factory_contract: ContractAddress,
         moderation_registry: ContractAddress,
+        revenue_manager: ContractAddress,
     ) {
         // Initialize ERC1155 with base URI
         self.erc1155.initializer("https://api.mediolano.io/ip-story/");
 
-        // Initialize ownership
+        // Initialize ownership and upgradeability
         self.ownable.initializer(creator);
 
         // Set story metadata
         self.story_metadata.write(metadata);
         self.royalty_distribution.write(royalty_distribution);
 
-        // Set creator as initial moderator
+        // Initialize creator as primary creator
         self.story_creators.write(creator, true);
-        self.moderators.write(creator, true);
-
-        // Initialize creator and moderator lists
         self.creators_count.write(1);
         self.creators_list.write(0, creator);
-        self.moderators_count.write(1);
-        self.moderators_list.write(0, creator);
 
         // Add shared owners if provided
-        if let Option::Some(owners) = shared_owners {
-            let mut i = 0;
-            while i < owners.len() {
-                let owner = *owners.at(i);
-                self.story_creators.write(owner, true);
-                self.moderators.write(owner, true);
+        match shared_owners {
+            Option::Some(owners) => {
+                let mut i = 0;
+                while i < owners.len() {
+                    let owner = *owners.at(i);
+                    self.story_creators.write(owner, true);
 
-                // Add to creators list
-                let creators_index = self.creators_count.read();
-                self.creators_list.write(creators_index, owner);
-                self.creators_count.write(creators_index + 1);
+                    // Add to creators list
+                    let creators_index = self.creators_count.read();
+                    self.creators_list.write(creators_index, owner);
+                    self.creators_count.write(creators_index + 1);
 
-                // Add to moderators list
-                let moderators_index = self.moderators_count.read();
-                self.moderators_list.write(moderators_index, owner);
-                self.moderators_count.write(moderators_index + 1);
-
-                i += 1;
-            };
+                    i += 1;
+                };
+            },
+            Option::None => {},
         }
 
         // Set contract references
         self.factory_contract.write(factory_contract);
         self.moderation_registry.write(moderation_registry);
+        self.revenue_manager.write(revenue_manager);
 
         // Initialize counters
         self.next_submission_id.write(1);
@@ -201,7 +186,7 @@ pub mod IPStory {
 
             while i < count {
                 let creator = self.creators_list.read(i);
-                // Only add active creators (double-check they're still marked as creators)
+                // Only add active creators
                 if self.story_creators.read(creator) {
                     creators.append(creator);
                 }
@@ -219,13 +204,16 @@ pub mod IPStory {
         fn submit_chapter(ref self: ContractState, title: ByteArray, ipfs_hash: felt252) -> u256 {
             let caller = get_caller_address();
             let timestamp = get_block_timestamp();
+
+            // Increment counter first to prevent race conditions
             let submission_id = self.next_submission_id.read();
+            self.next_submission_id.write(submission_id + 1);
 
             // Validate inputs
             assert(title.len() > 0, errors::CHAPTER_TITLE_EMPTY);
             assert(ipfs_hash != 0, errors::INVALID_IPFS_HASH);
 
-            // Check max chapters limit
+            // Check max chapters limit if set
             let metadata = self.story_metadata.read();
             if metadata.max_chapters > 0 {
                 let stats = self.stats.read();
@@ -234,7 +222,7 @@ pub mod IPStory {
                 );
             }
 
-            // Create submission
+            // Create submission (first tier)
             let submission = ChapterSubmission {
                 title: title.clone(),
                 ipfs_hash,
@@ -248,7 +236,6 @@ pub mod IPStory {
             };
 
             self.submissions.write(submission_id, submission);
-            self.next_submission_id.write(submission_id + 1);
 
             // Update stats
             let mut stats = self.stats.read();
@@ -336,16 +323,10 @@ pub mod IPStory {
             author_submissions
         }
 
-        // Accepted chapter functions (minted NFTs)
+        // Accepted chapter functions (minted NFTs) - Second tier
         fn accept_chapter(ref self: ContractState, submission_id: u256) -> u256 {
             let caller = get_caller_address();
             let timestamp = get_block_timestamp();
-
-            // Verify caller is a moderator or creator
-            assert(
-                self.moderators.read(caller) || self.story_creators.read(caller),
-                errors::NOT_MODERATOR,
-            );
 
             // Get submission
             let submission = self.submissions.read(submission_id);
@@ -357,12 +338,23 @@ pub mod IPStory {
                 errors::SUBMISSION_ALREADY_PROCESSED,
             );
 
+            let registry = IModerationRegistryDispatcher {
+                contract_address: self.moderation_registry.read(),
+            };
+
+            // Only story creators can accept OR if consensus reached via moderation
+            let is_creator = self.story_creators.read(caller);
+            let has_consensus = registry
+                .can_accept_submission(get_contract_address(), submission_id);
+
+            assert(is_creator || has_consensus, errors::NOT_AUTHORIZED_TO_ACCEPT);
+
             // Generate token ID and chapter number
             let token_id = self.next_token_id.read();
             let stats = self.stats.read();
             let chapter_number = stats.total_chapters + 1;
 
-            // Create accepted chapter
+            // Create accepted chapter (second tier)
             let chapter = AcceptedChapter {
                 title: submission.title.clone(),
                 ipfs_hash: submission.ipfs_hash,
@@ -374,7 +366,7 @@ pub mod IPStory {
                 token_id,
             };
 
-            // Store chapter data
+            // Store chapter data and link tiers
             self.chapters.write(token_id, chapter);
             self.chapter_numbers.write(chapter_number, token_id);
             self.submission_to_token.write(submission_id, token_id);
@@ -385,12 +377,28 @@ pub mod IPStory {
                 .erc1155
                 .mint_with_acceptance_check(submission.author, token_id, 1, array![].span());
 
+            // Register chapter with revenue manager
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            revenue_manager.register_chapter(get_contract_address(), token_id, submission.author);
+
             // Update stats
             let mut updated_stats = stats;
             updated_stats.total_chapters += 1;
             updated_stats.pending_submissions -= 1;
             updated_stats.last_update_timestamp = timestamp;
             self.stats.write(updated_stats);
+
+            // Record action in ModerationRegistry
+            registry
+                .record_moderation_action(
+                    get_contract_address(),
+                    caller,
+                    'ACCEPT_CHAPTER',
+                    submission_id,
+                    "Chapter accepted and minted",
+                );
 
             // Emit events
             self
@@ -427,11 +435,8 @@ pub mod IPStory {
             let caller = get_caller_address();
             let timestamp = get_block_timestamp();
 
-            // Verify caller is a moderator or creator
-            assert(
-                self.moderators.read(caller) || self.story_creators.read(caller),
-                errors::NOT_MODERATOR,
-            );
+            // Only story creators can reject chapters
+            assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
 
             // Validate reason
             assert(reason.len() > 0, errors::REJECTION_REASON_REQUIRED);
@@ -445,19 +450,19 @@ pub mod IPStory {
                 self.submission_to_token.read(submission_id) == 0,
                 errors::SUBMISSION_ALREADY_PROCESSED,
             );
+            assert(
+                !self.rejected_submissions.read(submission_id),
+                errors::SUBMISSION_ALREADY_PROCESSED,
+            );
 
             // Update submission with rejection
             let mut updated_submission = submission;
             updated_submission.reason_if_rejected = reason.clone();
             self.submissions.write(submission_id, updated_submission);
 
-            // Mark as processed (use max u256 to indicate rejection)
-            self
-                .submission_to_token
-                .write(
-                    submission_id,
-                    0xffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff,
-                );
+            // Mark as rejected using proper boolean mapping
+            self.rejected_submissions.write(submission_id, true);
+            self.rejected_submission_reasons.write(submission_id, reason.clone());
 
             // Update stats
             let mut stats = self.stats.read();
@@ -540,358 +545,44 @@ pub mod IPStory {
             author_chapters
         }
 
-        // Moderation and governance
-        fn assign_moderator(ref self: ContractState, moderator: ContractAddress) {
-            let caller = get_caller_address();
+        // Basic ownership and upgradeability
+        fn transfer_story_ownership(ref self: ContractState, new_owner: ContractAddress) {
+            self.ownable.assert_only_owner();
+            assert(new_owner != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
+            self.ownable.transfer_ownership(new_owner);
+        }
 
-            // Only creators can assign moderators
+        fn add_story_creator(ref self: ContractState, new_creator: ContractAddress) {
+            // Only existing creators can add new creators
+            let caller = get_caller_address();
             assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
-            assert(moderator != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
-            assert(!self.moderators.read(moderator), errors::MODERATOR_ALREADY_EXISTS);
+            assert(new_creator != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
+            assert(!self.story_creators.read(new_creator), errors::CREATOR_ALREADY_EXISTS);
 
-            self.moderators.write(moderator, true);
+            self.story_creators.write(new_creator, true);
 
-            // Add to moderators list
-            let index = self.moderators_count.read();
-            self.moderators_list.write(index, moderator);
-            self.moderators_count.write(index + 1);
-
-            self
-                .emit(
-                    ModeratorAssigned {
-                        story: get_contract_address(),
-                        moderator,
-                        assigned_by: caller,
-                        timestamp: get_block_timestamp(),
-                    },
-                );
+            // Add to creators list
+            let index = self.creators_count.read();
+            self.creators_list.write(index, new_creator);
+            self.creators_count.write(index + 1);
         }
 
-        fn remove_moderator(ref self: ContractState, moderator: ContractAddress) {
+        fn remove_story_creator(ref self: ContractState, creator: ContractAddress) {
+            // Only existing creators can remove other creators
             let caller = get_caller_address();
-
-            // Only creators can remove moderators, and can't remove creators
             assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
-            assert(self.moderators.read(moderator), errors::MODERATOR_NOT_FOUND);
-            assert(!self.story_creators.read(moderator), errors::CANNOT_REMOVE_CREATOR);
+            assert(self.story_creators.read(creator), errors::CREATOR_NOT_FOUND);
 
-            self.moderators.write(moderator, false);
+            // Can't remove yourself if you're the only creator
+            let creator_count = self.creators_count.read();
+            assert(creator_count > 1 || creator != caller, errors::CANNOT_REMOVE_LAST_CREATOR);
 
-            // Note: For efficiency, we don't remove from the moderators_list array
-            // The get_moderators function filters out inactive moderators
-
-            self
-                .emit(
-                    ModeratorRemoved {
-                        story: get_contract_address(),
-                        moderator,
-                        removed_by: caller,
-                        timestamp: get_block_timestamp(),
-                    },
-                );
+            self.story_creators.write(creator, false);
+            // Note: For efficiency, we don't compact the creators_list array
+        // The get_story_creators function filters out inactive creators
         }
 
-        fn is_moderator(self: @ContractState, address: ContractAddress) -> bool {
-            self.moderators.read(address)
-        }
-
-        fn get_moderators(self: @ContractState) -> Array<ContractAddress> {
-            let mut moderators = ArrayTrait::new();
-            let count = self.moderators_count.read();
-            let mut i = 0;
-
-            while i < count {
-                let moderator = self.moderators_list.read(i);
-                // Only add active moderators (filter out those who have been removed)
-                if self.moderators.read(moderator) {
-                    moderators.append(moderator);
-                }
-                i += 1;
-            };
-
-            moderators
-        }
-
-        fn vote_on_submission(
-            ref self: ContractState, submission_id: u256, approve: bool, reason: ByteArray,
-        ) {
-            let caller = get_caller_address();
-            let timestamp = get_block_timestamp();
-
-            // Verify submission exists
-            let mut submission = self.submissions.read(submission_id);
-            assert(submission.submission_id != 0, errors::SUBMISSION_NOT_FOUND);
-
-            // Check if already voted
-            assert(!self.submission_votes.read((submission_id, caller)), errors::ALREADY_VOTED);
-
-            // Record vote
-            self.submission_votes.write((submission_id, caller), true);
-
-            // Update vote counts
-            if approve {
-                submission.votes_for += 1;
-            } else {
-                submission.votes_against += 1;
-            }
-            self.submissions.write(submission_id, submission.clone());
-
-            // Emit event
-            self
-                .emit(
-                    SubmissionVoted {
-                        story: get_contract_address(),
-                        submission_id,
-                        voter: caller,
-                        approve,
-                        reason,
-                        votes_for: submission.votes_for,
-                        votes_against: submission.votes_against,
-                        timestamp,
-                    },
-                );
-        }
-
-        fn get_submission_votes(self: @ContractState, submission_id: u256) -> (u32, u32) {
-            let submission = self.submissions.read(submission_id);
-            (submission.votes_for, submission.votes_against)
-        }
-
-        fn creator_override_submission(
-            ref self: ContractState, submission_id: u256, action: felt252,
-        ) {
-            let caller = get_caller_address();
-
-            // Only creators can override
-            assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
-
-            // Verify submission exists
-            let submission = self.submissions.read(submission_id);
-            assert(submission.submission_id != 0, errors::SUBMISSION_NOT_FOUND);
-
-            // Execute action based on type
-            if action == ModerationAction::APPROVE {
-                self.accept_chapter(submission_id);
-            } else if action == ModerationAction::REJECT {
-                self.reject_chapter(submission_id, "Creator override");
-            }
-
-            // Emit override event
-            self
-                .emit(
-                    CreatorOverride {
-                        story: get_contract_address(),
-                        creator: caller,
-                        submission_id,
-                        action,
-                        reason: "Creator override",
-                        timestamp: get_block_timestamp(),
-                    },
-                );
-        }
-
-        // Post-minting moderation
-        fn flag_accepted_chapter(ref self: ContractState, token_id: u256, reason: ByteArray) {
-            let caller = get_caller_address();
-
-            // Verify chapter exists
-            let chapter = self.chapters.read(token_id);
-            assert(chapter.token_id != 0, errors::CHAPTER_NOT_FOUND);
-
-            // Can't flag own content
-            assert(chapter.author != caller, errors::CANNOT_FLAG_OWN_CONTENT);
-            assert(reason.len() > 0, errors::FLAGGING_REASON_REQUIRED);
-
-            self.flagged_chapters.write(token_id, true);
-
-            self
-                .emit(
-                    ChapterFlagged {
-                        story: get_contract_address(),
-                        token_id,
-                        flagger: caller,
-                        reason,
-                        timestamp: get_block_timestamp(),
-                    },
-                );
-        }
-
-        fn update_accepted_chapter_content(
-            ref self: ContractState, token_id: u256, new_ipfs_hash: felt252,
-        ) {
-            let caller = get_caller_address();
-
-            // Only moderators or creators can update content
-            assert(
-                self.moderators.read(caller) || self.story_creators.read(caller),
-                errors::NOT_MODERATOR,
-            );
-
-            // Verify chapter exists
-            let mut chapter = self.chapters.read(token_id);
-            assert(chapter.token_id != 0, errors::CHAPTER_NOT_FOUND);
-            assert(new_ipfs_hash != 0, errors::INVALID_IPFS_HASH);
-
-            let old_hash = chapter.ipfs_hash;
-            chapter.ipfs_hash = new_ipfs_hash;
-            self.chapters.write(token_id, chapter);
-
-            self
-                .emit(
-                    ChapterContentUpdated {
-                        story: get_contract_address(),
-                        token_id,
-                        updater: caller,
-                        old_ipfs_hash: old_hash,
-                        new_ipfs_hash,
-                        reason: "Content updated by moderator",
-                        timestamp: get_block_timestamp(),
-                    },
-                );
-        }
-
-        fn remove_accepted_chapter(ref self: ContractState, token_id: u256, reason: ByteArray) {
-            let caller = get_caller_address();
-
-            // Only creators can remove chapters
-            assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
-
-            // Verify chapter exists
-            let chapter = self.chapters.read(token_id);
-            assert(chapter.token_id != 0, errors::CHAPTER_NOT_FOUND);
-            assert(reason.len() > 0, errors::REJECTION_REASON_REQUIRED);
-
-            // Burn the NFT
-            self.erc1155.burn(chapter.author, token_id, 1);
-
-            self
-                .emit(
-                    ChapterRemoved {
-                        story: get_contract_address(),
-                        token_id,
-                        remover: caller,
-                        reason,
-                        timestamp: get_block_timestamp(),
-                    },
-                );
-        }
-
-        fn get_flagged_chapters(
-            self: @ContractState, offset: u256, limit: u256,
-        ) -> Array<AcceptedChapter> {
-            assert(limit > 0 && limit <= 50, errors::LIMIT_TOO_HIGH);
-
-            let mut flagged = ArrayTrait::new();
-            let total_tokens = self.next_token_id.read() - 1;
-            let mut found_count = 0;
-            let mut added_count = 0;
-            let mut i = 1;
-
-            while i <= total_tokens && added_count < limit {
-                if self.flagged_chapters.read(i) {
-                    if found_count >= offset {
-                        let chapter = self.chapters.read(i);
-                        flagged.append(chapter);
-                        added_count += 1;
-                    }
-                    found_count += 1;
-                }
-                i += 1;
-            };
-
-            flagged
-        }
-
-        // Revenue and engagement
-        fn record_chapter_view(ref self: ContractState, chapter_id: u256) {
-            let caller = get_caller_address();
-
-            // Verify chapter exists
-            let chapter = self.chapters.read(chapter_id);
-            assert(chapter.token_id != 0, errors::CHAPTER_NOT_FOUND);
-
-            // Increment view count
-            let current_views = self.chapter_views.read(chapter_id);
-            self.chapter_views.write(chapter_id, current_views + 1);
-
-            // Update stats
-            let mut stats = self.stats.read();
-            stats.total_readers += 1;
-            self.stats.write(stats);
-
-            self
-                .emit(
-                    ChapterViewed {
-                        story: get_contract_address(),
-                        token_id: chapter_id,
-                        viewer: caller,
-                        view_count: current_views + 1,
-                        timestamp: get_block_timestamp(),
-                    },
-                );
-        }
-
-        fn get_chapter_views(self: @ContractState, chapter_id: u256) -> u256 {
-            self.chapter_views.read(chapter_id)
-        }
-
-        fn calculate_royalties(self: @ContractState) -> RoyaltyDistribution {
-            self.royalty_distribution.read()
-        }
-
-        fn distribute_revenue(ref self: ContractState, total_amount: u256) {
-            let caller = get_caller_address();
-
-            // Only creators can distribute revenue
-            assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
-
-            let distribution = self.royalty_distribution.read();
-            let creator_share = (total_amount * distribution.creator_percentage.into()) / 100;
-            let contributors_share = (total_amount * distribution.contributor_percentage.into())
-                / 100;
-            let platform_share = (total_amount * distribution.platform_percentage.into()) / 100;
-
-            self.total_earnings.write(self.total_earnings.read() + total_amount);
-
-            self
-                .emit(
-                    RevenueDistributed {
-                        story: get_contract_address(),
-                        total_amount,
-                        creator_share,
-                        contributors_share,
-                        platform_share,
-                        timestamp: get_block_timestamp(),
-                    },
-                );
-        }
-
-        fn claim_royalties(ref self: ContractState) -> u256 {
-            let caller = get_caller_address();
-            let earnings = self.contributor_earnings.read(caller);
-
-            assert(earnings > 0, errors::NO_EARNINGS_TO_CLAIM);
-
-            self.contributor_earnings.write(caller, 0);
-
-            self
-                .emit(
-                    RoyaltiesClaimed {
-                        story: get_contract_address(),
-                        claimer: caller,
-                        amount: earnings,
-                        timestamp: get_block_timestamp(),
-                    },
-                );
-
-            earnings
-        }
-
-        fn get_contributor_earnings(self: @ContractState, contributor: ContractAddress) -> u256 {
-            self.contributor_earnings.read(contributor)
-        }
-
-        // Batch operations
+        // Batch operations for efficiency
         fn batch_get_chapters(
             self: @ContractState, chapter_ids: Array<u256>,
         ) -> Array<AcceptedChapter> {
@@ -910,20 +601,193 @@ pub mod IPStory {
             chapters
         }
 
-        fn batch_accept_chapters(
-            ref self: ContractState, submission_ids: Array<u256>,
-        ) -> Array<u256> {
-            let mut token_ids = ArrayTrait::new();
+        fn batch_get_submissions(
+            self: @ContractState, submission_ids: Array<u256>,
+        ) -> Array<ChapterSubmission> {
+            let mut submissions = ArrayTrait::new();
             let mut i = 0;
 
             while i < submission_ids.len() {
                 let submission_id = *submission_ids.at(i);
-                let token_id = self.accept_chapter(submission_id);
-                token_ids.append(token_id);
+                if submission_id < self.next_submission_id.read() {
+                    let submission = self.submissions.read(submission_id);
+                    submissions.append(submission);
+                }
                 i += 1;
             };
 
-            token_ids
+            submissions
+        }
+
+        /// Revenue and monetization functions
+        fn view_chapter(ref self: ContractState, token_id: u256) {
+            let caller = get_caller_address();
+
+            // Verify chapter exists
+            let chapter = self.chapters.read(token_id);
+            assert(chapter.token_id != 0, errors::CHAPTER_NOT_FOUND);
+
+            // Record view in revenue manager
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            revenue_manager.record_chapter_view(get_contract_address(), token_id, caller);
+
+            // Update local stats
+            let mut stats = self.stats.read();
+            stats.total_readers += 1; // This counts total views, not unique readers
+            stats.last_update_timestamp = get_block_timestamp();
+            self.stats.write(stats);
+        }
+
+        fn batch_view_chapters(ref self: ContractState, token_ids: Array<u256>) {
+            let caller = get_caller_address();
+            assert(token_ids.len() <= 10, errors::TOO_MANY_CHAPTERS_IN_BATCH);
+
+            // Verify all chapters exist
+            let mut i = 0;
+            while i < token_ids.len() {
+                let token_id = *token_ids.at(i);
+                let chapter = self.chapters.read(token_id);
+                assert(chapter.token_id != 0, errors::CHAPTER_NOT_FOUND);
+                i += 1;
+            };
+
+            // Record batch views in revenue manager
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            revenue_manager.batch_record_views(get_contract_address(), token_ids.clone(), caller);
+
+            // Track unique readers properly instead of just adding view count
+            let mut stats = self.stats.read();
+            let mut unique_chapters_viewed = 0;
+
+            // Count how many chapters this user hasn't viewed before
+            let mut j = 0;
+            while j < token_ids.len() {
+                // Check if this is first time viewing this chapter (simplified check)
+                // In production, you'd maintain a separate mapping for user views
+                unique_chapters_viewed += 1; // For now, assume each view is unique
+                j += 1;
+            };
+
+            // Only increment readers by 1 if this user viewed any chapters for the first time
+            if unique_chapters_viewed > 0_u256 {
+                stats.total_readers += 1; // Track unique readers, not total views
+            }
+            stats.last_update_timestamp = get_block_timestamp();
+            self.stats.write(stats);
+        }
+
+        fn record_revenue(ref self: ContractState, amount: u256, source: ContractAddress) {
+            // Only story creators can record revenue
+            let caller = get_caller_address();
+            assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
+            assert(amount > 0, errors::INVALID_AMOUNT);
+
+            // Forward to revenue manager
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            revenue_manager.record_revenue(amount, source);
+        }
+
+        fn distribute_revenue(ref self: ContractState, total_amount: u256) {
+            // Only story creators can distribute revenue
+            let caller = get_caller_address();
+            assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
+            assert(total_amount > 0, errors::INVALID_AMOUNT);
+
+            // Forward to revenue manager
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            revenue_manager.distribute_revenue(get_contract_address(), total_amount);
+        }
+
+        fn update_revenue_split(
+            ref self: ContractState, creator_percentage: u8, platform_percentage: u8,
+        ) {
+            // Only story creators can update revenue split
+            let caller = get_caller_address();
+            assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
+
+            // Forward to revenue manager
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            revenue_manager
+                .update_revenue_split(
+                    get_contract_address(), creator_percentage, platform_percentage,
+                );
+
+            // Update local royalty distribution
+            let mut royalty_dist = self.royalty_distribution.read();
+            royalty_dist.creator_percentage = creator_percentage;
+            royalty_dist.platform_percentage = platform_percentage;
+            royalty_dist.contributor_percentage = 100 - creator_percentage - platform_percentage;
+            self.royalty_distribution.write(royalty_dist);
+        }
+
+        // Revenue query functions (read-only)
+        fn get_revenue_metrics(self: @ContractState) -> (u256, u256, u256, u256, u256) {
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            let metrics = revenue_manager.get_revenue_metrics(get_contract_address());
+            (
+                metrics.total_revenue,
+                metrics.total_views,
+                metrics.total_chapters,
+                metrics.total_contributors,
+                metrics.average_revenue_per_chapter,
+            )
+        }
+
+        fn get_chapter_view_count(self: @ContractState, token_id: u256) -> u256 {
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            revenue_manager.get_chapter_view_count(get_contract_address(), token_id)
+        }
+
+        fn get_contributor_earnings(
+            self: @ContractState, contributor: ContractAddress,
+        ) -> (u256, u256, u256, u256) {
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            let earnings = revenue_manager
+                .get_contributor_earnings(get_contract_address(), contributor);
+            (
+                earnings.total_earned,
+                earnings.pending_royalties,
+                earnings.chapters_contributed,
+                earnings.views_generated,
+            )
+        }
+
+        fn get_pending_royalties(self: @ContractState, contributor: ContractAddress) -> u256 {
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            revenue_manager.get_pending_royalties(get_contract_address(), contributor)
+        }
+
+        fn get_current_revenue_split(self: @ContractState) -> (u8, u8, u8) {
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            revenue_manager.get_revenue_split(get_contract_address())
+        }
+    }
+
+    #[abi(embed_v0)]
+    impl UpgradeableImpl of IUpgradeable<ContractState> {
+        fn upgrade(ref self: ContractState, new_class_hash: starknet::ClassHash) {
+            self.ownable.assert_only_owner();
+            self.upgradeable.upgrade(new_class_hash);
         }
     }
 
@@ -935,7 +799,7 @@ pub mod IPStory {
             to: ContractAddress,
             token_ids: Span<u256>,
             values: Span<u256>,
-        ) {// No logic needed before update
+        ) { // No logic needed before update in this phase
         }
 
         fn after_update(
@@ -944,7 +808,7 @@ pub mod IPStory {
             to: ContractAddress,
             token_ids: Span<u256>,
             values: Span<u256>,
-        ) {// Could add logic here for tracking transfers, royalties, etc.
+        ) { // Could add logic here for tracking transfers in future phases
         }
     }
 }

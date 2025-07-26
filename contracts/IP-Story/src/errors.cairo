@@ -21,46 +21,59 @@ pub mod errors {
     // Story ownership and creator errors
     pub const NOT_STORY_CREATOR: felt252 = 'Not a story creator';
     pub const CREATOR_ALREADY_EXISTS: felt252 = 'Creator already exists';
+    pub const CREATOR_NOT_FOUND: felt252 = 'Creator not found';
+    pub const CANNOT_REMOVE_LAST_CREATOR: felt252 = 'Cannot remove last creator';
     pub const INVALID_SHARED_OWNERS: felt252 = 'Invalid shared owners list';
     pub const OWNERS_LIST_TOO_LONG: felt252 = 'Too many shared owners';
 
-    // Chapter submission errors
-    pub const INVALID_IPFS_HASH: felt252 = 'Invalid IPFS hash';
-    pub const SUBMISSION_NOT_FOUND: felt252 = 'Submission not found';
-    pub const SUBMISSION_ALREADY_PROCESSED: felt252 = 'Submission already processed';
+    // Chapter submission and acceptance errors
     pub const CHAPTER_TITLE_EMPTY: felt252 = 'Chapter title cannot be empty';
-    pub const DUPLICATE_SUBMISSION: felt252 = 'Duplicate submission detected';
-    pub const SUBMISSION_UNDER_REVIEW: felt252 = 'Submission under review';
-
-    // Chapter acceptance/rejection errors
+    pub const INVALID_IPFS_HASH: felt252 = 'Invalid IPFS hash provided';
+    pub const SUBMISSION_NOT_FOUND: felt252 = 'Chapter submission not found';
+    pub const SUBMISSION_ALREADY_PROCESSED: felt252 = 'Submission already processed';
     pub const CHAPTER_NOT_FOUND: felt252 = 'Chapter not found';
-    pub const CHAPTER_ALREADY_EXISTS: felt252 = 'Chapter already exists';
-    pub const INVALID_TOKEN_ID: felt252 = 'Invalid token ID';
-    pub const CHAPTER_ALREADY_MINTED: felt252 = 'Chapter already minted';
     pub const REJECTION_REASON_REQUIRED: felt252 = 'Rejection reason required';
 
     // Moderation errors
     pub const NOT_MODERATOR: felt252 = 'Not a moderator';
     pub const MODERATOR_ALREADY_EXISTS: felt252 = 'Moderator already exists';
     pub const MODERATOR_NOT_FOUND: felt252 = 'Moderator not found';
-    pub const CANNOT_REMOVE_CREATOR: felt252 = 'Cannot remove story creator';
-    pub const INSUFFICIENT_MODERATOR_VOTES: felt252 = 'Insufficient moderator votes';
+    pub const CANNOT_REMOVE_CREATOR: felt252 = 'Cannot remove creator';
     pub const ALREADY_VOTED: felt252 = 'Already voted on submission';
-    pub const VOTING_PERIOD_ENDED: felt252 = 'Voting period has ended';
-    pub const INVALID_MODERATION_ACTION: felt252 = 'Invalid moderation action';
+    pub const VOTING_NOT_OPEN: felt252 = 'Voting not open';
+    pub const INSUFFICIENT_VOTES: felt252 = 'Insufficient votes';
+    pub const CONTENT_FLAGGED: felt252 = 'Content is flagged';
+    pub const NOT_AUTHORIZED_TO_ACCEPT: felt252 = 'Not authorized to accept';
+    pub const CONSENSUS_NOT_REACHED: felt252 = 'Consensus not reached';
 
     // Content moderation errors
-    pub const CONTENT_FLAGGED: felt252 = 'Content has been flagged';
     pub const CONTENT_REMOVED: felt252 = 'Content has been removed';
     pub const FLAGGING_REASON_REQUIRED: felt252 = 'Flagging reason required';
     pub const CANNOT_FLAG_OWN_CONTENT: felt252 = 'Cannot flag own content';
 
-    // Revenue and royalty errors
+    // Royalty errors
     pub const INVALID_ROYALTY_PERCENTAGE: felt252 = 'Invalid royalty percentage';
     pub const ROYALTY_TOTAL_EXCEEDS_100: felt252 = 'Total royalty exceeds 100%';
     pub const NO_EARNINGS_TO_CLAIM: felt252 = 'No earnings to claim';
     pub const REVENUE_DISTRIBUTION_FAILED: felt252 = 'Revenue distribution failed';
     pub const INSUFFICIENT_BALANCE: felt252 = 'Insufficient balance';
+
+    // Revenue-specific errors
+    pub const REVENUE_NOT_INITIALIZED: felt252 = 'Revenue manager not initialized';
+    pub const CHAPTER_NOT_REGISTERED: felt252 = 'Chapter not registered';
+    pub const INVALID_AMOUNT: felt252 = 'Amount must be greater than 0';
+    pub const ONLY_CREATORS_CAN_DISTRIBUTE: felt252 = 'Only creator can distribute';
+    pub const NO_ROYALTIES_TO_CLAIM: felt252 = 'No royalties to claim';
+    pub const TOKEN_TRANSFER_FAILED: felt252 = 'Token transfer failed';
+    pub const INVALID_PERCENTAGES: felt252 = 'Invalid percentages';
+    pub const ALREADY_INITIALIZED: felt252 = 'Already initialized';
+    pub const TOO_MANY_CHAPTERS_IN_BATCH: felt252 = 'Too many chapters in batch';
+    pub const ARRAYS_LENGTH_MISMATCH: felt252 = 'Arrays length mismatch';
+    pub const TOO_MANY_RECIPIENTS: felt252 = 'Too many recipients in batch';
+    pub const INVALID_STORY_ID: felt252 = 'Invalid story ID';
+    pub const NO_VIEWS_TO_DISTRIBUTE: felt252 = 'No views, nothing to distribute';
+    pub const ONLY_CREATORS_CAN_UPDATE: felt252 = 'Only story creators can update';
+    pub const ONLY_STORIES_CAN_RECORD_VIEWS: felt252 = 'Only story contracts can record';
 
     // Pagination and query errors
     pub const INVALID_PAGINATION_PARAMS: felt252 = 'Invalid pagination params';
@@ -86,6 +99,8 @@ pub mod errors {
 
     // Registry errors
     pub const STORY_NOT_REGISTERED: felt252 = 'Story not registered';
+    pub const STORY_ALREADY_REGISTERED: felt252 = 'Story already registered';
+    pub const ONLY_FACTORY_CAN_REGISTER: felt252 = 'Only factory can register';
     pub const REGISTRY_ACCESS_DENIED: felt252 = 'Registry access denied';
     pub const MODERATION_HISTORY_NOT_FOUND: felt252 = 'Moderation history not found';
 

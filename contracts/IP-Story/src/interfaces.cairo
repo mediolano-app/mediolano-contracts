@@ -3,9 +3,11 @@ use core::array::Array;
 use core::byte_array::ByteArray;
 use starknet::ContractAddress;
 use super::types::{
-    StoryMetadata, ChapterSubmission, AcceptedChapter, StoryStats, ModerationVote,
-    RoyaltyDistribution,
+    StoryMetadata, ChapterSubmission, AcceptedChapter, StoryStats, RoyaltyDistribution,
+    ModerationVote, RevenueMetrics, ContributorEarnings, ChapterRevenue,
+    RevenueDistribution as RevenueDistributionType,
 };
+
 
 /// Interface for the Story Factory Contract
 #[starknet::interface]
@@ -61,43 +63,44 @@ pub trait IIPStory<TContractState> {
         self: @TContractState, author: ContractAddress, offset: u256, limit: u256,
     ) -> Array<AcceptedChapter>;
 
-    // Moderation and governance
-    fn assign_moderator(ref self: TContractState, moderator: ContractAddress);
-    fn remove_moderator(ref self: TContractState, moderator: ContractAddress);
-    fn is_moderator(self: @TContractState, address: ContractAddress) -> bool;
-    fn get_moderators(self: @TContractState) -> Array<ContractAddress>;
+    // Basic ownership and upgradeability
+    fn transfer_story_ownership(ref self: TContractState, new_owner: ContractAddress);
+    fn add_story_creator(ref self: TContractState, new_creator: ContractAddress);
+    fn remove_story_creator(ref self: TContractState, creator: ContractAddress);
 
-    fn vote_on_submission(
-        ref self: TContractState, submission_id: u256, approve: bool, reason: ByteArray,
-    );
-    fn get_submission_votes(
-        self: @TContractState, submission_id: u256,
-    ) -> (u32, u32); // (votes_for, votes_against)
-    fn creator_override_submission(ref self: TContractState, submission_id: u256, action: felt252);
-
-    // Post-minting moderation
-    fn flag_accepted_chapter(ref self: TContractState, token_id: u256, reason: ByteArray);
-    fn update_accepted_chapter_content(
-        ref self: TContractState, token_id: u256, new_ipfs_hash: felt252,
-    );
-    fn remove_accepted_chapter(ref self: TContractState, token_id: u256, reason: ByteArray);
-    fn get_flagged_chapters(
-        self: @TContractState, offset: u256, limit: u256,
-    ) -> Array<AcceptedChapter>;
-
-    // Revenue and engagement
-    fn record_chapter_view(ref self: TContractState, chapter_id: u256);
-    fn get_chapter_views(self: @TContractState, chapter_id: u256) -> u256;
-    fn calculate_royalties(self: @TContractState) -> RoyaltyDistribution;
-    fn distribute_revenue(ref self: TContractState, total_amount: u256);
-    fn claim_royalties(ref self: TContractState) -> u256;
-    fn get_contributor_earnings(self: @TContractState, contributor: ContractAddress) -> u256;
-
-    // Batch operations
+    // Batch operations for efficiency
     fn batch_get_chapters(
         self: @TContractState, chapter_ids: Array<u256>,
     ) -> Array<AcceptedChapter>;
-    fn batch_accept_chapters(ref self: TContractState, submission_ids: Array<u256>) -> Array<u256>;
+    fn batch_get_submissions(
+        self: @TContractState, submission_ids: Array<u256>,
+    ) -> Array<ChapterSubmission>;
+
+    // Revenue and monetization functions (Story contract calls to Revenue Manager)
+    fn view_chapter(ref self: TContractState, token_id: u256);
+    fn batch_view_chapters(ref self: TContractState, token_ids: Array<u256>);
+    fn record_revenue(ref self: TContractState, amount: u256, source: ContractAddress);
+    fn distribute_revenue(ref self: TContractState, total_amount: u256);
+    fn update_revenue_split(
+        ref self: TContractState, creator_percentage: u8, platform_percentage: u8,
+    );
+
+    // Revenue query functions (read-only)
+    fn get_revenue_metrics(
+        self: @TContractState,
+    ) -> (
+        u256, u256, u256, u256, u256,
+    ); // (total_revenue, total_views, total_chapters, total_contributors, avg_revenue_per_chapter)
+    fn get_chapter_view_count(self: @TContractState, token_id: u256) -> u256;
+    fn get_contributor_earnings(
+        self: @TContractState, contributor: ContractAddress,
+    ) -> (
+        u256, u256, u256, u256,
+    ); // (total_earned, pending_royalties, chapters_contributed, views_generated)
+    fn get_pending_royalties(self: @TContractState, contributor: ContractAddress) -> u256;
+    fn get_current_revenue_split(
+        self: @TContractState,
+    ) -> (u8, u8, u8); // (creator, contributors, platform)
 }
 
 /// Interface for Moderation Registry
@@ -114,6 +117,50 @@ pub trait IModerationRegistry<TContractState> {
         ref self: TContractState, story_contract: ContractAddress, moderator: ContractAddress,
     );
 
+    // Submission voting system
+    fn vote_on_submission(
+        ref self: TContractState,
+        story_contract: ContractAddress,
+        submission_id: u256,
+        approve: bool,
+        reason: ByteArray,
+    );
+    fn get_submission_votes(
+        self: @TContractState, story_contract: ContractAddress, submission_id: u256,
+    ) -> (u32, u32); // (votes_for, votes_against)
+    fn can_accept_submission(
+        self: @TContractState, story_contract: ContractAddress, submission_id: u256,
+    ) -> bool;
+    fn creator_override_submission(
+        ref self: TContractState,
+        story_contract: ContractAddress,
+        submission_id: u256,
+        action: felt252, // 'ACCEPT' or 'REJECT'
+        reason: ByteArray,
+    );
+
+    // Post-minting moderation
+    fn flag_accepted_chapter(
+        ref self: TContractState,
+        story_contract: ContractAddress,
+        token_id: u256,
+        reason: ByteArray,
+    );
+    fn vote_on_flagged_chapter(
+        ref self: TContractState,
+        story_contract: ContractAddress,
+        token_id: u256,
+        action: felt252, // 'HIDE', 'REMOVE', 'APPROVE'
+        reason: ByteArray,
+    );
+    fn resolve_flagged_chapter(
+        ref self: TContractState,
+        story_contract: ContractAddress,
+        token_id: u256,
+        final_action: felt252,
+        reason: ByteArray,
+    );
+
     // Query functions
     fn is_story_moderator(
         self: @TContractState, story_contract: ContractAddress, moderator: ContractAddress,
@@ -124,6 +171,9 @@ pub trait IModerationRegistry<TContractState> {
     fn get_moderated_stories(
         self: @TContractState, moderator: ContractAddress,
     ) -> Array<ContractAddress>;
+    fn get_submission_voting_details(
+        self: @TContractState, story_contract: ContractAddress, submission_id: u256,
+    ) -> ModerationVote;
 
     // Moderation actions and history
     fn record_moderation_action(
@@ -137,4 +187,81 @@ pub trait IModerationRegistry<TContractState> {
     fn get_moderation_history(
         self: @TContractState, story_contract: ContractAddress, offset: u256, limit: u256,
     ) -> Array<ModerationVote>;
+}
+
+/// Interface for Revenue Management
+#[starknet::interface]
+pub trait IRevenueManager<TContractState> {
+    // Story registration
+    fn register_story(
+        ref self: TContractState,
+        story_id: ContractAddress,
+        creator: ContractAddress,
+        creator_percentage: u8,
+        platform_percentage: u8,
+        payment_token: ContractAddress,
+    );
+    fn add_story_creator(
+        ref self: TContractState, story_id: ContractAddress, creator: ContractAddress,
+    );
+    fn register_chapter(
+        ref self: TContractState,
+        story_id: ContractAddress,
+        token_id: u256,
+        author: ContractAddress,
+    );
+    fn record_chapter_view(
+        ref self: TContractState,
+        story_id: ContractAddress,
+        chapter_id: u256,
+        viewer: ContractAddress,
+    );
+    fn record_revenue(ref self: TContractState, amount: u256, source: ContractAddress);
+
+    // Royalty distribution
+    fn calculate_royalties(
+        self: @TContractState, story_id: ContractAddress,
+    ) -> RevenueDistributionType;
+    fn distribute_revenue(ref self: TContractState, story_id: ContractAddress, total_amount: u256);
+    fn claim_royalties(ref self: TContractState, story_id: ContractAddress) -> u256;
+
+    // Getters
+    fn get_revenue_metrics(self: @TContractState, story_id: ContractAddress) -> RevenueMetrics;
+    fn get_chapter_revenue(
+        self: @TContractState, story_id: ContractAddress, token_id: u256,
+    ) -> ChapterRevenue;
+    fn get_contributor_earnings(
+        self: @TContractState, story_id: ContractAddress, contributor: ContractAddress,
+    ) -> ContributorEarnings;
+    fn get_pending_royalties(
+        self: @TContractState, story_id: ContractAddress, contributor: ContractAddress,
+    ) -> u256;
+    fn get_chapter_view_count(
+        self: @TContractState, story_id: ContractAddress, token_id: u256,
+    ) -> u256;
+
+    // Revenue configuration per storyy
+    fn update_revenue_split(
+        ref self: TContractState,
+        story_id: ContractAddress,
+        creator_percentage: u8,
+        platform_percentage: u8,
+    );
+    fn get_revenue_split(
+        self: @TContractState, story_id: ContractAddress,
+    ) -> (u8, u8, u8); // (creator, contributors, platform)
+
+    // Batch operations
+    fn batch_record_views(
+        ref self: TContractState,
+        story_id: ContractAddress,
+        chapter_ids: Array<u256>,
+        viewer: ContractAddress,
+    );
+    fn batch_distribute_to_contributors(
+        ref self: TContractState,
+        story_id: ContractAddress,
+        contributors: Array<ContractAddress>,
+        amounts: Array<u256>,
+    );
 }

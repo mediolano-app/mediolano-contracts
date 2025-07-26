@@ -3,7 +3,6 @@
 #[starknet::contract]
 pub mod IPStoryFactory {
     use core::array::ArrayTrait;
-    use core::byte_array::ByteArray;
     use starknet::{
         ContractAddress, ClassHash, get_caller_address, get_block_timestamp, contract_address_const,
         syscalls::deploy_syscall,
@@ -13,7 +12,8 @@ pub mod IPStoryFactory {
         StoragePointerWriteAccess,
     };
     use super::super::{
-        interfaces::IIPStoryFactory, types::{StoryMetadata, RoyaltyDistribution}, errors::errors,
+        interfaces::{IIPStoryFactory, IRevenueManagerDispatcher, IRevenueManagerDispatcherTrait},
+        types::{StoryMetadata, RoyaltyDistribution}, errors::errors,
         events::{StoryCreated, StoryUpdated},
     };
     use openzeppelin::access::ownable::OwnableComponent;
@@ -43,6 +43,7 @@ pub mod IPStoryFactory {
         // Contract configuration
         story_implementation_class_hash: ClassHash,
         moderation_registry: ContractAddress,
+        revenue_manager: ContractAddress, // NEW: Revenue manager integration
         platform_fee_percentage: u8,
         // Components
         #[substorage(v0)]
@@ -68,6 +69,7 @@ pub mod IPStoryFactory {
         owner: ContractAddress,
         story_implementation_class_hash: ClassHash,
         moderation_registry: ContractAddress,
+        revenue_manager: ContractAddress,
         platform_fee_percentage: u8,
     ) {
         // Validation
@@ -75,6 +77,7 @@ pub mod IPStoryFactory {
         assert(
             moderation_registry != contract_address_const::<0>(), errors::INVALID_CONTRACT_ADDRESS,
         );
+        assert(revenue_manager != contract_address_const::<0>(), errors::INVALID_CONTRACT_ADDRESS);
         assert(platform_fee_percentage <= 100, errors::INVALID_ROYALTY_PERCENTAGE);
 
         // Initialize components
@@ -83,6 +86,7 @@ pub mod IPStoryFactory {
         // Initialize factory state
         self.story_implementation_class_hash.write(story_implementation_class_hash);
         self.moderation_registry.write(moderation_registry);
+        self.revenue_manager.write(revenue_manager);
         self.platform_fee_percentage.write(platform_fee_percentage);
         self.story_count.write(0);
     }
@@ -122,8 +126,9 @@ pub mod IPStoryFactory {
             royalty_distribution.serialize(ref constructor_calldata);
 
             // Add factory and registry addresses
-            get_caller_address().serialize(ref constructor_calldata); // factory address
+            get_caller_address().serialize(ref constructor_calldata);
             self.moderation_registry.read().serialize(ref constructor_calldata);
+            self.revenue_manager.read().serialize(ref constructor_calldata);
 
             // Deploy story contract
             let story_index = self.story_count.read();
@@ -153,6 +158,19 @@ pub mod IPStoryFactory {
 
             // Update total count
             self.story_count.write(story_index + 1);
+
+            // Register story with revenue manager
+            let revenue_manager = IRevenueManagerDispatcher {
+                contract_address: self.revenue_manager.read(),
+            };
+            revenue_manager
+                .register_story(
+                    story_contract,
+                    caller,
+                    royalty_distribution.creator_percentage,
+                    royalty_distribution.platform_percentage,
+                    contract_address_const::<0>() // Use ETH as default payment token
+                );
 
             // Emit event
             self

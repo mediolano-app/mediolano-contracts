@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 use core::byte_array::ByteArray;
 use starknet::ContractAddress;
-use super::types::{RoyaltyDistribution};
 
 /// Events for Story Factory Contract
 #[derive(Drop, starknet::Event)]
@@ -48,7 +47,6 @@ pub struct SubmissionVoted {
     #[key]
     pub voter: ContractAddress,
     pub approve: bool,
-    pub reason: ByteArray,
     pub votes_for: u32,
     pub votes_against: u32,
     pub timestamp: u64,
@@ -160,7 +158,7 @@ pub struct ModerationActionTaken {
     #[key]
     pub moderator: ContractAddress,
     pub action: felt252,
-    pub target_id: u256, // submission_id or token_id
+    pub target_id: u256,
     pub reason: ByteArray,
     pub timestamp: u64,
 }
@@ -186,23 +184,32 @@ pub struct ChapterViewed {
     pub token_id: u256,
     #[key]
     pub viewer: ContractAddress,
-    pub view_count: u256,
+    pub new_view_count: u256,
+    pub is_unique_view: bool,
     pub timestamp: u64,
 }
 
 #[derive(Drop, starknet::Event)]
-pub struct RevenueDistributed {
+pub struct RevenueReceived {
+    #[key]
+    pub story: ContractAddress,
+    pub amount: u256,
+    pub source: ContractAddress,
+    pub timestamp: u64,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct RoyaltiesDistributed {
     #[key]
     pub story: ContractAddress,
     pub total_amount: u256,
     pub creator_share: u256,
-    pub contributors_share: u256,
-    pub platform_share: u256,
+    pub contributor_count: u32,
     pub timestamp: u64,
 }
 
 #[derive(Drop, starknet::Event)]
-pub struct RoyaltiesClaimed {
+pub struct RoyaltyClaimed {
     #[key]
     pub story: ContractAddress,
     #[key]
@@ -212,12 +219,34 @@ pub struct RoyaltiesClaimed {
 }
 
 #[derive(Drop, starknet::Event)]
-pub struct RoyaltyDistributionUpdated {
+pub struct RevenueSplitUpdated {
     #[key]
     pub story: ContractAddress,
     pub updater: ContractAddress,
-    pub old_distribution: RoyaltyDistribution,
-    pub new_distribution: RoyaltyDistribution,
+    pub old_creator: u8,
+    pub new_creator: u8,
+    pub old_platform: u8,
+    pub new_platform: u8,
+    pub timestamp: u64,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct RevenueDistributed {
+    #[key]
+    pub story: ContractAddress,
+    pub distribution_id: u256,
+    pub total_amount: u256,
+    pub recipients_count: u32,
+    pub timestamp: u64,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct ContributorRegistered {
+    #[key]
+    pub story: ContractAddress,
+    #[key]
+    pub contributor: ContractAddress,
+    pub chapter_count: u256,
     pub timestamp: u64,
 }
 
@@ -260,8 +289,6 @@ pub struct BatchOperationCompleted {
 #[derive(Drop, starknet::Event)]
 pub struct StoryRegistered {
     #[key]
-    pub registry: ContractAddress,
-    #[key]
     pub story: ContractAddress,
     #[key]
     pub creator: ContractAddress,
@@ -271,11 +298,10 @@ pub struct StoryRegistered {
 #[derive(Drop, starknet::Event)]
 pub struct ModerationHistoryRecorded {
     #[key]
-    pub registry: ContractAddress,
-    #[key]
     pub story: ContractAddress,
     pub action_id: u256,
     pub moderator: ContractAddress,
     pub action: felt252,
+    pub target_id: u256,
     pub timestamp: u64,
 }

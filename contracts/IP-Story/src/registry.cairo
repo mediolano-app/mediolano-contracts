@@ -12,8 +12,11 @@ pub mod ModerationRegistry {
         StoragePointerWriteAccess,
     };
     use super::super::{
-        interfaces::IModerationRegistry, types::ModerationVote, errors::errors,
-        events::{StoryRegistered, ModerationHistoryRecorded},
+        interfaces::IModerationRegistry, types::{ModerationVote}, errors::errors,
+        events::{
+            StoryRegistered, ModeratorAssigned, ModeratorRemoved, SubmissionVoted, ChapterFlagged,
+            ModerationHistoryRecorded,
+        },
     };
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::upgrades::{interface::IUpgradeable, UpgradeableComponent};
@@ -30,37 +33,41 @@ pub mod ModerationRegistry {
 
     #[storage]
     struct Storage {
-        // Story registration
+        // Story registry
         registered_stories: Map<ContractAddress, bool>,
         story_creators: Map<ContractAddress, ContractAddress>, // story -> creator
-        story_count: u256,
-        stories_list: Map<u256, ContractAddress>, // index -> story
-        // Moderator assignments
+        // Moderator management
         story_moderators: Map<
             (ContractAddress, ContractAddress), bool,
         >, // (story, moderator) -> is_moderator
-        moderator_stories: Map<
-            (ContractAddress, u256), ContractAddress,
-        >, // (moderator, index) -> story
-        moderator_story_counts: Map<ContractAddress, u256>,
         story_moderator_lists: Map<
             (ContractAddress, u256), ContractAddress,
         >, // (story, index) -> moderator
-        story_moderator_counts: Map<ContractAddress, u256>,
-        // Moderation history and actions
-        next_action_id: u256,
-        moderation_actions: Map<u256, ModerationVote>,
-        story_action_history: Map<(ContractAddress, u256), u256>, // (story, index) -> action_id
-        story_action_counts: Map<ContractAddress, u256>,
-        moderator_action_history: Map<
-            (ContractAddress, u256), u256,
-        >, // (moderator, index) -> action_id
-        moderator_action_counts: Map<ContractAddress, u256>,
-        // Global moderator registry
-        global_moderators: Map<ContractAddress, bool>,
-        global_moderator_applications: Map<ContractAddress, bool>,
-        // Factory reference
-        factory_contract: ContractAddress,
+        story_moderator_counts: Map<ContractAddress, u256>, // story -> moderator_count
+        moderator_stories: Map<
+            (ContractAddress, u256), ContractAddress,
+        >, // (moderator, index) -> story
+        moderator_story_counts: Map<ContractAddress, u256>, // moderator -> story_count
+        // Submission voting system
+        submission_votes: Map<
+            (ContractAddress, u256), ModerationVote,
+        >, // (story, submission_id) -> vote_data
+        voter_submissions: Map<
+            (ContractAddress, u256, ContractAddress), bool,
+        >, // (story, submission_id, voter) -> has_voted
+        // Flagged chapter management
+        flagged_chapters: Map<(ContractAddress, u256), bool>, // (story, token_id) -> is_flagged
+        chapter_flag_votes: Map<
+            (ContractAddress, u256), ModerationVote,
+        >, // (story, token_id) -> vote_data
+        // Moderation history
+        moderation_history: Map<
+            (ContractAddress, u256), ModerationVote,
+        >, // (story, action_id) -> action
+        story_action_counts: Map<ContractAddress, u256>, // story -> total_actions
+        // Global settings
+        minimum_moderators_required: u256,
+        voting_threshold_percentage: u8, // % of moderators needed for consensus
         // Components
         #[substorage(v0)]
         ownable: OwnableComponent::Storage,
@@ -72,6 +79,10 @@ pub mod ModerationRegistry {
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         StoryRegistered: StoryRegistered,
+        ModeratorAssigned: ModeratorAssigned,
+        ModeratorRemoved: ModeratorRemoved,
+        SubmissionVoted: SubmissionVoted,
+        ChapterFlagged: ChapterFlagged,
         ModerationHistoryRecorded: ModerationHistoryRecorded,
         #[flat]
         OwnableEvent: OwnableComponent::Event,
@@ -81,59 +92,62 @@ pub mod ModerationRegistry {
 
     #[constructor]
     fn constructor(
-        ref self: ContractState, owner: ContractAddress, factory_contract: ContractAddress,
+        ref self: ContractState,
+        owner: ContractAddress,
+        minimum_moderators_required: u256,
+        voting_threshold_percentage: u8,
     ) {
         // Validation
         assert(owner != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
-        assert(factory_contract != contract_address_const::<0>(), errors::INVALID_CONTRACT_ADDRESS);
+        assert(voting_threshold_percentage <= 100, errors::INVALID_PARAMETER);
+        assert(minimum_moderators_required > 0, errors::INVALID_PARAMETER);
 
         // Initialize components
         self.ownable.initializer(owner);
 
-        // Set factory reference
-        self.factory_contract.write(factory_contract);
-
-        // Initialize counters
-        self.story_count.write(0);
-        self.next_action_id.write(1);
+        // Initialize settings
+        self.minimum_moderators_required.write(minimum_moderators_required);
+        self.voting_threshold_percentage.write(voting_threshold_percentage);
     }
 
     #[abi(embed_v0)]
     impl ModerationRegistryImpl of IModerationRegistry<ContractState> {
-        // Moderator management
         fn register_story(
             ref self: ContractState, story_contract: ContractAddress, creator: ContractAddress,
         ) {
+            // Only the story contract itself or factory can register
             let caller = get_caller_address();
+            assert(
+                caller == story_contract || caller == self.ownable.owner(), errors::UNAUTHORIZED,
+            );
 
-            // Only factory can register stories
-            assert(caller == self.factory_contract.read(), errors::REGISTRY_ACCESS_DENIED);
+            // Validate inputs
             assert(
                 story_contract != contract_address_const::<0>(), errors::INVALID_CONTRACT_ADDRESS,
             );
             assert(creator != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
             assert(!self.registered_stories.read(story_contract), errors::STORY_ALREADY_EXISTS);
 
-            // Register the story
+            // Register story
             self.registered_stories.write(story_contract, true);
             self.story_creators.write(story_contract, creator);
 
-            // Add to stories list
-            let story_index = self.story_count.read();
-            self.stories_list.write(story_index, story_contract);
-            self.story_count.write(story_index + 1);
+            // Creator becomes the first moderator
+            self.story_moderators.write((story_contract, creator), true);
+            self.story_moderator_lists.write((story_contract, 0), creator);
+            self.story_moderator_counts.write(story_contract, 1);
 
-            // Automatically assign creator as moderator
-            self._assign_moderator_internal(story_contract, creator);
+            // Add to moderator's story list
+            self.moderator_stories.write((creator, 0), story_contract);
+            self.moderator_story_counts.write(creator, 1);
 
-            // Emit event
+            // Initialize action count
+            self.story_action_counts.write(story_contract, 0);
+
             self
                 .emit(
                     StoryRegistered {
-                        registry: get_caller_address(),
-                        story: story_contract,
-                        creator,
-                        timestamp: get_block_timestamp(),
+                        story: story_contract, creator, timestamp: get_block_timestamp(),
                     },
                 );
         }
@@ -143,16 +157,46 @@ pub mod ModerationRegistry {
         ) {
             let caller = get_caller_address();
 
-            // Verify story is registered
+            // Validate story exists and caller is creator
             assert(self.registered_stories.read(story_contract), errors::STORY_NOT_REGISTERED);
-
-            // Only story creator or registry owner can assign moderators
-            let creator = self.story_creators.read(story_contract);
+            assert(self.story_creators.read(story_contract) == caller, errors::NOT_STORY_CREATOR);
+            assert(moderator != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
             assert(
-                caller == creator || caller == self.ownable.owner(), errors::REGISTRY_ACCESS_DENIED,
+                !self.story_moderators.read((story_contract, moderator)),
+                errors::MODERATOR_ALREADY_EXISTS,
             );
 
-            self._assign_moderator_internal(story_contract, moderator);
+            // Add moderator
+            self.story_moderators.write((story_contract, moderator), true);
+
+            let moderator_index = self.story_moderator_counts.read(story_contract);
+            self.story_moderator_lists.write((story_contract, moderator_index), moderator);
+            self.story_moderator_counts.write(story_contract, moderator_index + 1);
+
+            // Add to moderator's story list
+            let story_index = self.moderator_story_counts.read(moderator);
+            self.moderator_stories.write((moderator, story_index), story_contract);
+            self.moderator_story_counts.write(moderator, story_index + 1);
+
+            // Record action
+            self
+                ._record_moderation_action(
+                    story_contract,
+                    caller,
+                    'ASSIGN_MODERATOR',
+                    0, // Use 0 for moderator-related actions since target_id expects u256
+                    "Moderator assigned by creator",
+                );
+
+            self
+                .emit(
+                    ModeratorAssigned {
+                        story: story_contract,
+                        moderator,
+                        assigned_by: caller,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
         fn remove_story_moderator(
@@ -160,28 +204,264 @@ pub mod ModerationRegistry {
         ) {
             let caller = get_caller_address();
 
-            // Verify story is registered
+            // Validate story exists and caller is creator
             assert(self.registered_stories.read(story_contract), errors::STORY_NOT_REGISTERED);
-
-            // Only story creator or registry owner can remove moderators
-            let creator = self.story_creators.read(story_contract);
-            assert(
-                caller == creator || caller == self.ownable.owner(), errors::REGISTRY_ACCESS_DENIED,
-            );
-
-            // Can't remove the story creator
-            assert(moderator != creator, errors::CANNOT_REMOVE_CREATOR);
-
-            // Verify moderator exists
+            assert(self.story_creators.read(story_contract) == caller, errors::NOT_STORY_CREATOR);
             assert(
                 self.story_moderators.read((story_contract, moderator)),
                 errors::MODERATOR_NOT_FOUND,
             );
 
-            self._remove_moderator_internal(story_contract, moderator);
+            // Can't remove creator
+            assert(moderator != caller, errors::CANNOT_REMOVE_CREATOR);
+
+            // Remove moderator
+            self.story_moderators.write((story_contract, moderator), false);
+
+            // Record action
+            self
+                ._record_moderation_action(
+                    story_contract,
+                    caller,
+                    'REMOVE_MODERATOR',
+                    0, // Use 0 for moderator-related actions since target_id expects u256
+                    "Moderator removed by creator",
+                );
+
+            self
+                .emit(
+                    ModeratorRemoved {
+                        story: story_contract,
+                        moderator,
+                        removed_by: caller,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
         }
 
-        // Query functions
+        fn vote_on_submission(
+            ref self: ContractState,
+            story_contract: ContractAddress,
+            submission_id: u256,
+            approve: bool,
+            reason: ByteArray,
+        ) {
+            let caller = get_caller_address();
+
+            // Validate caller is a moderator
+            assert(self.registered_stories.read(story_contract), errors::STORY_NOT_REGISTERED);
+            assert(self.story_moderators.read((story_contract, caller)), errors::NOT_MODERATOR);
+
+            // Check if already voted
+            assert(
+                !self.voter_submissions.read((story_contract, submission_id, caller)),
+                errors::ALREADY_VOTED,
+            );
+
+            // Mark as voted
+            self.voter_submissions.write((story_contract, submission_id, caller), true);
+
+            // Update vote count
+            let mut vote_data = self.submission_votes.read((story_contract, submission_id));
+            if vote_data.target_id == 0 {
+                // Initialize vote data
+                vote_data =
+                    ModerationVote {
+                        story_contract,
+                        moderator: caller,
+                        action: if approve {
+                            'APPROVE'
+                        } else {
+                            'REJECT'
+                        },
+                        target_id: submission_id,
+                        reason: reason.clone(),
+                        timestamp: get_block_timestamp(),
+                        votes_for: if approve {
+                            1
+                        } else {
+                            0
+                        },
+                        votes_against: if approve {
+                            0
+                        } else {
+                            1
+                        },
+                        is_resolved: false,
+                    };
+            } else {
+                if approve {
+                    vote_data.votes_for += 1;
+                } else {
+                    vote_data.votes_against += 1;
+                }
+            }
+
+            // Get the values before writing to storage
+            let votes_for = vote_data.votes_for;
+            let votes_against = vote_data.votes_against;
+
+            self.submission_votes.write((story_contract, submission_id), vote_data);
+
+            self
+                .emit(
+                    SubmissionVoted {
+                        story: story_contract,
+                        submission_id,
+                        voter: caller,
+                        approve,
+                        votes_for,
+                        votes_against,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+        }
+
+        fn get_submission_votes(
+            self: @ContractState, story_contract: ContractAddress, submission_id: u256,
+        ) -> (u32, u32) {
+            let vote_data = self.submission_votes.read((story_contract, submission_id));
+            (vote_data.votes_for, vote_data.votes_against)
+        }
+
+        fn can_accept_submission(
+            self: @ContractState, story_contract: ContractAddress, submission_id: u256,
+        ) -> bool {
+            let vote_data = self.submission_votes.read((story_contract, submission_id));
+            let total_moderators = self.story_moderator_counts.read(story_contract);
+            let threshold_percentage = self.voting_threshold_percentage.read();
+
+            // Calculate required votes for consensus
+            let required_votes = (total_moderators * threshold_percentage.into()) / 100;
+
+            // Check if enough votes for approval
+            vote_data.votes_for >= required_votes.try_into().unwrap()
+        }
+
+        fn creator_override_submission(
+            ref self: ContractState,
+            story_contract: ContractAddress,
+            submission_id: u256,
+            action: felt252,
+            reason: ByteArray,
+        ) {
+            let caller = get_caller_address();
+
+            // Only story creator can override
+            assert(self.registered_stories.read(story_contract), errors::STORY_NOT_REGISTERED);
+            assert(self.story_creators.read(story_contract) == caller, errors::NOT_STORY_CREATOR);
+
+            // Mark vote as resolved
+            let mut vote_data = self.submission_votes.read((story_contract, submission_id));
+            vote_data.is_resolved = true;
+            vote_data.action = action;
+            vote_data.reason = reason.clone();
+            self.submission_votes.write((story_contract, submission_id), vote_data);
+
+            // Record override action
+            self
+                ._record_moderation_action(
+                    story_contract, caller, 'CREATOR_OVERRIDE', submission_id, reason,
+                );
+        }
+
+        fn flag_accepted_chapter(
+            ref self: ContractState,
+            story_contract: ContractAddress,
+            token_id: u256,
+            reason: ByteArray,
+        ) {
+            let caller = get_caller_address();
+
+            // Anyone can flag content, but require them to be a moderator
+            assert(self.registered_stories.read(story_contract), errors::STORY_NOT_REGISTERED);
+            assert(self.story_moderators.read((story_contract, caller)), errors::NOT_MODERATOR);
+
+            // Mark as flagged
+            self.flagged_chapters.write((story_contract, token_id), true);
+
+            // Initialize flag vote
+            let flag_vote = ModerationVote {
+                story_contract,
+                moderator: caller,
+                action: 'FLAG',
+                target_id: token_id,
+                reason: reason.clone(),
+                timestamp: get_block_timestamp(),
+                votes_for: 0,
+                votes_against: 0,
+                is_resolved: false,
+            };
+
+            self.chapter_flag_votes.write((story_contract, token_id), flag_vote);
+
+            self
+                .emit(
+                    ChapterFlagged {
+                        story: story_contract,
+                        token_id,
+                        flagger: caller,
+                        reason,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+        }
+
+        fn vote_on_flagged_chapter(
+            ref self: ContractState,
+            story_contract: ContractAddress,
+            token_id: u256,
+            action: felt252, // 'HIDE', 'REMOVE', 'APPROVE'
+            reason: ByteArray,
+        ) {
+            let caller = get_caller_address();
+
+            // Validate caller is a moderator
+            assert(self.registered_stories.read(story_contract), errors::STORY_NOT_REGISTERED);
+            assert(self.story_moderators.read((story_contract, caller)), errors::NOT_MODERATOR);
+            assert(self.flagged_chapters.read((story_contract, token_id)), errors::CONTENT_FLAGGED);
+
+            // Update vote
+            let mut vote_data = self.chapter_flag_votes.read((story_contract, token_id));
+            if action == 'APPROVE' {
+                vote_data.votes_for += 1;
+            } else {
+                vote_data.votes_against += 1;
+            }
+
+            self.chapter_flag_votes.write((story_contract, token_id), vote_data);
+        }
+
+        fn resolve_flagged_chapter(
+            ref self: ContractState,
+            story_contract: ContractAddress,
+            token_id: u256,
+            final_action: felt252,
+            reason: ByteArray,
+        ) {
+            let caller = get_caller_address();
+
+            // Only creator can resolve
+            assert(self.story_creators.read(story_contract) == caller, errors::NOT_STORY_CREATOR);
+
+            // Mark as resolved
+            let mut vote_data = self.chapter_flag_votes.read((story_contract, token_id));
+            vote_data.is_resolved = true;
+            vote_data.action = final_action;
+            self.chapter_flag_votes.write((story_contract, token_id), vote_data);
+
+            // Remove flag if approved
+            if final_action == 'APPROVE' {
+                self.flagged_chapters.write((story_contract, token_id), false);
+            }
+
+            // Record resolution
+            self
+                ._record_moderation_action(
+                    story_contract, caller, 'RESOLVE_FLAG', token_id, reason,
+                );
+        }
+
         fn is_story_moderator(
             self: @ContractState, story_contract: ContractAddress, moderator: ContractAddress,
         ) -> bool {
@@ -192,12 +472,15 @@ pub mod ModerationRegistry {
             self: @ContractState, story_contract: ContractAddress,
         ) -> Array<ContractAddress> {
             let mut moderators = ArrayTrait::new();
-            let moderator_count = self.story_moderator_counts.read(story_contract);
+            let count = self.story_moderator_counts.read(story_contract);
             let mut i = 0;
 
-            while i < moderator_count {
+            while i < count {
                 let moderator = self.story_moderator_lists.read((story_contract, i));
-                moderators.append(moderator);
+                // Only add active moderators
+                if self.story_moderators.read((story_contract, moderator)) {
+                    moderators.append(moderator);
+                }
                 i += 1;
             };
 
@@ -208,19 +491,27 @@ pub mod ModerationRegistry {
             self: @ContractState, moderator: ContractAddress,
         ) -> Array<ContractAddress> {
             let mut stories = ArrayTrait::new();
-            let story_count = self.moderator_story_counts.read(moderator);
+            let count = self.moderator_story_counts.read(moderator);
             let mut i = 0;
 
-            while i < story_count {
+            while i < count {
                 let story = self.moderator_stories.read((moderator, i));
-                stories.append(story);
+                // Only add if still a moderator
+                if self.story_moderators.read((story, moderator)) {
+                    stories.append(story);
+                }
                 i += 1;
             };
 
             stories
         }
 
-        // Moderation actions and history
+        fn get_submission_voting_details(
+            self: @ContractState, story_contract: ContractAddress, submission_id: u256,
+        ) -> ModerationVote {
+            self.submission_votes.read((story_contract, submission_id))
+        }
+
         fn record_moderation_action(
             ref self: ContractState,
             story_contract: ContractAddress,
@@ -229,59 +520,20 @@ pub mod ModerationRegistry {
             target_id: u256,
             reason: ByteArray,
         ) {
+            // Only allow calls from registered stories or moderators
             let caller = get_caller_address();
+            assert(
+                caller == story_contract || self.story_moderators.read((story_contract, caller)),
+                errors::UNAUTHORIZED,
+            );
 
-            // Only the story contract itself can record actions
-            assert(caller == story_contract, errors::REGISTRY_ACCESS_DENIED);
-
-            // Verify story is registered
-            assert(self.registered_stories.read(story_contract), errors::STORY_NOT_REGISTERED);
-
-            // Verify moderator is authorized for this story
-            assert(self.story_moderators.read((story_contract, moderator)), errors::NOT_MODERATOR);
-
-            // Create moderation record
-            let action_id = self.next_action_id.read();
-            let moderation_vote = ModerationVote {
-                voter: moderator,
-                submission_id: target_id,
-                action,
-                reason,
-                timestamp: get_block_timestamp(),
-            };
-
-            // Store the action
-            self.moderation_actions.write(action_id, moderation_vote);
-            self.next_action_id.write(action_id + 1);
-
-            // Add to story history
-            let story_action_count = self.story_action_counts.read(story_contract);
-            self.story_action_history.write((story_contract, story_action_count), action_id);
-            self.story_action_counts.write(story_contract, story_action_count + 1);
-
-            // Add to moderator history
-            let moderator_action_count = self.moderator_action_counts.read(moderator);
-            self.moderator_action_history.write((moderator, moderator_action_count), action_id);
-            self.moderator_action_counts.write(moderator, moderator_action_count + 1);
-
-            // Emit event
-            self
-                .emit(
-                    ModerationHistoryRecorded {
-                        registry: get_caller_address(),
-                        story: story_contract,
-                        action_id,
-                        moderator,
-                        action,
-                        timestamp: get_block_timestamp(),
-                    },
-                );
+            self._record_moderation_action(story_contract, moderator, action, target_id, reason);
         }
 
         fn get_moderation_history(
             self: @ContractState, story_contract: ContractAddress, offset: u256, limit: u256,
         ) -> Array<ModerationVote> {
-            assert(limit > 0 && limit <= 50, errors::LIMIT_TOO_HIGH);
+            assert(limit > 0 && limit <= 100, errors::LIMIT_TOO_HIGH);
 
             let mut history = ArrayTrait::new();
             let total_actions = self.story_action_counts.read(story_contract);
@@ -293,8 +545,7 @@ pub mod ModerationRegistry {
             let mut i = offset;
 
             while i < end {
-                let action_id = self.story_action_history.read((story_contract, i));
-                let action = self.moderation_actions.read(action_id);
+                let action = self.moderation_history.read((story_contract, i));
                 history.append(action);
                 i += 1;
             };
@@ -311,103 +562,44 @@ pub mod ModerationRegistry {
         }
     }
 
-    // Additional public functions for registry management
-    #[abi(embed_v0)]
-    impl RegistryManagementImpl of RegistryManagementTrait<ContractState> {
-        fn get_registered_stories_count(self: @ContractState) -> u256 {
-            self.story_count.read()
-        }
-
-        fn get_registered_story_by_index(self: @ContractState, index: u256) -> ContractAddress {
-            assert(index < self.story_count.read(), errors::INVALID_STORY_INDEX);
-            self.stories_list.read(index)
-        }
-
-        fn get_story_creator(
-            self: @ContractState, story_contract: ContractAddress,
-        ) -> ContractAddress {
-            assert(self.registered_stories.read(story_contract), errors::STORY_NOT_REGISTERED);
-            self.story_creators.read(story_contract)
-        }
-
-        fn is_registered_story(self: @ContractState, story_contract: ContractAddress) -> bool {
-            self.registered_stories.read(story_contract)
-        }
-
-        fn add_global_moderator(ref self: ContractState, moderator: ContractAddress) {
-            self.ownable.assert_only_owner();
-            assert(moderator != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
-
-            self.global_moderators.write(moderator, true);
-        }
-
-        fn remove_global_moderator(ref self: ContractState, moderator: ContractAddress) {
-            self.ownable.assert_only_owner();
-
-            self.global_moderators.write(moderator, false);
-        }
-
-        fn is_global_moderator(self: @ContractState, moderator: ContractAddress) -> bool {
-            self.global_moderators.read(moderator)
-        }
-
-        fn get_moderator_action_count(self: @ContractState, moderator: ContractAddress) -> u256 {
-            self.moderator_action_counts.read(moderator)
-        }
-
-        fn get_story_action_count(self: @ContractState, story_contract: ContractAddress) -> u256 {
-            self.story_action_counts.read(story_contract)
-        }
-    }
-
-    #[starknet::interface]
-    trait RegistryManagementTrait<TContractState> {
-        fn get_registered_stories_count(self: @TContractState) -> u256;
-        fn get_registered_story_by_index(self: @TContractState, index: u256) -> ContractAddress;
-        fn get_story_creator(
-            self: @TContractState, story_contract: ContractAddress,
-        ) -> ContractAddress;
-        fn is_registered_story(self: @TContractState, story_contract: ContractAddress) -> bool;
-        fn add_global_moderator(ref self: TContractState, moderator: ContractAddress);
-        fn remove_global_moderator(ref self: TContractState, moderator: ContractAddress);
-        fn is_global_moderator(self: @TContractState, moderator: ContractAddress) -> bool;
-        fn get_moderator_action_count(self: @TContractState, moderator: ContractAddress) -> u256;
-        fn get_story_action_count(self: @TContractState, story_contract: ContractAddress) -> u256;
-    }
-
     #[generate_trait]
     impl InternalFunctions of InternalFunctionsTrait {
-        fn _assign_moderator_internal(
-            ref self: ContractState, story_contract: ContractAddress, moderator: ContractAddress,
+        fn _record_moderation_action(
+            ref self: ContractState,
+            story_contract: ContractAddress,
+            moderator: ContractAddress,
+            action: felt252,
+            target_id: u256,
+            reason: ByteArray,
         ) {
-            assert(moderator != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
-            assert(
-                !self.story_moderators.read((story_contract, moderator)),
-                errors::MODERATOR_ALREADY_EXISTS,
-            );
+            let action_id = self.story_action_counts.read(story_contract);
 
-            // Add moderator to story
-            self.story_moderators.write((story_contract, moderator), true);
+            let moderation_action = ModerationVote {
+                story_contract,
+                moderator,
+                action,
+                target_id,
+                reason: reason.clone(),
+                timestamp: get_block_timestamp(),
+                votes_for: 0,
+                votes_against: 0,
+                is_resolved: true,
+            };
 
-            // Add to story's moderator list
-            let story_moderator_count = self.story_moderator_counts.read(story_contract);
-            self.story_moderator_lists.write((story_contract, story_moderator_count), moderator);
-            self.story_moderator_counts.write(story_contract, story_moderator_count + 1);
+            self.moderation_history.write((story_contract, action_id), moderation_action);
+            self.story_action_counts.write(story_contract, action_id + 1);
 
-            // Add to moderator's story list
-            let moderator_story_count = self.moderator_story_counts.read(moderator);
-            self.moderator_stories.write((moderator, moderator_story_count), story_contract);
-            self.moderator_story_counts.write(moderator, moderator_story_count + 1);
-        }
-
-        fn _remove_moderator_internal(
-            ref self: ContractState, story_contract: ContractAddress, moderator: ContractAddress,
-        ) {
-            // Remove moderator mapping
-            self.story_moderators.write((story_contract, moderator), false);
-            // Note: For simplicity, we don't compact the arrays when removing.
-        // In a production system, you might want to implement array compaction
-        // or use a more sophisticated data structure.
+            self
+                .emit(
+                    ModerationHistoryRecorded {
+                        story: story_contract,
+                        action_id,
+                        moderator,
+                        action,
+                        target_id,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
         }
     }
 }

@@ -4,6 +4,7 @@ pub mod types;
 pub mod interfaces;
 pub mod errors;
 pub mod events;
+pub mod revenue;
 
 // Contract modules
 pub mod factory;
@@ -20,3 +21,4 @@ pub use events::*;
 pub use factory::IPStoryFactory;
 pub use story::IPStory;
 pub use registry::ModerationRegistry;
+pub use revenue::RevenueManager;
