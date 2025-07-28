@@ -3,9 +3,9 @@ use core::array::Array;
 use core::byte_array::ByteArray;
 use starknet::ContractAddress;
 use super::types::{
-    StoryMetadata, ChapterSubmission, AcceptedChapter, StoryStats, RoyaltyDistribution,
-    ModerationVote, RevenueMetrics, ContributorEarnings, ChapterRevenue,
-    RevenueDistribution as RevenueDistributionType,
+    AcceptedChapter, ChapterRevenue, ChapterSubmission, ContributorEarnings, ModerationVote,
+    RevenueDistribution as RevenueDistributionType, RevenueMetrics, RoyaltyDistribution,
+    StoryMetadata, StoryStats,
 };
 
 
@@ -101,6 +101,14 @@ pub trait IIPStory<TContractState> {
     fn get_current_revenue_split(
         self: @TContractState,
     ) -> (u8, u8, u8); // (creator, contributors, platform)
+    // NFT Minting functions
+    fn mint_chapter(ref self: TContractState, token_id: u256);
+    fn batch_mint_chapters(ref self: TContractState, token_ids: Array<u256>);
+    fn batch_mint_by_author(ref self: TContractState, author: ContractAddress);
+    fn get_unminted_chapters(self: @TContractState) -> Array<u256>;
+    fn get_unminted_chapters_by_author(
+        self: @TContractState, author: ContractAddress,
+    ) -> Array<u256>;
 }
 
 /// Interface for Moderation Registry
@@ -116,7 +124,6 @@ pub trait IModerationRegistry<TContractState> {
     fn remove_story_moderator(
         ref self: TContractState, story_contract: ContractAddress, moderator: ContractAddress,
     );
-
     // Submission voting system
     fn vote_on_submission(
         ref self: TContractState,
@@ -138,7 +145,6 @@ pub trait IModerationRegistry<TContractState> {
         action: felt252, // 'ACCEPT' or 'REJECT'
         reason: ByteArray,
     );
-
     // Post-minting moderation
     fn flag_accepted_chapter(
         ref self: TContractState,
@@ -160,7 +166,6 @@ pub trait IModerationRegistry<TContractState> {
         final_action: felt252,
         reason: ByteArray,
     );
-
     // Query functions
     fn is_story_moderator(
         self: @TContractState, story_contract: ContractAddress, moderator: ContractAddress,
@@ -174,7 +179,6 @@ pub trait IModerationRegistry<TContractState> {
     fn get_submission_voting_details(
         self: @TContractState, story_contract: ContractAddress, submission_id: u256,
     ) -> ModerationVote;
-
     // Moderation actions and history
     fn record_moderation_action(
         ref self: TContractState,
@@ -187,6 +191,8 @@ pub trait IModerationRegistry<TContractState> {
     fn get_moderation_history(
         self: @TContractState, story_contract: ContractAddress, offset: u256, limit: u256,
     ) -> Array<ModerationVote>;
+    // Factory management
+    fn update_factory_contract(ref self: TContractState, factory_address: ContractAddress);
 }
 
 /// Interface for Revenue Management
@@ -217,14 +223,12 @@ pub trait IRevenueManager<TContractState> {
         viewer: ContractAddress,
     );
     fn record_revenue(ref self: TContractState, amount: u256, source: ContractAddress);
-
     // Royalty distribution
     fn calculate_royalties(
         self: @TContractState, story_id: ContractAddress,
     ) -> RevenueDistributionType;
     fn distribute_revenue(ref self: TContractState, story_id: ContractAddress, total_amount: u256);
     fn claim_royalties(ref self: TContractState, story_id: ContractAddress) -> u256;
-
     // Getters
     fn get_revenue_metrics(self: @TContractState, story_id: ContractAddress) -> RevenueMetrics;
     fn get_chapter_revenue(
@@ -239,7 +243,6 @@ pub trait IRevenueManager<TContractState> {
     fn get_chapter_view_count(
         self: @TContractState, story_id: ContractAddress, token_id: u256,
     ) -> u256;
-
     // Revenue configuration per storyy
     fn update_revenue_split(
         ref self: TContractState,
@@ -250,7 +253,6 @@ pub trait IRevenueManager<TContractState> {
     fn get_revenue_split(
         self: @TContractState, story_id: ContractAddress,
     ) -> (u8, u8, u8); // (creator, contributors, platform)
-
     // Batch operations
     fn batch_record_views(
         ref self: TContractState,
@@ -264,4 +266,6 @@ pub trait IRevenueManager<TContractState> {
         contributors: Array<ContractAddress>,
         amounts: Array<u256>,
     );
+    // Factory management
+    fn update_factory_contract(ref self: TContractState, factory_address: ContractAddress);
 }

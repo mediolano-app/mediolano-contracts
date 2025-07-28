@@ -91,11 +91,16 @@ pub mod errors {
     pub const INSUFFICIENT_BALANCE_FOR_TRANSFER: felt252 = 'Insufficient balance';
     pub const TRANSFER_TO_ZERO_ADDRESS: felt252 = 'Transfer to zero address';
     pub const APPROVAL_TO_CURRENT_OWNER: felt252 = 'Approval to current owner';
+    pub const ONLY_AUTHOR_CAN_MINT: felt252 = 'Only author mints chapter NFT';
+    pub const CHAPTER_ALREADY_MINTED: felt252 = 'Chapter already minted';
+    pub const NO_MINTABLE_CHAPTERS: felt252 = 'No valid chapters to mint';
+    pub const NO_UNMINTED_CHAPTERS: felt252 = 'No unminted chapters for author';
 
     // Batch operation errors
     pub const BATCH_ARRAY_MISMATCH: felt252 = 'Batch arrays length mismatch';
     pub const BATCH_TOO_LARGE: felt252 = 'Batch size too large';
     pub const BATCH_OPERATION_FAILED: felt252 = 'Batch operation failed';
+    pub const BATCH_SIZE_INVALID: felt252 = 'Invalid batch size';
 
     // Registry errors
     pub const STORY_NOT_REGISTERED: felt252 = 'Story not registered';

@@ -41,18 +41,6 @@ pub struct AcceptedChapter {
     pub token_id: u256 // ERC1155 token ID
 }
 
-/// Chapter metadata for IPFS
-#[derive(Drop, Clone, Serde)]
-pub struct ChapterMetadata {
-    pub title: ByteArray,
-    pub content: ByteArray,
-    pub author: ContractAddress,
-    pub chapter_number: u256,
-    pub word_count: u256,
-    pub content_warnings: Array<felt252>,
-    pub creation_timestamp: u64,
-}
-
 /// Story statistics for analytics
 #[derive(Drop, Clone, Serde, starknet::Store)]
 pub struct StoryStats {
@@ -137,3 +125,7 @@ pub struct RevenueDistribution {
     pub platform_share: u256,
     pub distribution_timestamp: u64,
 }
+
+// ETH contract address on Starknet
+pub const ETH_CONTRACT_ADDRESS: felt252 =
+    0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7;

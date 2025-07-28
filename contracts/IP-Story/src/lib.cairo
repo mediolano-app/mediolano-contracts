@@ -1,24 +1,24 @@
 // SPDX-License-Identifier: MIT
 
-pub mod types;
-pub mod interfaces;
 pub mod errors;
 pub mod events;
-pub mod revenue;
 
 // Contract modules
 pub mod factory;
-pub mod story;
+pub mod interfaces;
 pub mod registry;
-
-// Export main components
-pub use types::*;
-pub use interfaces::*;
+pub mod revenue;
+pub mod story;
+pub mod types;
 pub use errors::*;
 pub use events::*;
 
 // Export contract modules
 pub use factory::IPStoryFactory;
-pub use story::IPStory;
+pub use interfaces::*;
 pub use registry::ModerationRegistry;
 pub use revenue::RevenueManager;
+pub use story::IPStory;
+
+// Export main components
+pub use types::*;
