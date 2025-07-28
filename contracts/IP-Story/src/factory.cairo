@@ -3,21 +3,26 @@
 #[starknet::contract]
 pub mod IPStoryFactory {
     use core::array::ArrayTrait;
-    use starknet::{
-        ContractAddress, ClassHash, get_caller_address, get_block_timestamp, contract_address_const,
-        syscalls::deploy_syscall,
-    };
+    use openzeppelin_access::ownable::OwnableComponent;
+    use openzeppelin_upgrades::UpgradeableComponent;
+    use openzeppelin_upgrades::interface::IUpgradeable;
+    use openzeppelin_utils::serde::SerializedAppend;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
-    use super::super::{
-        interfaces::{IIPStoryFactory, IRevenueManagerDispatcher, IRevenueManagerDispatcherTrait},
-        types::{StoryMetadata, RoyaltyDistribution}, errors::errors,
-        events::{StoryCreated, StoryUpdated},
+    use starknet::syscalls::deploy_syscall;
+    use starknet::{
+        ClassHash, ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
     };
-    use openzeppelin::access::ownable::OwnableComponent;
-    use openzeppelin::upgrades::{interface::IUpgradeable, UpgradeableComponent};
+    use super::super::errors::errors;
+    use super::super::events::{StoryCreated, StoryUpdated};
+    use super::super::interfaces::{
+        IIPStoryFactory, IModerationRegistryDispatcher, IModerationRegistryDispatcherTrait,
+        IRevenueManagerDispatcher, IRevenueManagerDispatcherTrait,
+    };
+    use super::super::types::{RoyaltyDistribution, StoryMetadata};
+
 
     // Components
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
@@ -43,7 +48,7 @@ pub mod IPStoryFactory {
         // Contract configuration
         story_implementation_class_hash: ClassHash,
         moderation_registry: ContractAddress,
-        revenue_manager: ContractAddress, // NEW: Revenue manager integration
+        revenue_manager: ContractAddress,
         platform_fee_percentage: u8,
         // Components
         #[substorage(v0)]
@@ -151,6 +156,19 @@ pub mod IPStoryFactory {
             self.creator_stories.write((caller, creator_count), story_contract);
             self.creator_story_counts.write(caller, creator_count + 1);
 
+            // Handle shared owners - add them to creator stories mapping too
+            if shared_owners.is_some() {
+                let owners = shared_owners.unwrap();
+                let mut i = 0;
+                while i < owners.len() {
+                    let shared_owner = *owners.at(i);
+                    let shared_owner_count = self.creator_story_counts.read(shared_owner);
+                    self.creator_stories.write((shared_owner, shared_owner_count), story_contract);
+                    self.creator_story_counts.write(shared_owner, shared_owner_count + 1);
+                    i += 1;
+                };
+            }
+
             // Update genre index
             let genre_count = self.genre_story_counts.read(metadata.genre);
             self.genre_stories.write((metadata.genre, genre_count), story_contract);
@@ -158,6 +176,12 @@ pub mod IPStoryFactory {
 
             // Update total count
             self.story_count.write(story_index + 1);
+
+            // Register story with moderation register
+            let moderation_registry = IModerationRegistryDispatcher {
+                contract_address: self.moderation_registry.read(),
+            };
+            moderation_registry.register_story(story_contract, caller);
 
             // Register story with revenue manager
             let revenue_manager = IRevenueManagerDispatcher {
@@ -208,7 +232,7 @@ pub mod IPStoryFactory {
                 let story = self.creator_stories.read((creator, i));
                 stories.append(story);
                 i += 1;
-            };
+            }
 
             stories
         }
@@ -222,7 +246,7 @@ pub mod IPStoryFactory {
                 let story = self.genre_stories.read((genre, i));
                 stories.append(story);
                 i += 1;
-            };
+            }
 
             stories
         }
@@ -245,7 +269,7 @@ pub mod IPStoryFactory {
                 let story = self.stories.read(i);
                 stories.append(story);
                 i += 1;
-            };
+            }
 
             stories
         }

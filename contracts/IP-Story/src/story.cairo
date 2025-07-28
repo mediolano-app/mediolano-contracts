@@ -4,30 +4,31 @@
 pub mod IPStory {
     use core::array::ArrayTrait;
     use core::byte_array::ByteArray;
-    use starknet::{
-        ContractAddress, get_caller_address, get_block_timestamp, get_contract_address,
-        contract_address_const,
-    };
+    use openzeppelin_access::ownable::OwnableComponent;
+    use openzeppelin_introspection::src5::SRC5Component;
+    use openzeppelin_token::erc1155::{ERC1155Component, ERC1155HooksEmptyImpl};
+    use openzeppelin_upgrades::UpgradeableComponent;
+    use openzeppelin_upgrades::interface::IUpgradeable;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
-    use super::super::{
-        interfaces::{
-            IIPStory, IModerationRegistryDispatcher, IModerationRegistryDispatcherTrait,
-            IRevenueManagerDispatcher, IRevenueManagerDispatcherTrait,
-        },
-        types::{StoryMetadata, ChapterSubmission, AcceptedChapter, StoryStats, RoyaltyDistribution},
-        errors::errors,
-        events::{
-            ChapterSubmitted, ChapterAccepted, ChapterRejected, ChapterMinted, ChapterFlagged,
-            ChapterContentUpdated, StoryStatsUpdated,
-        },
+    use starknet::{
+        ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
+        get_contract_address,
     };
-    use openzeppelin::token::erc1155::ERC1155Component;
-    use openzeppelin::introspection::src5::SRC5Component;
-    use openzeppelin::access::ownable::OwnableComponent;
-    use openzeppelin::upgrades::{interface::IUpgradeable, UpgradeableComponent};
+    use super::super::errors::errors;
+    use super::super::events::{
+        ChapterAccepted, ChapterContentUpdated, ChapterFlagged, ChapterMinted, ChapterRejected,
+        ChapterSubmitted, StoryStatsUpdated,
+    };
+    use super::super::interfaces::{
+        IIPStory, IModerationRegistryDispatcher, IModerationRegistryDispatcherTrait,
+        IRevenueManagerDispatcher, IRevenueManagerDispatcherTrait,
+    };
+    use super::super::types::{
+        AcceptedChapter, ChapterSubmission, RoyaltyDistribution, StoryMetadata, StoryStats,
+    };
 
     // Components
     component!(path: ERC1155Component, storage: erc1155, event: ERC1155Event);
@@ -60,6 +61,7 @@ pub mod IPStory {
         next_token_id: u256,
         chapters: Map<u256, AcceptedChapter>, // token_id -> chapter
         chapter_numbers: Map<u256, u256>, // chapter_number -> token_id
+        chapter_authors: Map<u256, ContractAddress>,
         submission_to_token: Map<u256, u256>, // submission_id -> token_id (links tiers)
         // Story statistics
         stats: StoryStats,
@@ -191,7 +193,7 @@ pub mod IPStory {
                     creators.append(creator);
                 }
                 i += 1;
-            };
+            }
 
             creators
         }
@@ -283,7 +285,7 @@ pub mod IPStory {
                 let submission = self.submissions.read(i);
                 submissions.append(submission);
                 i += 1;
-            };
+            }
 
             submissions
         }
@@ -300,7 +302,7 @@ pub mod IPStory {
                     pending.append(submission);
                 }
                 i += 1;
-            };
+            }
 
             pending
         }
@@ -318,15 +320,18 @@ pub mod IPStory {
                     author_submissions.append(submission);
                 }
                 i += 1;
-            };
+            }
 
             author_submissions
         }
 
-        // Accepted chapter functions (minted NFTs) - Second tier
+        // Accepted chapter functions
         fn accept_chapter(ref self: ContractState, submission_id: u256) -> u256 {
             let caller = get_caller_address();
             let timestamp = get_block_timestamp();
+
+            // Only story creators can accept chapters
+            assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
 
             // Get submission
             let submission = self.submissions.read(submission_id);
@@ -337,28 +342,17 @@ pub mod IPStory {
                 self.submission_to_token.read(submission_id) == 0,
                 errors::SUBMISSION_ALREADY_PROCESSED,
             );
-
-            let registry = IModerationRegistryDispatcher {
-                contract_address: self.moderation_registry.read(),
-            };
-
-            // Only story creators can accept OR if consensus reached via moderation
-            let is_creator = self.story_creators.read(caller);
-            let has_consensus = registry
-                .can_accept_submission(get_contract_address(), submission_id);
-
-            assert(is_creator || has_consensus, errors::NOT_AUTHORIZED_TO_ACCEPT);
-
             // Generate token ID and chapter number
             let token_id = self.next_token_id.read();
             let stats = self.stats.read();
             let chapter_number = stats.total_chapters + 1;
+            let author = submission.author;
 
             // Create accepted chapter (second tier)
             let chapter = AcceptedChapter {
                 title: submission.title.clone(),
                 ipfs_hash: submission.ipfs_hash,
-                author: submission.author,
+                author,
                 submission_id,
                 chapter_number,
                 acceptance_timestamp: timestamp,
@@ -369,13 +363,9 @@ pub mod IPStory {
             // Store chapter data and link tiers
             self.chapters.write(token_id, chapter);
             self.chapter_numbers.write(chapter_number, token_id);
+            self.chapter_authors.write(token_id, author);
             self.submission_to_token.write(submission_id, token_id);
             self.next_token_id.write(token_id + 1);
-
-            // Mint NFT to author
-            self
-                .erc1155
-                .mint_with_acceptance_check(submission.author, token_id, 1, array![].span());
 
             // Register chapter with revenue manager
             let revenue_manager = IRevenueManagerDispatcher {
@@ -390,6 +380,10 @@ pub mod IPStory {
             updated_stats.last_update_timestamp = timestamp;
             self.stats.write(updated_stats);
 
+            let registry = IModerationRegistryDispatcher {
+                contract_address: self.moderation_registry.read(),
+            };
+
             // Record action in ModerationRegistry
             registry
                 .record_moderation_action(
@@ -397,10 +391,10 @@ pub mod IPStory {
                     caller,
                     'ACCEPT_CHAPTER',
                     submission_id,
-                    "Chapter accepted and minted",
+                    "Chapter accepted",
                 );
 
-            // Emit events
+            // Emit acceptance event
             self
                 .emit(
                     ChapterAccepted {
@@ -411,19 +405,6 @@ pub mod IPStory {
                         author: submission.author,
                         accepted_by: caller,
                         title: submission.title.clone(),
-                        timestamp,
-                    },
-                );
-
-            self
-                .emit(
-                    ChapterMinted {
-                        story: get_contract_address(),
-                        token_id,
-                        author: submission.author,
-                        chapter_number,
-                        title: submission.title,
-                        ipfs_hash: submission.ipfs_hash,
                         timestamp,
                     },
                 );
@@ -510,7 +491,7 @@ pub mod IPStory {
                     chapters.append(chapter);
                 }
                 i += 1;
-            };
+            }
 
             chapters
         }
@@ -540,7 +521,7 @@ pub mod IPStory {
                     found_count += 1;
                 }
                 i += 1;
-            };
+            }
 
             author_chapters
         }
@@ -596,7 +577,7 @@ pub mod IPStory {
                     chapters.append(chapter);
                 }
                 i += 1;
-            };
+            }
 
             chapters
         }
@@ -614,7 +595,7 @@ pub mod IPStory {
                     submissions.append(submission);
                 }
                 i += 1;
-            };
+            }
 
             submissions
         }
@@ -651,7 +632,7 @@ pub mod IPStory {
                 let chapter = self.chapters.read(token_id);
                 assert(chapter.token_id != 0, errors::CHAPTER_NOT_FOUND);
                 i += 1;
-            };
+            }
 
             // Record batch views in revenue manager
             let revenue_manager = IRevenueManagerDispatcher {
@@ -667,10 +648,9 @@ pub mod IPStory {
             let mut j = 0;
             while j < token_ids.len() {
                 // Check if this is first time viewing this chapter (simplified check)
-                // In production, you'd maintain a separate mapping for user views
                 unique_chapters_viewed += 1; // For now, assume each view is unique
                 j += 1;
-            };
+            }
 
             // Only increment readers by 1 if this user viewed any chapters for the first time
             if unique_chapters_viewed > 0_u256 {
@@ -781,6 +761,182 @@ pub mod IPStory {
             };
             revenue_manager.get_revenue_split(get_contract_address())
         }
+
+        fn mint_chapter(ref self: ContractState, token_id: u256) {
+            let timestamp = get_block_timestamp();
+            let caller = get_caller_address();
+
+            // Verify chapter exists and is accepted but not minted yet
+            let chapter = self.chapters.read(token_id);
+            assert(chapter.token_id != 0, errors::CHAPTER_NOT_FOUND);
+
+            // Verify caller is chapter author
+            assert(self.chapter_authors.read(token_id) == caller, errors::ONLY_AUTHOR_CAN_MINT);
+
+            // Check if already minted
+            assert(
+                self.erc1155.balance_of(chapter.author, token_id) == 0,
+                errors::CHAPTER_ALREADY_MINTED,
+            );
+
+            // Mint NFT to author
+            self
+                .erc1155
+                .mint_with_acceptance_check(
+                    chapter.author, token_id, 1, array![ // chapter.title.into(),
+                    // chapter.ipfs_hash,
+                    // chapter.author.into(),
+                    // timestamp.into(),
+                    ].span(),
+                );
+
+            // Emit minting event
+            self
+                .emit(
+                    ChapterMinted {
+                        story: get_contract_address(),
+                        token_id,
+                        author: chapter.author,
+                        chapter_number: chapter.chapter_number,
+                        title: chapter.title.clone(),
+                        ipfs_hash: chapter.ipfs_hash,
+                        timestamp,
+                    },
+                );
+        }
+
+        fn batch_mint_chapters(ref self: ContractState, token_ids: Array<u256>) {
+            let caller = get_caller_address();
+            let timestamp = get_block_timestamp();
+
+            // Only story creators can mint
+            assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
+            assert(token_ids.len() > 0 && token_ids.len() <= 50, errors::BATCH_SIZE_INVALID);
+
+            // Prepare batch data
+            let mut recipients = ArrayTrait::new();
+            let mut values = ArrayTrait::new();
+            let mut valid_token_ids = ArrayTrait::new();
+
+            let mut i = 0;
+            while i < token_ids.len() {
+                let token_id = *token_ids.at(i);
+                let chapter = self.chapters.read(token_id);
+
+                // Verify chapter exists and is not already minted
+                if chapter.token_id != 0 && self.erc1155.balance_of(chapter.author, token_id) == 0 {
+                    recipients.append(chapter.author);
+                    values.append(1);
+                    valid_token_ids.append(token_id);
+                }
+                i += 1;
+            }
+
+            assert(valid_token_ids.len() > 0, errors::NO_MINTABLE_CHAPTERS);
+
+            // Batch mint tokens to authors
+            let mut i = 0;
+            while (i < recipients.len()) {
+                self
+                    .erc1155
+                    .mint_with_acceptance_check(
+                        *recipients.at(i), *valid_token_ids.at(i), *values.at(i), array![].span(),
+                    );
+                i += 1;
+            }
+
+            // Emit events for each minted chapter
+            let mut j = 0;
+            while j < valid_token_ids.len() {
+                let token_id = *valid_token_ids.at(j);
+                let chapter = self.chapters.read(token_id);
+
+                self
+                    .emit(
+                        ChapterMinted {
+                            story: get_contract_address(),
+                            token_id,
+                            author: chapter.author,
+                            chapter_number: chapter.chapter_number,
+                            title: chapter.title.clone(),
+                            ipfs_hash: chapter.ipfs_hash,
+                            timestamp,
+                        },
+                    );
+                j += 1;
+            };
+        }
+
+        fn batch_mint_by_author(ref self: ContractState, author: ContractAddress) {
+            let caller = get_caller_address();
+            assert(caller == author, errors::ONLY_AUTHOR_CAN_MINT);
+
+            // Find all unminted chapters by this author
+            let mut author_token_ids = self.get_unminted_chapters_by_author(author);
+            assert(author_token_ids.len() > 0, errors::NO_UNMINTED_CHAPTERS);
+
+            // Create values array with same length as token_ids
+            let mut values = ArrayTrait::new();
+            // let mut chapter_metadata = ArrayTrait::new();
+            // let mut chapters_metadata = ArrayTrait::new();
+
+            let mut i = 0;
+            while i < author_token_ids.len() {
+                let chapter = self.chapters.read(*author_token_ids.at(i));
+                // chapter_metadata.append(chapter.ipfs_hash.into());
+                // chapter_metadata.append(chapter.title.into());
+                // chapter_metadata.append(chapter.author.try_into().unwrap());
+                // chapters_metadata.append(chapter_metadata);
+                values.append(1);
+                i += 1;
+            }
+
+            // Use batch mint
+            self
+                .erc1155
+                .batch_mint_with_acceptance_check(
+                    author,
+                    author_token_ids.span(),
+                    values.span(), // chapters_metadata.at(i).span(),
+                    array![].span(),
+                );
+        }
+
+        fn get_unminted_chapters(self: @ContractState) -> Array<u256> {
+            let mut unminted = ArrayTrait::new();
+            let total_tokens = self.next_token_id.read() - 1;
+            let mut i = 1;
+
+            while i <= total_tokens {
+                let chapter = self.chapters.read(i);
+                if chapter.token_id != 0 && self.erc1155.balance_of(chapter.author, i) == 0 {
+                    unminted.append(i);
+                }
+                i += 1;
+            }
+
+            unminted
+        }
+
+        fn get_unminted_chapters_by_author(
+            self: @ContractState, author: ContractAddress,
+        ) -> Array<u256> {
+            let mut unminted = ArrayTrait::new();
+            let total_tokens = self.next_token_id.read() - 1;
+            let mut i = 1;
+
+            while i <= total_tokens {
+                let chapter = self.chapters.read(i);
+                if chapter.author == author
+                    && chapter.token_id != 0
+                    && self.erc1155.balance_of(author, i) == 0 {
+                    unminted.append(i);
+                }
+                i += 1;
+            }
+
+            unminted
+        }
     }
 
     #[abi(embed_v0)]
@@ -788,27 +944,6 @@ pub mod IPStory {
         fn upgrade(ref self: ContractState, new_class_hash: starknet::ClassHash) {
             self.ownable.assert_only_owner();
             self.upgradeable.upgrade(new_class_hash);
-        }
-    }
-
-    // ERC1155 Hooks Implementation
-    impl ERC1155HooksImpl of ERC1155Component::ERC1155HooksTrait<ContractState> {
-        fn before_update(
-            ref self: ERC1155Component::ComponentState<ContractState>,
-            from: ContractAddress,
-            to: ContractAddress,
-            token_ids: Span<u256>,
-            values: Span<u256>,
-        ) { // No logic needed before update in this phase
-        }
-
-        fn after_update(
-            ref self: ERC1155Component::ComponentState<ContractState>,
-            from: ContractAddress,
-            to: ContractAddress,
-            token_ids: Span<u256>,
-            values: Span<u256>,
-        ) { // Could add logic here for tracking transfers in future phases
         }
     }
 }

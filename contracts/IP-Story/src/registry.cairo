@@ -18,8 +18,8 @@ pub mod ModerationRegistry {
             ModerationHistoryRecorded,
         },
     };
-    use openzeppelin::access::ownable::OwnableComponent;
-    use openzeppelin::upgrades::{interface::IUpgradeable, UpgradeableComponent};
+    use openzeppelin_access::ownable::OwnableComponent;
+    use openzeppelin_upgrades::{interface::IUpgradeable, UpgradeableComponent};
 
     // Components
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
@@ -68,6 +68,7 @@ pub mod ModerationRegistry {
         // Global settings
         minimum_moderators_required: u256,
         voting_threshold_percentage: u8, // % of moderators needed for consensus
+        factory_contract: ContractAddress,
         // Components
         #[substorage(v0)]
         ownable: OwnableComponent::Storage,
@@ -94,6 +95,7 @@ pub mod ModerationRegistry {
     fn constructor(
         ref self: ContractState,
         owner: ContractAddress,
+        factory_contract: ContractAddress,
         minimum_moderators_required: u256,
         voting_threshold_percentage: u8,
     ) {
@@ -106,6 +108,7 @@ pub mod ModerationRegistry {
         self.ownable.initializer(owner);
 
         // Initialize settings
+        self.factory_contract.write(factory_contract);
         self.minimum_moderators_required.write(minimum_moderators_required);
         self.voting_threshold_percentage.write(voting_threshold_percentage);
     }
@@ -115,10 +118,10 @@ pub mod ModerationRegistry {
         fn register_story(
             ref self: ContractState, story_contract: ContractAddress, creator: ContractAddress,
         ) {
-            // Only the story contract itself or factory can register
-            let caller = get_caller_address();
+            // Only the factory contract can register
             assert(
-                caller == story_contract || caller == self.ownable.owner(), errors::UNAUTHORIZED,
+                get_caller_address() == self.factory_contract.read(),
+                errors::ONLY_FACTORY_CAN_REGISTER,
             );
 
             // Validate inputs
@@ -331,8 +334,11 @@ pub mod ModerationRegistry {
             let total_moderators = self.story_moderator_counts.read(story_contract);
             let threshold_percentage = self.voting_threshold_percentage.read();
 
-            // Calculate required votes for consensus
-            let required_votes = (total_moderators * threshold_percentage.into()) / 100;
+            // Calculate required votes for consensus (round up using ceiling division)
+            // Formula: ceil(total_moderators * threshold_percentage / 100)
+            // Implemented as: (total_moderators * threshold_percentage + 99) / 100
+            let numerator = total_moderators * threshold_percentage.into();
+            let required_votes = (numerator + 99) / 100;
 
             // Check if enough votes for approval
             vote_data.votes_for >= required_votes.try_into().unwrap()
@@ -551,6 +557,11 @@ pub mod ModerationRegistry {
             };
 
             history
+        }
+
+        fn update_factory_contract(ref self: ContractState, factory_address: ContractAddress) {
+            self.ownable.assert_only_owner();
+            self.factory_contract.write(factory_address);
         }
     }
 

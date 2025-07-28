@@ -3,32 +3,27 @@
 #[starknet::contract]
 pub mod RevenueManager {
     use core::array::ArrayTrait;
-    use starknet::{
-        ContractAddress, get_caller_address, get_block_timestamp, get_contract_address,
-        storage::{
-            Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
-            StoragePointerWriteAccess,
-        },
-    };
-    use core::traits::TryInto;
-    use core::traits::Into;
-    use core::option::OptionTrait;
     use core::num::traits::Zero;
-    use openzeppelin::token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-    use openzeppelin::access::ownable::OwnableComponent;
-    use openzeppelin::upgrades::{interface::IUpgradeable, UpgradeableComponent};
-
-    // ETH contract address on Starknet
-    const ETH_CONTRACT_ADDRESS: felt252 =
-        0x049d36570d4e46f48e99674bd3fcc84644ddd6b96f7c741b1562b82f9e004dc7;
-
-    use super::super::{
-        errors::errors, interfaces::IRevenueManager,
-        events::{
-            RevenueReceived, RoyaltiesDistributed, RoyaltyClaimed, RevenueSplitUpdated,
-            RevenueDistributed, ContributorRegistered, ChapterViewed,
-        },
-        types::{RevenueMetrics, ContributorEarnings, ChapterRevenue, RevenueDistribution},
+    use core::option::OptionTrait;
+    use core::traits::{Into, TryInto};
+    use openzeppelin_access::ownable::OwnableComponent;
+    use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+    use openzeppelin_upgrades::UpgradeableComponent;
+    use openzeppelin_upgrades::interface::IUpgradeable;
+    use starknet::storage::{
+        Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
+        StoragePointerWriteAccess,
+    };
+    use starknet::{ContractAddress, get_block_timestamp, get_caller_address, get_contract_address};
+    use super::super::errors::errors;
+    use super::super::events::{
+        ChapterViewed, ContributorRegistered, RevenueDistributed, RevenueReceived,
+        RevenueSplitUpdated, RoyaltiesDistributed, RoyaltyClaimed,
+    };
+    use super::super::interfaces::IRevenueManager;
+    use super::super::types::{
+        ChapterRevenue, ContributorEarnings, ETH_CONTRACT_ADDRESS, RevenueDistribution,
+        RevenueMetrics,
     };
 
     // Components
@@ -89,7 +84,7 @@ pub mod RevenueManager {
         story_total_contributors: Map<ContractAddress, u256>, // story -> total contributors
         // Global registry
         registered_stories: Map<ContractAddress, bool>, // story -> is_registered
-        factory_contract: ContractAddress, // Factory that can register stories
+        factory_contract: ContractAddress,
         // Components
         #[substorage(v0)]
         ownable: OwnableComponent::Storage,
@@ -566,7 +561,7 @@ pub mod RevenueManager {
 
                 total_new_views += 1;
                 i += 1;
-            };
+            }
 
             // Single storage write for total view weight instead of multiple
             self.story_total_view_weight.write(story_id, new_total_weight);
@@ -616,6 +611,11 @@ pub mod RevenueManager {
 
                 i += 1;
             };
+        }
+
+        fn update_factory_contract(ref self: ContractState, factory_address: ContractAddress) {
+            self.ownable.assert_only_owner();
+            self.factory_contract.write(factory_address);
         }
     }
 
