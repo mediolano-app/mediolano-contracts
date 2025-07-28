@@ -12,6 +12,7 @@ version = "0.1.0"
 dependencies = [
  "alexandria_storage",
  "openzeppelin",
+ "openzeppelin_utils",
  "snforge_std",
 ]
 

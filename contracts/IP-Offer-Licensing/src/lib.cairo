@@ -1,9 +1,7 @@
-mod interfaces;
+pub mod interfaces;
 pub mod IPOfferLicensing;
-#[cfg(test)]
-mod test;
 
 pub use interfaces::IIPOfferLicensing;
 pub use interfaces::{Offer, OfferStatus};
-pub use IPOfferLicensing::IPOfferLicensingDispatcher;
-pub use IPOfferLicensing::IPOfferLicensingDispatcherTrait;
+pub use interfaces::IIPOfferLicensingDispatcher;
+pub use interfaces::IIPOfferLicensingDispatcherTrait;

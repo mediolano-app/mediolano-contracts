@@ -1,5 +1,6 @@
 use starknet::ContractAddress;
 use core::byte_array::ByteArray;
+use core::integer::u256;
 
 #[starknet::interface]
 pub trait IIPOfferLicensing<T> {
