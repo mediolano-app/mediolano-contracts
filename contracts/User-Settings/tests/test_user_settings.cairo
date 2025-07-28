@@ -331,3 +331,169 @@ fn test_delete_account() {
     let account_settings = dispatcher.get_account_settings(owner);
     assert(account_settings == Default::default(), 'Delete Account Failed');
 }
+
+#[test]
+fn test_unauthorized_access() {
+    let (dispatcher, this_contract, owner) = deploy_contract();
+    let unauthorized_user = contract_address_const::<'unauthorized_user'>();
+    let current_timestamp = 400_u64;
+
+    start_cheat_caller_address(this_contract, unauthorized_user);
+    start_cheat_block_timestamp(this_contract, current_timestamp);
+    
+    assert_panic(
+        dispatcher.store_account_details(
+            'test',
+            'test@test.com',
+            'username',
+            current_timestamp
+        )
+    );
+    
+    stop_cheat_caller_address(this_contract);
+    stop_cheat_block_timestamp(this_contract);
+}
+
+#[test]
+fn test_timestamp_validation() {
+    let (dispatcher, this_contract, owner) = deploy_contract();
+    let current_timestamp = get_block_timestamp();
+    let future_timestamp = current_timestamp + 600_u64; // 10 minutes in the future
+    let past_timestamp = current_timestamp - 600_u64; // 10 minutes in the past
+
+    start_cheat_caller_address(this_contract, owner);
+    
+    // Test future timestamp (should fail)
+    assert_panic(
+        dispatcher.store_account_details(
+            'test',
+            'test@test.com',
+            'username',
+            future_timestamp
+        )
+    );
+    
+    // Test past timestamp (should fail)
+    assert_panic(
+        dispatcher.store_account_details(
+            'test',
+            'test@test.com',
+            'username',
+            past_timestamp
+        )
+    );
+    
+    stop_cheat_caller_address(this_contract);
+}
+
+#[test]
+fn test_invalid_protection_level() {
+    let (dispatcher, this_contract, owner) = deploy_contract();
+    let current_timestamp = 400_u64;
+    let invalid_protection_level = 2; // Only 0 (STANDARD) and 1 (ENHANCED) are valid
+
+    start_cheat_caller_address(this_contract, owner);
+    start_cheat_block_timestamp(this_contract, current_timestamp);
+    
+    assert_panic(
+        dispatcher.store_ip_management_settings(
+            invalid_protection_level,
+            true,
+            current_timestamp
+        )
+    );
+    
+    stop_cheat_caller_address(this_contract);
+    stop_cheat_block_timestamp(this_contract);
+}
+
+#[test]
+fn test_event_emission() {
+    let (dispatcher, this_contract, owner) = deploy_contract();
+    let current_timestamp = 400_u64;
+    let owner_name = 'owner';
+
+    start_cheat_caller_address(this_contract, owner);
+    start_cheat_block_timestamp(this_contract, current_timestamp);
+    
+    dispatcher.store_account_details(
+        owner_name,
+        'owner@test.com',
+        'username',
+        current_timestamp
+    );
+    
+    // Verify SettingUpdated event
+    assert_event_emitted(
+        SettingUpdated {
+            user: owner,
+            setting_type: 1, // Account settings
+            timestamp: current_timestamp
+        }
+    );
+    
+    stop_cheat_caller_address(this_contract);
+    stop_cheat_block_timestamp(this_contract);
+}
+
+#[test]
+fn test_storage_consistency() {
+    let (dispatcher, this_contract, owner) = deploy_contract();
+    let current_timestamp = 400_u64;
+    let owner_name = 'owner';
+
+    start_cheat_caller_address(this_contract, owner);
+    start_cheat_block_timestamp(this_contract, current_timestamp);
+    
+    dispatcher.store_account_details(
+        owner_name,
+        'owner@test.com',
+        'username',
+        current_timestamp
+    );
+    
+    // Verify storage updates
+    let account_details = dispatcher.get_account_settings(owner);
+    assert(account_details.name == owner_name, 'Name not stored correctly');
+    assert(account_details.email == 'owner@test.com', 'Email not stored correctly');
+    assert(account_details.username == 'username', 'Username not stored correctly');
+    
+    stop_cheat_caller_address(this_contract);
+    stop_cheat_block_timestamp(this_contract);
+}
+
+#[test]
+fn test_network_settings() {
+    let (dispatcher, this_contract, owner) = deploy_contract();
+    let current_timestamp = 400_u64;
+    
+    start_cheat_caller_address(this_contract, owner);
+    start_cheat_block_timestamp(this_contract, current_timestamp);
+    
+    // Store initial settings
+    dispatcher.store_network_settings(
+        1, // MAINNET
+        1, // MEDIUM gas price preference
+        current_timestamp
+    );
+    
+    // Verify initial settings
+    let network_settings = dispatcher.get_network_settings(owner);
+    assert(network_settings.network_type == NetworkType::MAINNET, 'Network type not set correctly');
+    assert(network_settings.gas_price_preference == GasPricePreference::MEDIUM, 'Gas preference not set correctly');
+    
+    // Update settings
+    dispatcher.update_network_settings(
+        Option::Some(0), // TESTNET
+        Option::Some(0), // LOW gas price preference
+        current_timestamp
+    );
+    
+    // Verify updated settings
+    let updated_settings = dispatcher.get_network_settings(owner);
+    assert(updated_settings.network_type == NetworkType::TESTNET, 'Network type not updated correctly');
+    assert(updated_settings.gas_price_preference == GasPricePreference::LOW, 'Gas preference not updated correctly');
+    
+    stop_cheat_caller_address(this_contract);
+    stop_cheat_block_timestamp(this_contract);
+}
