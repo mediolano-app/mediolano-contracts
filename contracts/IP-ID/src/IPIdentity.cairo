@@ -105,7 +105,7 @@ pub mod IPIdentity {
             ContractAddress,
             storage::{
                 StoragePointerWriteAccess, StoragePointerReadAccess, StorageMapReadAccess,
-                StorageMapWriteAccess, StoragePathEntry, Map, Vec, VecTrait, MutableVecTrait
+                StorageMapWriteAccess, StoragePathEntry, Map
             },
             get_caller_address, get_block_timestamp
         },
@@ -320,17 +320,19 @@ pub mod IPIdentity {
             self.ip_id_to_token_id.write(ip_id, token_id);
 
             // Update indexing structures
-            self.owner_to_ip_ids.entry(caller).append().write(ip_id);
-
             let owner_count = self.owner_ip_count.read(caller);
+            self.owner_to_ip_ids.write((caller, owner_count), ip_id);
             self.owner_ip_count.write(caller, owner_count + 1);
 
             if collection_id != 0 {
-                self.collection_to_ip_ids.entry(collection_id).append().write(ip_id);
+                let collection_count = self.collection_ip_count.read(collection_id);
+                self.collection_to_ip_ids.write((collection_id, collection_count), ip_id);
+                self.collection_ip_count.write(collection_id, collection_count + 1);
             }
 
-            self.type_to_ip_ids.entry(ip_type.clone()).append().write(ip_id);
-            self.all_ip_ids.append().write(ip_id);
+            let type_count = self.type_ip_count.read(ip_type.clone());
+            self.type_to_ip_ids.write((ip_type.clone(), type_count), ip_id);
+            self.type_ip_count.write(ip_type.clone(), type_count + 1);
 
             let total = self.total_registered.read();
             self.total_registered.write(total + 1);
@@ -444,39 +446,35 @@ pub mod IPIdentity {
             self.erc721.transfer_from(current_owner, new_owner, token_id);
 
             // Update indexing structures
-            // Note: For simplicity, we'll rebuild the old owner's list
-            // In a production system, you might want a more efficient removal method
-            let old_owner_vec = self.owner_to_ip_ids.entry(current_owner);
-            let old_owner_len = old_owner_vec.len();
-            let mut found_index = old_owner_len; // Initialize to invalid index
+            // Find and remove from old owner's list
+            let old_owner_count = self.owner_ip_count.read(current_owner);
+            let mut found_index = old_owner_count; // Initialize to invalid index
 
             // Find the index of the IP ID to remove
             let mut i = 0;
-            while i < old_owner_len {
-                if old_owner_vec.at(i).read() == ip_id {
+            while i < old_owner_count {
+                if self.owner_to_ip_ids.read((current_owner, i)) == ip_id {
                     found_index = i;
                     break;
                 }
                 i += 1;
             };
 
-            // Remove the IP ID if found (swap with last and pop)
-            if found_index < old_owner_len {
-                let last_index = old_owner_len - 1;
+            // Remove the IP ID if found (swap with last)
+            if found_index < old_owner_count {
+                let last_index = old_owner_count - 1;
                 if found_index != last_index {
-                    let last_ip = old_owner_vec.at(last_index).read();
-                    old_owner_vec.at(found_index).write(last_ip);
+                    let last_ip = self.owner_to_ip_ids.read((current_owner, last_index));
+                    self.owner_to_ip_ids.write((current_owner, found_index), last_ip);
                 }
-                // Note: Vec doesn't have pop in current Cairo, so we'll leave it for now
+                // Clear the last entry
+                self.owner_to_ip_ids.write((current_owner, last_index), 0);
+                self.owner_ip_count.write(current_owner, old_owner_count - 1);
             }
 
-            let old_owner_count = self.owner_ip_count.read(current_owner);
-            self.owner_ip_count.write(current_owner, old_owner_count - 1);
-
             // Add to new owner's list
-            self.owner_to_ip_ids.entry(new_owner).append().write(ip_id);
-
             let new_owner_count = self.owner_ip_count.read(new_owner);
+            self.owner_to_ip_ids.write((new_owner, new_owner_count), ip_id);
             self.owner_ip_count.write(new_owner, new_owner_count + 1);
 
             self.emit(IPIDOwnershipTransferred {
@@ -503,7 +501,9 @@ pub mod IPIdentity {
                 self.ip_id_data.write(ip_id, ip_data);
 
                 // Add to verified list
-                self.verified_ip_ids.append().write(ip_id);
+                let verified_count = self.verified_count.read();
+                self.verified_ip_ids.write(verified_count, ip_id);
+                self.verified_count.write(verified_count + 1);
 
                 self.emit(IPIDVerified {
                     ip_id,
@@ -580,47 +580,59 @@ pub mod IPIdentity {
         }
 
         fn get_owner_ip_ids(self: @ContractState, owner: ContractAddress) -> Array<felt252> {
-            let owner_vec = self.owner_to_ip_ids.entry(owner);
+            let owner_count = self.owner_ip_count.read(owner);
             let mut result = ArrayTrait::new();
             let mut i = 0;
-            while i < owner_vec.len() {
-                result.append(owner_vec.at(i).read());
+            while i < owner_count {
+                let ip_id = self.owner_to_ip_ids.read((owner, i));
+                if ip_id != 0 { // Skip cleared entries
+                    result.append(ip_id);
+                }
                 i += 1;
             };
             result
         }
 
         fn get_verified_ip_ids(self: @ContractState, limit: u256, offset: u256) -> Array<felt252> {
-            let verified_vec = self.verified_ip_ids;
+            let verified_count = self.verified_count.read();
             let mut result = ArrayTrait::new();
             let mut i = offset;
             let mut count = 0;
 
-            while i < verified_vec.len() && count < limit {
-                result.append(verified_vec.at(i).read());
+            while i < verified_count && count < limit {
+                let ip_id = self.verified_ip_ids.read(i);
+                if ip_id != 0 { // Skip cleared entries
+                    result.append(ip_id);
+                    count += 1;
+                }
                 i += 1;
-                count += 1;
             };
             result
         }
 
         fn get_ip_ids_by_collection(self: @ContractState, collection_id: u256) -> Array<felt252> {
-            let collection_vec = self.collection_to_ip_ids.entry(collection_id);
+            let collection_count = self.collection_ip_count.read(collection_id);
             let mut result = ArrayTrait::new();
             let mut i = 0;
-            while i < collection_vec.len() {
-                result.append(collection_vec.at(i).read());
+            while i < collection_count {
+                let ip_id = self.collection_to_ip_ids.read((collection_id, i));
+                if ip_id != 0 { // Skip cleared entries
+                    result.append(ip_id);
+                }
                 i += 1;
             };
             result
         }
 
         fn get_ip_ids_by_type(self: @ContractState, ip_type: ByteArray) -> Array<felt252> {
-            let type_vec = self.type_to_ip_ids.entry(ip_type);
+            let type_count = self.type_ip_count.read(ip_type.clone());
             let mut result = ArrayTrait::new();
             let mut i = 0;
-            while i < type_vec.len() {
-                result.append(type_vec.at(i).read());
+            while i < type_count {
+                let ip_id = self.type_to_ip_ids.read((ip_type.clone(), i));
+                if ip_id != 0 { // Skip cleared entries
+                    result.append(ip_id);
+                }
                 i += 1;
             };
             result
