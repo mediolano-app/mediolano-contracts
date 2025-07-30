@@ -26,7 +26,7 @@ pub mod MedialaneV2 {
     struct Storage {
         #[substorage(v0)]
         nonces: NoncesComponent::Storage,
-        order_status: Map<felt252, OrderStatus>,
+        orders: Map<felt252, OrderDetails>,
         native_token_address: ContractAddress // STRK token address
     }
 
@@ -46,7 +46,7 @@ pub mod MedialaneV2 {
             'Medialane'
         }
         fn version() -> felt252 {
-            'v1'
+            '1.0.0'
         }
     }
 
@@ -57,6 +57,20 @@ pub mod MedialaneV2 {
 
     #[abi(embed_v0)]
     impl MedialaneImpl of IMedialane<ContractState> {
+        /// Registers a new order in the contract.
+        ///
+        /// This function validates the order's signature, status, and timing, then stores the order
+        /// details in contract storage and emits an `OrderCreated` event.
+        ///
+        /// # Arguments
+        /// * `order` - The `Order` struct containing order parameters and signature.
+        ///
+        /// # Panics
+        /// * `errors::INVALID_SIGNATURE` if the signature is invalid.
+        /// * `errors::ORDER_ALREADY_CREATED` if the order already exists.
+        /// * `errors::ORDER_NOT_YET_VALID` if the order's start time is in the future.
+        /// * `errors::ORDER_EXPIRED` if the order's end time has passed.
+        /// * `NoncesComponent` errors if the nonce is invalid or reused.
         fn register_order(ref self: ContractState, order: Order) {
             let order_parameters = order.parameters;
             let signature = order.signature;
@@ -65,7 +79,7 @@ pub mod MedialaneV2 {
 
             let order_hash = order_parameters.get_message_hash(offerer);
 
-            self._validate_order_hash_signature(order_hash.clone(), offerer, signature);
+            self._validate_hash_signature(order_hash.clone(), offerer, signature);
 
             // Validate Order Status (Nonce, Not Filled/Cancelled)
             self._validate_order_status(order_hash, OrderStatus::None);
@@ -75,7 +89,16 @@ pub mod MedialaneV2 {
 
             self.nonces.use_checked_nonce(offerer, order_parameters.nonce);
 
-            self.order_status.write(order_hash, OrderStatus::Created);
+            let order_details = OrderDetails {
+                offerer: order_parameters.offerer,
+                offer: order_parameters.offer,
+                consideration: order_parameters.consideration,
+                start_time: order_parameters.start_time,
+                end_time: order_parameters.end_time,
+                order_status: OrderStatus::Created,
+            };
+
+            self.orders.write(order_hash, order_details);
 
             self
                 .emit(
@@ -85,71 +108,128 @@ pub mod MedialaneV2 {
                 );
         }
 
-        fn fulfill_order(ref self: ContractState, order: Order, fulfiller: ContractAddress) {
-            let order_parameters = order.parameters;
-            let signature = order.signature;
-
-            let order_hash = order_parameters.get_message_hash(fulfiller);
-
-            self._validate_order_hash_signature(order_hash.clone(), fulfiller, signature);
+        /// Fulfills an existing order.
+        ///
+        /// This function validates the order's status, the fulfiller's signature, and timing, then
+        /// executes the asset transfers between offerer and fulfiller, updates the order status,
+        /// and emits an `OrderFulfilled` event.
+        ///
+        /// # Arguments
+        /// * `fulfillment_request` - The `FulfillmentRequest` struct containing fulfillment intent
+        /// and signature.
+        ///
+        /// # Panics
+        /// * `errors::ORDER_NOT_FOUND` if the order does not exist.
+        /// * `errors::ORDER_ALREADY_FILLED` if the order is already filled.
+        /// * `errors::ORDER_CANCELLED` if the order is cancelled.
+        /// * `errors::INVALID_SIGNATURE` if the fulfiller's signature is invalid.
+        /// * `errors::ORDER_NOT_YET_VALID` if the order's start time is in the future.
+        /// * `errors::ORDER_EXPIRED` if the order's end time has passed.
+        /// * `NoncesComponent` errors if the nonce is invalid or reused.
+        /// * Transfer errors as described in `_transfer_item`.
+        fn fulfill_order(ref self: ContractState, fulfillment_request: FulfillmentRequest) {
+            let fulfillment_intent = fulfillment_request.fulfillment;
+            let signature = fulfillment_request.signature;
+            let order_hash = fulfillment_intent.order_hash;
 
             // Validate Order Status is Created
             self._validate_order_status(order_hash, OrderStatus::Created);
 
-            // Validate Order Timing (Start/End Time)
-            self._validate_order_timing(order_parameters.start_time, order_parameters.end_time);
+            let mut order_details = self.orders.read(order_hash);
 
-            self.nonces.use_checked_nonce(fulfiller, order_parameters.nonce);
+            let fulfiller = fulfillment_intent.fulfiller;
+            let fulfillment_hash = fulfillment_intent.get_message_hash(fulfiller);
+
+            self._validate_hash_signature(fulfillment_hash.clone(), fulfiller, signature);
+
+            // Validate Order Timing (Start/End Time)
+            self._validate_order_timing(order_details.start_time, order_details.end_time);
+
+            self.nonces.use_checked_nonce(fulfiller, fulfillment_intent.nonce);
 
             // Execute Transfers (Interaction)
-            self._execute_transfers(order_parameters, fulfiller);
+            self._execute_transfers(order_details, fulfiller);
+
+            order_details.order_status = OrderStatus::Filled;
 
             // Update Order Status
-            self.order_status.write(order_hash, OrderStatus::Filled);
+            self.orders.write(order_hash, order_details);
 
             self
                 .emit(
                     Event::OrderFulfilled(
                         OrderFulfilled {
                             order_hash: order_hash,
-                            offerer: order_parameters.offerer,
+                            offerer: order_details.offerer,
                             fulfiller: fulfiller,
                         },
                     ),
                 );
         }
 
-        fn cancel_order(ref self: ContractState, order: Order) {
-            let order_parameters = order.parameters;
-            let signature = order.signature;
-            let offerer = order_parameters.offerer.clone();
+        /// Cancels an existing order.
+        ///
+        /// This function validates the order's status and the offerer's signature, marks the order
+        /// as cancelled, consumes the nonce, updates storage, and emits an `OrderCancelled` event.
+        ///
+        /// # Arguments
+        /// * `cancel_request` - The `CancelRequest` struct containing cancellation intent and
+        /// signature.
+        ///
+        /// # Panics
+        /// * `errors::ORDER_NOT_FOUND` if the order does not exist.
+        /// * `errors::ORDER_ALREADY_FILLED` if the order is already filled.
+        /// * `errors::ORDER_CANCELLED` if the order is already cancelled.
+        /// * `errors::INVALID_SIGNATURE` if the offerer's signature is invalid.
+        /// * `NoncesComponent` errors if the nonce is invalid or reused.
+        fn cancel_order(ref self: ContractState, cancel_request: CancelRequest) {
+            let cancelation_intent = cancel_request.cancelation;
+            let signature = cancel_request.signature;
 
-            let order_hash = order_parameters.get_message_hash(offerer);
+            let offerer = cancelation_intent.offerer;
+            let order_hash = cancelation_intent.order_hash;
 
-            self._validate_order_hash_signature(order_hash.clone(), offerer, signature);
-
-            // Validate Order Status is Created
             self._validate_order_status(order_hash, OrderStatus::Created);
 
-            self.nonces.use_checked_nonce(offerer, order_parameters.nonce);
+            let cancelation_hash = cancelation_intent.get_message_hash(offerer);
+            self._validate_hash_signature(cancelation_hash, offerer, signature);
+
+            let mut order_details = self.orders.read(order_hash);
+
+            order_details.order_status = OrderStatus::Cancelled;
+
+            self.nonces.use_checked_nonce(offerer, cancelation_intent.nonce);
 
             // Update Order Status
-            self.order_status.write(order_hash, OrderStatus::Cancelled);
+            self.orders.write(order_hash, order_details);
 
             self
                 .emit(
                     Event::OrderCancelled(
-                        OrderCancelled {
-                            order_hash: order_hash, offerer: order_parameters.offerer,
-                        },
+                        OrderCancelled { order_hash: order_hash, offerer: order_details.offerer },
                     ),
                 );
         }
 
-        fn get_order_status(self: @ContractState, order_hash: felt252) -> OrderStatus {
-            self.order_status.read(order_hash)
+        /// Retrieves the details of an order by its hash.
+        ///
+        /// # Arguments
+        /// * `order_hash` - The hash of the order to retrieve.
+        ///
+        /// # Returns
+        /// * `OrderDetails` - The details of the order.
+        fn get_order_details(self: @ContractState, order_hash: felt252) -> OrderDetails {
+            self.orders.read(order_hash)
         }
 
+        /// Computes the hash for a given set of order parameters and signer.
+        ///
+        /// # Arguments
+        /// * `parameters` - The `OrderParameters` struct to hash.
+        /// * `signer` - The address of the signer.
+        ///
+        /// # Returns
+        /// * `felt252` - The computed order hash.
         fn get_order_hash(
             self: @ContractState, parameters: OrderParameters, signer: ContractAddress,
         ) -> felt252 {
@@ -160,6 +240,17 @@ pub mod MedialaneV2 {
     #[generate_trait]
     impl InternalFunctions of InternalFunctionsTrait {
         /// Validates the order's timing constraints.
+        ///
+        /// Ensures the current block timestamp is within the order's valid time window.
+        ///
+        /// # Arguments
+        /// * `start_time` - The start time of the order (inclusive).
+        /// * `end_time` - The end time of the order (exclusive). If zero, no expiry is enforced.
+        ///
+        /// # Panics
+        /// * `errors::ORDER_NOT_YET_VALID` if the current time is before `start_time`.
+        /// * `errors::ORDER_EXPIRED` if the current time is after or equal to `end_time` (when
+        /// `end_time` is nonzero).
         fn _validate_order_timing(self: @ContractState, start_time: u64, end_time: u64) {
             let current_timestamp = get_block_timestamp();
             assert(current_timestamp >= start_time, errors::ORDER_NOT_YET_VALID);
@@ -170,14 +261,26 @@ pub mod MedialaneV2 {
         }
 
         /// Validates the order's status (nonce, filled, cancelled). Reverts if invalid.
+        ///
+        /// Checks that the order's current status matches the expected status.
+        ///
+        /// # Arguments
+        /// * `order_hash` - The hash of the order to check.
+        /// * `expected` - The expected `OrderStatus`.
+        ///
+        /// # Panics
+        /// * `errors::ORDER_NOT_FOUND` if the order does not exist.
+        /// * `errors::ORDER_ALREADY_CREATED` if the order is already created.
+        /// * `errors::ORDER_ALREADY_FILLED` if the order is already filled.
+        /// * `errors::ORDER_CANCELLED` if the order is cancelled.
         fn _validate_order_status(
             ref self: ContractState, order_hash: felt252, expected: OrderStatus,
         ) {
-            let actual = self.order_status.read(order_hash);
-
+            let order_details = self.orders.read(order_hash);
+            let actual_status = order_details.order_status;
             assert(
-                actual == expected,
-                match actual {
+                actual_status == expected,
+                match actual_status {
                     OrderStatus::None => errors::ORDER_NOT_FOUND,
                     OrderStatus::Created => errors::ORDER_ALREADY_CREATED,
                     OrderStatus::Filled => errors::ORDER_ALREADY_FILLED,
@@ -187,7 +290,18 @@ pub mod MedialaneV2 {
         }
 
         /// Verifies the order signature against the order hash and signer address.
-        fn _validate_order_hash_signature(
+        ///
+        /// Uses the ISRC6 interface to check if the provided signature is valid for the given hash
+        /// and signer.
+        ///
+        /// # Arguments
+        /// * `order_hash` - The hash of the order/message.
+        /// * `signer_address` - The address expected to have signed the message.
+        /// * `signature` - The signature to verify.
+        ///
+        /// # Panics
+        /// * `errors::INVALID_SIGNATURE` if the signature is invalid.
+        fn _validate_hash_signature(
             self: @ContractState,
             order_hash: felt252,
             signer_address: ContractAddress,
@@ -203,8 +317,18 @@ pub mod MedialaneV2 {
         }
 
         /// Executes the actual asset transfers based on the order parameters.
+        ///
+        /// Transfers the offered asset from the offerer to the fulfiller, and the consideration
+        /// asset from the fulfiller to the specified recipient.
+        ///
+        /// # Arguments
+        /// * `parameters` - The `OrderDetails` struct containing offer and consideration items.
+        /// * `fulfiller` - The address fulfilling the order.
+        ///
+        /// # Panics
+        /// * Panics as described in `_transfer_item` for each transfer.
         fn _execute_transfers(
-            ref self: ContractState, parameters: OrderParameters, fulfiller: ContractAddress,
+            ref self: ContractState, parameters: OrderDetails, fulfiller: ContractAddress,
         ) {
             let offerer = parameters.offerer;
 
