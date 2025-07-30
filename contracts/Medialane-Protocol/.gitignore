@@ -3,3 +3,5 @@ target
 snfoundry_trace/
 coverage/
 profile/
+node_modules/
+package-lock.json
