@@ -4,22 +4,22 @@
 pub mod ModerationRegistry {
     use core::array::ArrayTrait;
     use core::byte_array::ByteArray;
-    use starknet::{
-        ContractAddress, get_caller_address, get_block_timestamp, contract_address_const,
-    };
+    use core::num::traits::Zero;
+    use openzeppelin_access::ownable::OwnableComponent;
+    use openzeppelin_upgrades::UpgradeableComponent;
+    use openzeppelin_upgrades::interface::IUpgradeable;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
-    use super::super::{
-        interfaces::IModerationRegistry, types::{ModerationVote}, errors::errors,
-        events::{
-            StoryRegistered, ModeratorAssigned, ModeratorRemoved, SubmissionVoted, ChapterFlagged,
-            ModerationHistoryRecorded,
-        },
+    use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
+    use super::super::errors::errors;
+    use super::super::events::{
+        ChapterFlagged, ModerationHistoryRecorded, ModeratorAssigned, ModeratorRemoved,
+        StoryRegistered, SubmissionVoted,
     };
-    use openzeppelin_access::ownable::OwnableComponent;
-    use openzeppelin_upgrades::{interface::IUpgradeable, UpgradeableComponent};
+    use super::super::interfaces::IModerationRegistry;
+    use super::super::types::ModerationVote;
 
     // Components
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
@@ -100,7 +100,7 @@ pub mod ModerationRegistry {
         voting_threshold_percentage: u8,
     ) {
         // Validation
-        assert(owner != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
+        assert(owner != Zero::zero(), errors::CALLER_ZERO_ADDRESS);
         assert(voting_threshold_percentage <= 100, errors::INVALID_PARAMETER);
         assert(minimum_moderators_required > 0, errors::INVALID_PARAMETER);
 
@@ -125,10 +125,8 @@ pub mod ModerationRegistry {
             );
 
             // Validate inputs
-            assert(
-                story_contract != contract_address_const::<0>(), errors::INVALID_CONTRACT_ADDRESS,
-            );
-            assert(creator != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
+            assert(story_contract != Zero::zero(), errors::INVALID_CONTRACT_ADDRESS);
+            assert(creator != Zero::zero(), errors::CALLER_ZERO_ADDRESS);
             assert(!self.registered_stories.read(story_contract), errors::STORY_ALREADY_EXISTS);
 
             // Register story
@@ -163,7 +161,7 @@ pub mod ModerationRegistry {
             // Validate story exists and caller is creator
             assert(self.registered_stories.read(story_contract), errors::STORY_NOT_REGISTERED);
             assert(self.story_creators.read(story_contract) == caller, errors::NOT_STORY_CREATOR);
-            assert(moderator != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
+            assert(moderator != Zero::zero(), errors::CALLER_ZERO_ADDRESS);
             assert(
                 !self.story_moderators.read((story_contract, moderator)),
                 errors::MODERATOR_ALREADY_EXISTS,
@@ -335,7 +333,6 @@ pub mod ModerationRegistry {
             let threshold_percentage = self.voting_threshold_percentage.read();
 
             // Calculate required votes for consensus (round up using ceiling division)
-            // Formula: ceil(total_moderators * threshold_percentage / 100)
             // Implemented as: (total_moderators * threshold_percentage + 99) / 100
             let numerator = total_moderators * threshold_percentage.into();
             let required_votes = (numerator + 99) / 100;
@@ -488,7 +485,7 @@ pub mod ModerationRegistry {
                     moderators.append(moderator);
                 }
                 i += 1;
-            };
+            }
 
             moderators
         }
@@ -507,7 +504,7 @@ pub mod ModerationRegistry {
                     stories.append(story);
                 }
                 i += 1;
-            };
+            }
 
             stories
         }
@@ -554,7 +551,7 @@ pub mod ModerationRegistry {
                 let action = self.moderation_history.read((story_contract, i));
                 history.append(action);
                 i += 1;
-            };
+            }
 
             history
         }

@@ -3,18 +3,16 @@
 #[starknet::contract]
 pub mod IPStoryFactory {
     use core::array::ArrayTrait;
+    use core::num::traits::Zero;
     use openzeppelin_access::ownable::OwnableComponent;
     use openzeppelin_upgrades::UpgradeableComponent;
     use openzeppelin_upgrades::interface::IUpgradeable;
-    use openzeppelin_utils::serde::SerializedAppend;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
     use starknet::syscalls::deploy_syscall;
-    use starknet::{
-        ClassHash, ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
-    };
+    use starknet::{ClassHash, ContractAddress, get_block_timestamp, get_caller_address};
     use super::super::errors::errors;
     use super::super::events::{StoryCreated, StoryUpdated};
     use super::super::interfaces::{
@@ -49,7 +47,6 @@ pub mod IPStoryFactory {
         story_implementation_class_hash: ClassHash,
         moderation_registry: ContractAddress,
         revenue_manager: ContractAddress,
-        platform_fee_percentage: u8,
         // Components
         #[substorage(v0)]
         ownable: OwnableComponent::Storage,
@@ -75,15 +72,11 @@ pub mod IPStoryFactory {
         story_implementation_class_hash: ClassHash,
         moderation_registry: ContractAddress,
         revenue_manager: ContractAddress,
-        platform_fee_percentage: u8,
     ) {
         // Validation
-        assert(owner != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
-        assert(
-            moderation_registry != contract_address_const::<0>(), errors::INVALID_CONTRACT_ADDRESS,
-        );
-        assert(revenue_manager != contract_address_const::<0>(), errors::INVALID_CONTRACT_ADDRESS);
-        assert(platform_fee_percentage <= 100, errors::INVALID_ROYALTY_PERCENTAGE);
+        assert(owner != Zero::zero(), errors::CALLER_ZERO_ADDRESS);
+        assert(moderation_registry != Zero::zero(), errors::INVALID_CONTRACT_ADDRESS);
+        assert(revenue_manager != Zero::zero(), errors::INVALID_CONTRACT_ADDRESS);
 
         // Initialize components
         self.ownable.initializer(owner);
@@ -92,7 +85,6 @@ pub mod IPStoryFactory {
         self.story_implementation_class_hash.write(story_implementation_class_hash);
         self.moderation_registry.write(moderation_registry);
         self.revenue_manager.write(revenue_manager);
-        self.platform_fee_percentage.write(platform_fee_percentage);
         self.story_count.write(0);
     }
 
@@ -193,7 +185,7 @@ pub mod IPStoryFactory {
                     caller,
                     royalty_distribution.creator_percentage,
                     royalty_distribution.platform_percentage,
-                    contract_address_const::<0>() // Use ETH as default payment token
+                    Zero::zero() // Use ETH as default payment token
                 );
 
             // Emit event

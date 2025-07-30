@@ -10,6 +10,8 @@ pub mod registry;
 pub mod revenue;
 pub mod story;
 pub mod types;
+
+// Export main components
 pub use errors::*;
 pub use events::*;
 
@@ -19,6 +21,4 @@ pub use interfaces::*;
 pub use registry::ModerationRegistry;
 pub use revenue::RevenueManager;
 pub use story::IPStory;
-
-// Export main components
 pub use types::*;

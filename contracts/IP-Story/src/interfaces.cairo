@@ -243,7 +243,7 @@ pub trait IRevenueManager<TContractState> {
     fn get_chapter_view_count(
         self: @TContractState, story_id: ContractAddress, token_id: u256,
     ) -> u256;
-    // Revenue configuration per storyy
+    // Revenue configuration per story
     fn update_revenue_split(
         ref self: TContractState,
         story_id: ContractAddress,
@@ -253,6 +253,9 @@ pub trait IRevenueManager<TContractState> {
     fn get_revenue_split(
         self: @TContractState, story_id: ContractAddress,
     ) -> (u8, u8, u8); // (creator, contributors, platform)
+    fn set_payment_token(
+        ref self: TContractState, story_id: ContractAddress, payment_token: ContractAddress,
+    );
     // Batch operations
     fn batch_record_views(
         ref self: TContractState,

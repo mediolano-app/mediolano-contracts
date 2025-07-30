@@ -24,7 +24,7 @@ pub struct StoryUpdated {
     pub timestamp: u64,
 }
 
-/// Events for Chapter Submissions (Pre-minting)
+/// Events for Chapter Submissions
 #[derive(Drop, starknet::Event)]
 pub struct ChapterSubmitted {
     #[key]
@@ -52,7 +52,7 @@ pub struct SubmissionVoted {
     pub timestamp: u64,
 }
 
-/// Events for Accepted Chapters (Post-minting NFTs)
+/// Events for Accepted Chapters
 #[derive(Drop, starknet::Event)]
 pub struct ChapterAccepted {
     #[key]
@@ -175,6 +175,26 @@ pub struct CreatorOverride {
     pub timestamp: u64,
 }
 
+#[derive(Drop, starknet::Event)]
+pub struct StoryRegistered {
+    #[key]
+    pub story: ContractAddress,
+    #[key]
+    pub creator: ContractAddress,
+    pub timestamp: u64,
+}
+
+#[derive(Drop, starknet::Event)]
+pub struct ModerationHistoryRecorded {
+    #[key]
+    pub story: ContractAddress,
+    pub action_id: u256,
+    pub moderator: ContractAddress,
+    pub action: felt252,
+    pub target_id: u256,
+    pub timestamp: u64,
+}
+
 /// Events for Revenue and Engagement
 #[derive(Drop, starknet::Event)]
 pub struct ChapterViewed {
@@ -199,16 +219,6 @@ pub struct RevenueReceived {
 }
 
 #[derive(Drop, starknet::Event)]
-pub struct RoyaltiesDistributed {
-    #[key]
-    pub story: ContractAddress,
-    pub total_amount: u256,
-    pub creator_share: u256,
-    pub contributor_count: u32,
-    pub timestamp: u64,
-}
-
-#[derive(Drop, starknet::Event)]
 pub struct RoyaltyClaimed {
     #[key]
     pub story: ContractAddress,
@@ -223,10 +233,10 @@ pub struct RevenueSplitUpdated {
     #[key]
     pub story: ContractAddress,
     pub updater: ContractAddress,
-    pub old_creator: u8,
-    pub new_creator: u8,
-    pub old_platform: u8,
-    pub new_platform: u8,
+    pub old_creator_percentage: u8,
+    pub new_creator_percentage: u8,
+    pub old_platform_percentage: u8,
+    pub new_platform_percentage: u8,
     pub timestamp: u64,
 }
 
@@ -236,7 +246,8 @@ pub struct RevenueDistributed {
     pub story: ContractAddress,
     pub distribution_id: u256,
     pub total_amount: u256,
-    pub recipients_count: u32,
+    pub creator_share: u256,
+    pub contributor_count: u32,
     pub timestamp: u64,
 }
 
@@ -282,26 +293,5 @@ pub struct BatchOperationCompleted {
     pub items_processed: u256,
     pub successful: u256,
     pub failed: u256,
-    pub timestamp: u64,
-}
-
-/// Events for Registry Operations
-#[derive(Drop, starknet::Event)]
-pub struct StoryRegistered {
-    #[key]
-    pub story: ContractAddress,
-    #[key]
-    pub creator: ContractAddress,
-    pub timestamp: u64,
-}
-
-#[derive(Drop, starknet::Event)]
-pub struct ModerationHistoryRecorded {
-    #[key]
-    pub story: ContractAddress,
-    pub action_id: u256,
-    pub moderator: ContractAddress,
-    pub action: felt252,
-    pub target_id: u256,
     pub timestamp: u64,
 }
