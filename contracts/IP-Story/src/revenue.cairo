@@ -18,7 +18,7 @@ pub mod RevenueManager {
     use super::super::errors::errors;
     use super::super::events::{
         ChapterViewed, ContributorRegistered, RevenueDistributed, RevenueReceived,
-        RevenueSplitUpdated, RoyaltiesDistributed, RoyaltyClaimed,
+        RevenueSplitUpdated, RoyaltyClaimed,
     };
     use super::super::interfaces::IRevenueManager;
     use super::super::types::{
@@ -96,7 +96,6 @@ pub mod RevenueManager {
     #[derive(Drop, starknet::Event)]
     pub enum Event {
         RevenueReceived: RevenueReceived,
-        RoyaltiesDistributed: RoyaltiesDistributed,
         RoyaltyClaimed: RoyaltyClaimed,
         ChapterViewed: ChapterViewed,
         RevenueSplitUpdated: RevenueSplitUpdated,
@@ -274,43 +273,20 @@ pub mod RevenueManager {
             // Distribute to contributors based on reader engagement (view-weighted)
             self._distribute_to_contributors_weighted(story_id, distribution.contributors_share);
 
-            // Update metrics
-            let mut metrics = self.story_revenue_metrics.read(story_id);
-            metrics.total_revenue += total_amount;
-            metrics.last_updated = get_block_timestamp();
-            if metrics.total_chapters > 0 {
-                metrics.average_revenue_per_chapter = metrics.total_revenue
-                    / metrics.total_chapters;
-            }
-            self.story_revenue_metrics.write(story_id, metrics);
-
             // Record distribution history
             let distribution_id = self.story_next_distribution_id.read(story_id);
             self.story_distribution_history.write((story_id, distribution_id), distribution);
             self.story_next_distribution_id.write(story_id, distribution_id + 1);
 
-            self
-                .emit(
-                    RoyaltiesDistributed {
-                        story: story_id,
-                        total_amount,
-                        creator_share: distribution.creator_share,
-                        contributor_count: self
-                            .story_total_contributors
-                            .read(story_id)
-                            .try_into()
-                            .unwrap(),
-                        timestamp: get_block_timestamp(),
-                    },
-                );
-
+            // Emit RevenueDistributed event
             self
                 .emit(
                     RevenueDistributed {
                         story: story_id,
                         distribution_id,
                         total_amount,
-                        recipients_count: self
+                        creator_share: distribution.creator_share,
+                        contributor_count: self
                             .story_total_contributors
                             .read(story_id)
                             .try_into()
@@ -323,7 +299,7 @@ pub mod RevenueManager {
         fn claim_royalties(ref self: ContractState, story_id: ContractAddress) -> u256 {
             // Apply Checks-Effects-Interactions pattern to prevent reentrancy
 
-            // 1. CHECKS - Already done above
+            // 1. CHECKS - Verify caller has pending royalties
             let caller = get_caller_address();
             let pending = self.story_pending_royalties.read((story_id, caller));
             assert(pending > 0, errors::NO_ROYALTIES_TO_CLAIM);
@@ -340,9 +316,9 @@ pub mod RevenueManager {
             let payment_token = self.story_payment_token.read(story_id);
             if payment_token.is_zero() {
                 // ETH transfer using Starknet's native ETH contract
-                let eth_contract_address: ContractAddress = starknet::contract_address_const::<
-                    ETH_CONTRACT_ADDRESS,
-                >();
+                let eth_contract_address: ContractAddress = ETH_CONTRACT_ADDRESS
+                    .try_into()
+                    .unwrap();
                 let eth_contract = IERC20Dispatcher { contract_address: eth_contract_address };
 
                 let contract_balance = eth_contract.balance_of(get_contract_address());
@@ -412,6 +388,10 @@ pub mod RevenueManager {
             let mut metrics = self.story_revenue_metrics.read(story_id);
             metrics.total_revenue += amount;
             metrics.last_updated = get_block_timestamp();
+            if metrics.total_chapters > 0 {
+                metrics.average_revenue_per_chapter = metrics.total_revenue
+                    / metrics.total_chapters;
+            }
             self.story_revenue_metrics.write(story_id, metrics);
 
             self
@@ -463,8 +443,8 @@ pub mod RevenueManager {
             assert(platform_percentage <= 100, errors::INVALID_PERCENTAGES);
             assert(creator_percentage + platform_percentage <= 100, errors::INVALID_PERCENTAGES);
 
-            let old_creator = self.story_creator_percentage.read(story_id);
-            let old_platform = self.story_platform_percentage.read(story_id);
+            let old_creator_percentage = self.story_creator_percentage.read(story_id);
+            let old_platform_percentage = self.story_platform_percentage.read(story_id);
 
             let contributors_percentage = 100 - creator_percentage - platform_percentage;
 
@@ -477,10 +457,10 @@ pub mod RevenueManager {
                     RevenueSplitUpdated {
                         story: story_id,
                         updater: caller,
-                        old_creator,
-                        new_creator: creator_percentage,
-                        old_platform,
-                        new_platform: platform_percentage,
+                        old_creator_percentage,
+                        new_creator_percentage: creator_percentage,
+                        old_platform_percentage,
+                        new_platform_percentage: platform_percentage,
                         timestamp: get_block_timestamp(),
                     },
                 );
@@ -492,6 +472,15 @@ pub mod RevenueManager {
                 self.story_contributors_percentage.read(story_id),
                 self.story_platform_percentage.read(story_id),
             )
+        }
+
+        fn set_payment_token(
+            ref self: ContractState, story_id: ContractAddress, payment_token: ContractAddress,
+        ) {
+            let caller = get_caller_address();
+            assert(self.story_creators.read((story_id, caller)), errors::ONLY_CREATORS_CAN_UPDATE);
+
+            self.story_payment_token.write(story_id, payment_token);
         }
 
         fn batch_record_views(

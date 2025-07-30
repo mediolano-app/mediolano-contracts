@@ -4,6 +4,7 @@
 pub mod IPStory {
     use core::array::ArrayTrait;
     use core::byte_array::ByteArray;
+    use core::num::traits::Zero;
     use openzeppelin_access::ownable::OwnableComponent;
     use openzeppelin_introspection::src5::SRC5Component;
     use openzeppelin_token::erc1155::{ERC1155Component, ERC1155HooksEmptyImpl};
@@ -13,10 +14,7 @@ pub mod IPStory {
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
-    use starknet::{
-        ContractAddress, contract_address_const, get_block_timestamp, get_caller_address,
-        get_contract_address,
-    };
+    use starknet::{ContractAddress, get_block_timestamp, get_caller_address, get_contract_address};
     use super::super::errors::errors;
     use super::super::events::{
         ChapterAccepted, ChapterContentUpdated, ChapterFlagged, ChapterMinted, ChapterRejected,
@@ -65,13 +63,13 @@ pub mod IPStory {
         submission_to_token: Map<u256, u256>, // submission_id -> token_id (links tiers)
         // Story statistics
         stats: StoryStats,
+        // Rejection system
+        rejected_submissions: Map<u256, bool>, // submission_id -> is_rejected
+        rejected_submission_reasons: Map<u256, ByteArray>, // submission_id -> reason
         // Contract references
         factory_contract: ContractAddress,
         moderation_registry: ContractAddress,
         revenue_manager: ContractAddress,
-        // Rejection system
-        rejected_submissions: Map<u256, bool>, // submission_id -> is_rejected
-        rejected_submission_reasons: Map<u256, ByteArray>, // submission_id -> reason
         // Components
         #[substorage(v0)]
         erc1155: ERC1155Component::Storage,
@@ -529,7 +527,7 @@ pub mod IPStory {
         // Basic ownership and upgradeability
         fn transfer_story_ownership(ref self: ContractState, new_owner: ContractAddress) {
             self.ownable.assert_only_owner();
-            assert(new_owner != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
+            assert(new_owner != Zero::zero(), errors::CALLER_ZERO_ADDRESS);
             self.ownable.transfer_ownership(new_owner);
         }
 
@@ -537,7 +535,7 @@ pub mod IPStory {
             // Only existing creators can add new creators
             let caller = get_caller_address();
             assert(self.story_creators.read(caller), errors::NOT_STORY_CREATOR);
-            assert(new_creator != contract_address_const::<0>(), errors::CALLER_ZERO_ADDRESS);
+            assert(new_creator != Zero::zero(), errors::CALLER_ZERO_ADDRESS);
             assert(!self.story_creators.read(new_creator), errors::CREATOR_ALREADY_EXISTS);
 
             self.story_creators.write(new_creator, true);
@@ -779,15 +777,25 @@ pub mod IPStory {
                 errors::CHAPTER_ALREADY_MINTED,
             );
 
-            // Mint NFT to author
+            // Convert metadata fields to felt252
+            let chapter_felt: felt252 = chapter
+                .chapter_number
+                .try_into()
+                .unwrap(); // Convert u64 to felt252
+            let author_felt: felt252 = chapter
+                .author
+                .try_into()
+                .unwrap(); //  Convert ContractAddress to felt252
+            let timestamp_felt: felt252 = timestamp.try_into().unwrap(); // Convert u64 to felt252
+
+            // Mint the chapter with converted metadata
             self
                 .erc1155
                 .mint_with_acceptance_check(
-                    chapter.author, token_id, 1, array![ // chapter.title.into(),
-                    // chapter.ipfs_hash,
-                    // chapter.author.into(),
-                    // timestamp.into(),
-                    ].span(),
+                    chapter.author,
+                    token_id,
+                    1,
+                    array![chapter_felt, chapter.ipfs_hash, author_felt, timestamp_felt].span(),
                 );
 
             // Emit minting event
@@ -837,10 +845,29 @@ pub mod IPStory {
             // Batch mint tokens to authors
             let mut i = 0;
             while (i < recipients.len()) {
+                // Pack chapter metdata into span
+                let token_id = *token_ids.at(i);
+                let chapter = self.chapters.read(token_id);
+                let chapter_felt: felt252 = chapter
+                    .chapter_number
+                    .try_into()
+                    .unwrap(); // Convert u64 to felt252
+                let author_felt: felt252 = chapter
+                    .author
+                    .try_into()
+                    .unwrap(); //  Convert ContractAddress to felt252
+                let timestamp_felt: felt252 = timestamp
+                    .try_into()
+                    .unwrap(); // Convert u64 to felt252
+
+                // Mint chapter token to author with metadata
                 self
                     .erc1155
                     .mint_with_acceptance_check(
-                        *recipients.at(i), *valid_token_ids.at(i), *values.at(i), array![].span(),
+                        *recipients.at(i),
+                        *valid_token_ids.at(i),
+                        *values.at(i),
+                        array![chapter_felt, chapter.ipfs_hash, author_felt, timestamp_felt].span(),
                     );
                 i += 1;
             }
@@ -877,16 +904,9 @@ pub mod IPStory {
 
             // Create values array with same length as token_ids
             let mut values = ArrayTrait::new();
-            // let mut chapter_metadata = ArrayTrait::new();
-            // let mut chapters_metadata = ArrayTrait::new();
-
             let mut i = 0;
+
             while i < author_token_ids.len() {
-                let chapter = self.chapters.read(*author_token_ids.at(i));
-                // chapter_metadata.append(chapter.ipfs_hash.into());
-                // chapter_metadata.append(chapter.title.into());
-                // chapter_metadata.append(chapter.author.try_into().unwrap());
-                // chapters_metadata.append(chapter_metadata);
                 values.append(1);
                 i += 1;
             }
@@ -895,10 +915,7 @@ pub mod IPStory {
             self
                 .erc1155
                 .batch_mint_with_acceptance_check(
-                    author,
-                    author_token_ids.span(),
-                    values.span(), // chapters_metadata.at(i).span(),
-                    array![].span(),
+                    author, author_token_ids.span(), values.span(), array![].span(),
                 );
         }
 
