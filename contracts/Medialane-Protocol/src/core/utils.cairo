@@ -1,0 +1,32 @@
+pub fn order_parameters_type_hash() -> felt252 {
+    selector!(
+        "\"OrderParameters\"(
+            \"offerer\":\"felt\",
+            \"offer\":\"OfferItem\",
+            \"consideration\":\"ConsiderationItem\",
+            \"start_time\":\"timestamp\",
+            \"end_time\":\"timestamp\",
+            \"salt\":\"felt\",
+            \"nonce\":\"felt\"
+        )
+        \"ConsiderationItem\"(
+            \"item_type\":\"felt\",
+            \"token\":\"felt\",
+            \"identifier_or_criteria\":\"u256\",
+            \"start_amount\":\"u256\",
+            \"end_amount\":\"u256\",
+            \"recipient\":\"felt\"
+        )
+        \"OfferItem\"(
+            \"item_type\":\"felt\",
+            \"token\":\"felt\",
+            \"identifier_or_criteria\":\"u256\",
+            \"start_amount\":\"u256\",
+            \"end_amount\":\"u256\"
+        )
+        \"u256\"(
+            \"low\":\"u128\",
+            \"high\":\"u128\"
+        )",
+    )
+}
