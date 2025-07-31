@@ -1,39 +1,33 @@
-import {
-  Account,
-  ec,
-  hash,
-  json,
-  Contract,
-  encode,
-  shortString,
-  WeierstrassSignatureType,
-  ArraySignatureType,
-  stark,
-  RpcProvider,
-  Signature,
-  num,
-  type TypedData,
-  constants,
-  TypedDataRevision,
-  typedData,
-} from "starknet";
-
 import * as dotenv from "dotenv";
-import fs from "fs";
-import { getOrderParametersTypedData } from "./utils";
 
+// Import the scripts
+import { run as runErc20ForErc721 } from "./erc_20_for_erc721";
+import { run as runErc721ForErc20 } from "./erc_721_for_erc20";
+
+// Load environment variables from .env file
 dotenv.config();
 
+/**
+ * Main script execution.
+ */
 async function main() {
-  //initialize Provider with DEVNET, reading .env file
-  const provider = new RpcProvider({ nodeUrl: "http://127.0.0.1:5050/rpc" });
-  console.log("Provider connected");
+  console.log("Starting script...");
 
-  const offerer = new Account(provider, "0x2001", "0x9776453623451351");
-  const fulfiller = new Account(provider, "0x3001", "0x56453623451351");
-  console.log("✅ offerer and fulfiller connected.");
+  console.log("Running ERC20 for ERC721 script...");
+  await runErc20ForErc721();
+  console.log("Finished ERC20 for ERC721 script.");
 
-  //   const signature2: Signature = (await account.signMessage(
-  //     typedDataValidate
-  // )) as WeierstrassSignatureType;
+  console.log("Running ERC721 for ERC20 script...");
+  await runErc721ForErc20();
+  console.log("Finished ERC721 for ERC20 script.");
+
+  console.log("Script finished...");
 }
+
+// Entry point
+main()
+  .then(() => process.exit(0))
+  .catch((error) => {
+    console.error("Error occurred:", error);
+    process.exit(1);
+  });

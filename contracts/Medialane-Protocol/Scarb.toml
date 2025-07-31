@@ -14,7 +14,7 @@ openzeppelin_introspection = "2.0.0"
 openzeppelin_account = "2.0.0"
 
 [dev-dependencies]
-snforge_std = "0.41.0"
+snforge_std = "0.44.0"
 assert_macros = "2.11.4"
 
 [[target.starknet-contract]]

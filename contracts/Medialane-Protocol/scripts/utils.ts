@@ -1,4 +1,13 @@
-import { type TypedData, constants, TypedDataRevision } from "starknet";
+import {
+  type TypedData,
+  Account,
+  BigNumberish,
+  constants,
+  RpcProvider,
+  Signature,
+  TypedDataRevision,
+  WeierstrassSignatureType,
+} from "starknet";
 import {
   OrderParameters,
   OrderCancellation,
@@ -6,12 +15,17 @@ import {
   ConsiderationItem,
   OfferItem,
   u256,
+  TradeType,
 } from "./types";
 import {
-  dummyOfferItem,
-  dummyConsiderationItem,
-  dummyU256,
-  dummyIdentifier,
+  offerer_address,
+  offerer_pk,
+  fulfiller_address,
+  fulfiller_pk,
+  erc721OfferItem,
+  erc20ConsiderationItem,
+  erc20OfferItem,
+  erc721ConsiderationItem,
 } from "./constants";
 
 export function getOrderParametersTypedData(
@@ -53,7 +67,6 @@ export function getOrderParametersTypedData(
       ],
       OrderParameters: [
         { name: "offerer", type: "ContractAddress" },
-        { name: "taker", type: "ContractAddress" },
         { name: "offer", type: "OfferItem" },
         { name: "consideration", type: "ConsiderationItem" },
         { name: "start_time", type: "timestamp" },
@@ -122,66 +135,182 @@ export function getOrderFulfillmentTypedData(
   };
 }
 
-export const createOrderParameters = (
-  nonce: number,
-  offerItem: OfferItem = dummyOfferItem,
-  considerationItem: ConsiderationItem = dummyConsiderationItem
-): OrderParameters => ({
-  offerer: "0x2001",
-  offer: offerItem,
-  consideration: considerationItem,
-  start_time: 1700000000,
-  end_time: 1700003600,
-  salt: 42,
-  nonce,
-});
+export function createOrderParameters(
+  nonce: BigNumberish,
+  offer: OfferItem,
+  consideration: ConsiderationItem
+): OrderParameters {
+  return {
+    offerer: "0x2001",
+    offer: offer,
+    consideration: consideration,
+    start_time: 1000000000,
+    end_time: 1000003600,
+    salt: 42,
+    nonce,
+  };
+}
 
-export const createOrderFulfillment = (
-  order_hash: string,
-  fulfiller = "0x3001",
-  nonce = 0
-): OrderFulfillment => ({
-  order_hash,
-  fulfiller,
-  nonce,
-});
+export function createOrderFulfillment(
+  order_hash: BigNumberish,
+  fulfiller: string,
+  nonce: BigNumberish
+): OrderFulfillment {
+  return {
+    order_hash,
+    fulfiller,
+    nonce,
+  };
+}
 
-export const createOrderCancellation = (
-  order_hash: string,
-  offerer = "0x2001",
-  nonce = 1
-): OrderCancellation => ({
-  order_hash,
-  offerer,
-  nonce,
-});
+export function createOrderCancellation(
+  order_hash: BigNumberish,
+  offerer: string,
+  nonce: BigNumberish
+): OrderCancellation {
+  return {
+    order_hash,
+    offerer,
+    nonce,
+  };
+}
 
-export const createOfferItem = (
-  item_type = 0,
-  token = "0xWSTRK",
-  start_amount: u256 = dummyU256,
-  end_amount: u256 = dummyU256,
-  identifier: u256 = dummyIdentifier
-): OfferItem => ({
-  item_type,
-  token,
-  identifier_or_criteria: identifier,
-  start_amount: start_amount,
-  end_amount: end_amount,
-});
+export function createOfferItem(
+  item_type: BigNumberish,
+  token: string,
+  start_amount: u256,
+  end_amount: u256,
+  identifier_or_criteria: u256
+): OfferItem {
+  return {
+    item_type,
+    token,
+    identifier_or_criteria,
+    start_amount,
+    end_amount,
+  };
+}
 
-export const createConsiderationItem = (
-  item_type = 0,
-  token = "0xNFT",
-  start_amount: u256 = dummyU256,
-  end_amount: u256 = dummyU256,
-  identifier: u256 = dummyIdentifier,
-  recipient = "0x2001"
-): ConsiderationItem => ({
-  item_type,
-  token,
-  identifier_or_criteria: identifier,
-  start_amount: start_amount,
-  end_amount: end_amount,
-  recipient,
-});
+export function createConsiderationItem(
+  item_type: BigNumberish,
+  token: string,
+  start_amount: u256,
+  end_amount: u256,
+  identifier_or_criteria: u256,
+  recipient: string
+): ConsiderationItem {
+  return {
+    item_type,
+    token,
+    identifier_or_criteria: identifier_or_criteria,
+    start_amount: start_amount,
+    end_amount: end_amount,
+    recipient,
+  };
+}
+
+export function U256(low: BigNumberish, high: BigNumberish = 0): u256 {
+  return {
+    low: low,
+    high: high,
+  };
+}
+
+export function stringifyBigInts(obj: any): any {
+  if (typeof obj === "bigint") {
+    return obj.toString();
+  } else if (Array.isArray(obj)) {
+    return obj.map(stringifyBigInts);
+  } else if (obj && typeof obj === "object") {
+    const res: any = {};
+    for (const key of Object.keys(obj)) {
+      res[key] = stringifyBigInts(obj[key]);
+    }
+    return res;
+  }
+  return obj;
+}
+
+/**
+ * Initializes Starknet accounts and provider.
+ */
+export function initializeAccountsAndProvider() {
+  // Connect to local devnet RPC provider
+  const provider = new RpcProvider({ nodeUrl: "http://127.0.0.1:5050/rpc" });
+  // Create offerer and fulfiller accounts
+  const offerer = new Account(provider, offerer_address, offerer_pk);
+  const fulfiller = new Account(provider, fulfiller_address, fulfiller_pk);
+  return { provider, offerer, fulfiller };
+}
+
+/**
+ * Handles order parameter creation and signing.
+ */
+export async function handleOrderParameters(
+  offerer: Account,
+  trade_type: TradeType
+) {
+  // Create order parameters for ERC20 <-> ERC721 trade
+  let offerItem: OfferItem;
+  let considerationItem: ConsiderationItem;
+
+  switch (trade_type) {
+    case TradeType.ERC20_FOR_ERC721:
+      offerItem = erc721OfferItem;
+      considerationItem = erc20ConsiderationItem;
+      break;
+    case TradeType.ERC721_FOR_ERC20:
+      offerItem = erc20OfferItem;
+      considerationItem = erc721ConsiderationItem;
+      break;
+    default:
+      throw new Error("Unsupported trade type");
+  }
+  const orderParams = createOrderParameters(
+    0,
+    erc721OfferItem,
+    erc20ConsiderationItem
+  );
+  const typedData = getOrderParametersTypedData(orderParams);
+  const orderHash = await offerer.hashMessage(typedData);
+  const signature: Signature = (await offerer.signMessage(
+    typedData
+  )) as WeierstrassSignatureType;
+
+  return { orderParams, typedData, orderHash, signature };
+}
+
+/**
+ * Handles order fulfillment creation and signing.
+ */
+export async function handleOrderFulfillment(
+  fulfiller: Account,
+  orderHash: string
+) {
+  // Create fulfillment intent for the order
+  const fulfillment = createOrderFulfillment(orderHash, fulfiller_address, 0);
+  const typedData = getOrderFulfillmentTypedData(fulfillment);
+  const fulfillmentHash = await fulfiller.hashMessage(typedData);
+  const signature: Signature = (await fulfiller.signMessage(
+    typedData
+  )) as WeierstrassSignatureType;
+
+  return { fulfillment, typedData, fulfillmentHash, signature };
+}
+
+/**
+ * Handles order cancellation intent creation and signing.
+ */
+export async function handleOrderCancellation(
+  offerer: Account,
+  orderHash: string
+) {
+  // Create cancellation intent for the order
+  const cancellation = createOrderCancellation(orderHash, offerer_address, 1);
+  const typedData = getOrderCancellationTypedData(cancellation);
+  const signature: Signature = (await offerer.signMessage(
+    typedData
+  )) as WeierstrassSignatureType;
+
+  return { cancellation, typedData, signature };
+}
