@@ -49,13 +49,20 @@ pub mod MockERC1155 {
         self.ownable.initializer(owner);
     }
 
+
+    #[abi(embed_v0)]
     pub impl MockERC1155Impl of super::IMockERC1155<ContractState> {
-        #[external(v0)]
-        fn mint(ref self: ContractState, account: ContractAddress, token_id: u256, value: u256, data: Span<felt252>) {
+        fn mint(
+            ref self: ContractState,
+            account: ContractAddress,
+            token_id: u256,
+            value: u256,
+            data: Span<felt252>,
+        ) {
             self.ownable.assert_only_owner();
-            self.erc1155.mint_with_acceptance_check(account, token_id, value, data);        }
-        
-        #[external(v0)]
+            self.erc1155.mint_with_acceptance_check(account, token_id, value, data);
+        }
+
         fn approve(ref self: ContractState, operator: ContractAddress, approved: bool) {
             self.erc1155.set_approval_for_all(operator, approved);
         }
@@ -64,10 +71,12 @@ pub mod MockERC1155 {
 
 #[starknet::interface]
 pub trait IMockERC1155<TContractState> {
-    fn mint(ref self: TContractState,
-            account: ContractAddress,
-            token_id: u256,
-            value: u256,
-            data: Span<felt252>);
+    fn mint(
+        ref self: TContractState,
+        account: ContractAddress,
+        token_id: u256,
+        value: u256,
+        data: Span<felt252>,
+    );
     fn approve(ref self: TContractState, operator: ContractAddress, approved: bool);
 }

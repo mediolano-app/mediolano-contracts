@@ -53,6 +53,12 @@ pub const CANCELATION_TYPE_HASH: felt252 = selector!(
 );
 
 
+pub const OFFER_ITEM_TYPE_HASH: felt252 =
+    0x31e7083107691cc7e3645b18aa6fbf556783779ea1620502b1b5f60ec1edf8f;
+
+pub const CONSIDERATION_ITEM_TYPE_HASH: felt252 =
+    0x157fe56f03069a85ea5170f0e637026ff04a3d1b89159676c48a543692cba64;
+
 pub fn felt_to_u8(value: felt252) -> u8 {
     value.try_into().unwrap()
 }

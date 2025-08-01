@@ -42,18 +42,19 @@ pub mod MockERC20 {
         self.ownable.initializer(owner);
     }
 
+    #[abi(embed_v0)]
     pub impl MockERC20Impl of super::IMockERC20<ContractState> {
-        #[external(v0)]
-        fn mint(ref self: ContractState, recepient: ContractAddress, amount: u256) {
+        fn mint_token(ref self: ContractState, recepient: ContractAddress, amount: u256) {
             self.ownable.assert_only_owner();
             self.erc20.mint(recepient, amount);
         }
-        #[external(v0)]
-        fn approve(ref self: ContractState, spender: ContractAddress, amount: u256) {
+
+        fn approve_token(ref self: ContractState, spender: ContractAddress, amount: u256) {
             self.erc20.approve(spender, amount);
         }
-        #[external(v0)]
-        fn balance_of(ref self: ContractState, account: ContractAddress) -> u256 {
+
+
+        fn get_balance(ref self: ContractState, account: ContractAddress) -> u256 {
             self.erc20.balance_of(account)
         }
     }
@@ -61,7 +62,7 @@ pub mod MockERC20 {
 
 #[starknet::interface]
 pub trait IMockERC20<TContractState> {
-    fn mint(ref self: TContractState, recepient: ContractAddress, amount: u256);
-    fn approve(ref self: TContractState, spender: ContractAddress, amount: u256);
-    fn balance_of(ref self: TContractState, account: ContractAddress) -> u256;
+    fn mint_token(ref self: TContractState, recepient: ContractAddress, amount: u256);
+    fn approve_token(ref self: TContractState, spender: ContractAddress, amount: u256);
+    fn get_balance(ref self: TContractState, account: ContractAddress) -> u256;
 }

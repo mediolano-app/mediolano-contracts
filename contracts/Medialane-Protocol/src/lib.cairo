@@ -8,6 +8,7 @@ pub mod core {
 }
 
 pub mod mocks {
+    pub mod account;
     pub mod erc1155;
     pub mod erc20;
     pub mod erc721;

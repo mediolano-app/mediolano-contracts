@@ -41,5 +41,5 @@ export type OrderCancellation = {
 
 export enum TradeType {
   ERC20_FOR_ERC721 = "ERC20_FOR_ERC721",
-  ERC721_FOR_ERC20 = "ERC20_FOR_ERC721",
+  ERC721_FOR_ERC20 = "ERC721_FOR_ERC20",
 }

@@ -41,7 +41,7 @@ impl Felt252TryIntoItemType of TryInto<felt252, ItemType> {
     }
 }
 
-#[derive(Debug, Drop, Copy, Serde, Hash, starknet::Store)]
+#[derive(Debug, Drop, Copy, Serde, PartialEq, Hash, starknet::Store)]
 pub struct OfferItem {
     pub item_type: felt252,
     pub token: ContractAddress, // Contract address of the token (0 for NATIVE STRK)    
@@ -53,14 +53,11 @@ pub struct OfferItem {
 impl OfferItemHashImpl of StructHash<OfferItem> {
     fn hash_struct(self: @OfferItem) -> felt252 {
         let hash_state = PoseidonTrait::new();
-        hash_state
-            .update_with(0x31e7083107691cc7e3645b18aa6fbf556783779ea1620502b1b5f60ec1edf8f)
-            .update_with(*self)
-            .finalize()
+        hash_state.update_with(OFFER_ITEM_TYPE_HASH).update_with(*self).finalize()
     }
 }
 
-#[derive(Debug, Drop, Copy, Serde, Hash, starknet::Store)]
+#[derive(Debug, Drop, Copy, Serde, Hash, PartialEq, starknet::Store)]
 pub struct ConsiderationItem {
     pub item_type: felt252,
     pub token: ContractAddress, // Contract address of the token (0 for NATIVE STRK)
@@ -73,14 +70,11 @@ pub struct ConsiderationItem {
 impl ConsiderationItemHashImpl of StructHash<ConsiderationItem> {
     fn hash_struct(self: @ConsiderationItem) -> felt252 {
         let hash_state = PoseidonTrait::new();
-        hash_state
-            .update_with(0x157fe56f03069a85ea5170f0e637026ff04a3d1b89159676c48a543692cba64)
-            .update_with(*self)
-            .finalize()
+        hash_state.update_with(CONSIDERATION_ITEM_TYPE_HASH).update_with(*self).finalize()
     }
 }
 
-#[derive(Copy, Drop, Serde, starknet::Store)]
+#[derive(Debug, Copy, Drop, Serde, starknet::Store)]
 pub struct OrderDetails {
     pub offerer: ContractAddress,
     pub offer: OfferItem,
@@ -88,6 +82,7 @@ pub struct OrderDetails {
     pub start_time: u64,
     pub end_time: u64,
     pub order_status: OrderStatus,
+    pub fulfiller: Option<ContractAddress>,
 }
 
 #[derive(Debug, Drop, Clone, Copy, Serde, Hash)]

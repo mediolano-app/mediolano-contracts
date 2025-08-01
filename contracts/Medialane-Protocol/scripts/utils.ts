@@ -3,10 +3,13 @@ import {
   Account,
   BigNumberish,
   constants,
+  ec,
   RpcProvider,
   Signature,
+  typedData,
   TypedDataRevision,
   WeierstrassSignatureType,
+  stark,
 } from "starknet";
 import {
   OrderParameters,
@@ -25,6 +28,7 @@ import {
   erc20ConsiderationItem,
   erc20OfferItem,
   erc721ConsiderationItem,
+  offerer_publickey,
 } from "./constants";
 
 export function getOrderParametersTypedData(
@@ -374,18 +378,36 @@ export async function handleOrderParameters(
     default:
       throw new Error("Unsupported trade type");
   }
-  const orderParams = createOrderParameters(
-    0,
-    erc721OfferItem,
-    erc20ConsiderationItem
-  );
-  const typedData = getOrderParametersTypedData(orderParams);
-  const orderHash = await offerer.hashMessage(typedData);
+
+  const orderParams = createOrderParameters(0, offerItem, considerationItem);
+  const TypedData = getOrderParametersTypedData(orderParams);
+
+  const fullpubkey = stark.getFullPublicKey(offerer_pk);
+
+  const orderHash = await offerer.hashMessage(TypedData);
+
   const signature: Signature = (await offerer.signMessage(
-    typedData
+    TypedData
   )) as WeierstrassSignatureType;
 
-  return { orderParams, typedData, orderHash, signature };
+  const isValid = typedData.verifyMessage(
+    TypedData,
+    signature,
+    fullpubkey,
+    offerer_address
+  );
+
+  const v = await offerer.verifyMessageInStarknet(
+    TypedData,
+    signature,
+    offerer_address
+  );
+
+  if (!v) {
+    throw new Error("Invalid signature");
+  }
+
+  return { orderParams, typedData: TypedData, orderHash, signature };
 }
 
 /**

@@ -1,5 +1,6 @@
 #[starknet::contract]
 pub mod Medialane {
+    use core::integer::u64;
     use openzeppelin_account::interface::{ISRC6Dispatcher, ISRC6DispatcherTrait};
     use openzeppelin_token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
     use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
@@ -17,7 +18,6 @@ pub mod Medialane {
     use crate::core::types::*;
     use crate::core::utils::*;
 
-
     component!(path: NoncesComponent, storage: nonces, event: NoncesEvent);
 
     #[abi(embed_v0)]
@@ -34,7 +34,7 @@ pub mod Medialane {
 
     #[event]
     #[derive(Drop, starknet::Event)]
-    enum Event {
+    pub enum Event {
         #[flat]
         NoncesEvent: NoncesComponent::Event,
         OrderCreated: OrderCreated,
@@ -48,7 +48,7 @@ pub mod Medialane {
             'Medialane'
         }
         fn version() -> felt252 {
-            '1.0.0'
+            1
         }
     }
 
@@ -90,7 +90,7 @@ pub mod Medialane {
             let end_time = felt_to_u64(order_parameters.end_time);
 
             // Validate Order Timing (Start/End Time)
-            self._validate_order_timing(start_time, end_time);
+            self._validate_future_order(start_time, end_time);
 
             self.nonces.use_checked_nonce(offerer, order_parameters.nonce);
 
@@ -101,6 +101,7 @@ pub mod Medialane {
                 start_time: start_time,
                 end_time: end_time,
                 order_status: OrderStatus::Created,
+                fulfiller: Option::None,
             };
 
             self.orders.write(order_hash, order_details);
@@ -148,7 +149,7 @@ pub mod Medialane {
             self._validate_hash_signature(fulfillment_hash.clone(), fulfiller, signature);
 
             // Validate Order Timing (Start/End Time)
-            self._validate_order_timing(order_details.start_time, order_details.end_time);
+            self._validate_active_order(order_details.start_time, order_details.end_time);
 
             self.nonces.use_checked_nonce(fulfiller, fulfillment_intent.nonce);
 
@@ -156,6 +157,7 @@ pub mod Medialane {
             self._execute_transfers(order_details, fulfiller);
 
             order_details.order_status = OrderStatus::Filled;
+            order_details.fulfiller = Option::Some(fulfiller);
 
             // Update Order Status
             self.orders.write(order_hash, order_details);
@@ -246,6 +248,31 @@ pub mod Medialane {
     impl InternalFunctions of InternalFunctionsTrait {
         /// Validates the order's timing constraints.
         ///
+        /// Ensures the current block timestamp is before the order's `start_time`,
+        /// meaning the order is scheduled for the future and not yet valid.
+        ///
+        /// # Arguments
+        /// * `start_time` - The start time of the order (inclusive).
+        /// * `end_time` - The end time of the order (exclusive). If zero, no expiry is enforced.
+        ///
+        /// # Panics
+        /// * `errors::ORDER_NOT_YET_VALID` if the current time is already past or equal to
+        /// `start_time`.
+        /// * `errors::ORDER_EXPIRED` if the current time is after or equal to `end_time` (when
+        /// `end_time` is nonzero).
+
+        /// Validates that the order is scheduled for the future (not yet valid)
+        fn _validate_future_order(self: @ContractState, start_time: u64, end_time: u64) {
+            let current_timestamp = get_block_timestamp();
+            assert(current_timestamp < start_time, errors::ORDER_NOT_YET_VALID);
+
+            if end_time != 0 {
+                assert(current_timestamp < end_time, errors::ORDER_EXPIRED);
+            }
+        }
+
+        /// Validates the order's timing constraints.
+        ///
         /// Ensures the current block timestamp is within the order's valid time window.
         ///
         /// # Arguments
@@ -256,14 +283,16 @@ pub mod Medialane {
         /// * `errors::ORDER_NOT_YET_VALID` if the current time is before `start_time`.
         /// * `errors::ORDER_EXPIRED` if the current time is after or equal to `end_time` (when
         /// `end_time` is nonzero).
-        fn _validate_order_timing(self: @ContractState, start_time: u64, end_time: u64) {
+
+        fn _validate_active_order(self: @ContractState, start_time: u64, end_time: u64) {
             let current_timestamp = get_block_timestamp();
             assert(current_timestamp >= start_time, errors::ORDER_NOT_YET_VALID);
-            // Only check end_time if it's non-zero (0 means no expiry)
+
             if end_time != 0 {
                 assert(current_timestamp < end_time, errors::ORDER_EXPIRED);
             }
         }
+
 
         /// Validates the order's status (nonce, filled, cancelled). Reverts if invalid.
         ///

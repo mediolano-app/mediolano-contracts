@@ -49,19 +49,19 @@ pub mod MockERC721 {
         self.ownable.initializer(owner);
     }
 
-    pub impl MockERC721Impl of super::IMockERC721<ContractState> {
-        #[external(v0)]
-        fn mint(ref self: ContractState, recepient: ContractAddress, token_id: u256) {
+
+    #[abi(embed_v0)]
+    impl MockERC721Impl of super::IMockERC721<ContractState> {
+        fn mint_token(ref self: ContractState, recepient: ContractAddress, token_id: u256) {
             self.ownable.assert_only_owner();
-            self.erc721.safe_mint(recepient, token_id, array![].span());
+            self.erc721.mint(recepient, token_id);
         }
-        #[external(v0)]
-        fn approve(ref self: ContractState, to: ContractAddress, token_id: u256) {
+
+        fn approve_token(ref self: ContractState, to: ContractAddress, token_id: u256) {
             self.erc721.approve(to, token_id);
         }
 
-        #[external(v0)]
-        fn owner_of(ref self: ContractState, token_id: u256) -> ContractAddress {
+        fn get_owner(ref self: ContractState, token_id: u256) -> ContractAddress {
             self.erc721.owner_of(token_id)
         }
     }
@@ -69,7 +69,7 @@ pub mod MockERC721 {
 
 #[starknet::interface]
 pub trait IMockERC721<TContractState> {
-    fn mint(ref self: TContractState, recepient: ContractAddress, token_id: u256);
-    fn approve(ref self: TContractState, to: ContractAddress, token_id: u256);
-    fn owner_of(ref self: TContractState, token_id: u256) -> ContractAddress;
+    fn mint_token(ref self: TContractState, recepient: ContractAddress, token_id: u256);
+    fn approve_token(ref self: TContractState, to: ContractAddress, token_id: u256);
+    fn get_owner(ref self: TContractState, token_id: u256) -> ContractAddress;
 }
