@@ -1,50 +1,32 @@
 {
   "erc721_for_erc20_order_params": {
-    "offerer": "0x2001",
+    "offerer": "0x049c8ce76963bb0d4ae4888d373d223a1fd7c683daa9f959abe3c5cd68894f51",
     "offer": {
-      "item_type": 2,
+      "item_type": "ERC721",
       "token": "0x01be0d1cd01de34f946a40e8cc305b67ebb13bca8472484b33e408be03de39fe",
-      "identifier_or_criteria": {
-        "low": 0,
-        "high": 0
-      },
-      "start_amount": {
-        "low": 1,
-        "high": 0
-      },
-      "end_amount": {
-        "low": 1,
-        "high": 0
-      }
+      "identifier_or_criteria": 0,
+      "start_amount": 1,
+      "end_amount": 1
     },
     "consideration": {
-      "item_type": 1,
+      "item_type": "ERC20",
       "token": "0x0589edc6e13293530fec9cad58787ed8cff1fce35c3ef80342b7b00651e04d1f",
-      "identifier_or_criteria": {
-        "low": 0,
-        "high": 0
-      },
-      "start_amount": {
-        "low": 1000000,
-        "high": 0
-      },
-      "end_amount": {
-        "low": 1000000,
-        "high": 0
-      },
+      "identifier_or_criteria": 0,
+      "start_amount": 1000000,
+      "end_amount": 1000000,
       "recipient": "0x049c8ce76963bb0d4ae4888d373d223a1fd7c683daa9f959abe3c5cd68894f51"
     },
     "start_time": 1000000000,
     "end_time": 1000003600,
-    "salt": 42,
+    "salt": 0,
     "nonce": 0
   },
-  "erc721_for_erc20_order_hash": "0x435a0eeac22c332e43828810ee83a87467f3cb1f2c95ab1d23a95638c906b02",
+  "erc721_for_erc20_order_hash": "0x75b5d71f4ccba6854dca5f11453406b4b01ffc074a301b2697f3070cf60d3d7",
   "erc721_for_erc20_order_typedData": {
     "domain": {
       "name": "Medialane",
-      "version": "1.0.0",
       "chainId": "0x534e5f5345504f4c4941",
+      "version": "1",
       "revision": "1"
     },
     "primaryType": "OrderParameters",
@@ -61,64 +43,10 @@
         {
           "name": "chainId",
           "type": "shortstring"
-        }
-      ],
-      "u256": [
-        {
-          "name": "low",
-          "type": "u128"
         },
         {
-          "name": "high",
-          "type": "u128"
-        }
-      ],
-      "OfferItem": [
-        {
-          "name": "item_type",
-          "type": "felt"
-        },
-        {
-          "name": "token",
-          "type": "ContractAddress"
-        },
-        {
-          "name": "identifier_or_criteria",
-          "type": "u256"
-        },
-        {
-          "name": "start_amount",
-          "type": "u256"
-        },
-        {
-          "name": "end_amount",
-          "type": "u256"
-        }
-      ],
-      "ConsiderationItem": [
-        {
-          "name": "item_type",
-          "type": "felt"
-        },
-        {
-          "name": "token",
-          "type": "ContractAddress"
-        },
-        {
-          "name": "identifier_or_criteria",
-          "type": "u256"
-        },
-        {
-          "name": "start_amount",
-          "type": "u256"
-        },
-        {
-          "name": "end_amount",
-          "type": "u256"
-        },
-        {
-          "name": "recipient",
-          "type": "ContractAddress"
+          "name": "revision",
+          "type": "shortstring"
         }
       ],
       "OrderParameters": [
@@ -136,11 +64,11 @@
         },
         {
           "name": "start_time",
-          "type": "timestamp"
+          "type": "felt"
         },
         {
           "name": "end_time",
-          "type": "timestamp"
+          "type": "felt"
         },
         {
           "name": "salt",
@@ -150,64 +78,94 @@
           "name": "nonce",
           "type": "felt"
         }
+      ],
+      "ConsiderationItem": [
+        {
+          "name": "item_type",
+          "type": "shortstring"
+        },
+        {
+          "name": "token",
+          "type": "ContractAddress"
+        },
+        {
+          "name": "identifier_or_criteria",
+          "type": "felt"
+        },
+        {
+          "name": "start_amount",
+          "type": "felt"
+        },
+        {
+          "name": "end_amount",
+          "type": "felt"
+        },
+        {
+          "name": "recipient",
+          "type": "ContractAddress"
+        }
+      ],
+      "OfferItem": [
+        {
+          "name": "item_type",
+          "type": "shortstring"
+        },
+        {
+          "name": "token",
+          "type": "ContractAddress"
+        },
+        {
+          "name": "identifier_or_criteria",
+          "type": "felt"
+        },
+        {
+          "name": "start_amount",
+          "type": "felt"
+        },
+        {
+          "name": "end_amount",
+          "type": "felt"
+        }
       ]
     },
     "message": {
-      "offerer": "0x2001",
+      "offerer": "0x049c8ce76963bb0d4ae4888d373d223a1fd7c683daa9f959abe3c5cd68894f51",
       "offer": {
-        "item_type": 2,
+        "item_type": "ERC721",
         "token": "0x01be0d1cd01de34f946a40e8cc305b67ebb13bca8472484b33e408be03de39fe",
-        "identifier_or_criteria": {
-          "low": 0,
-          "high": 0
-        },
-        "start_amount": {
-          "low": 1,
-          "high": 0
-        },
-        "end_amount": {
-          "low": 1,
-          "high": 0
-        }
+        "identifier_or_criteria": 0,
+        "start_amount": 1,
+        "end_amount": 1
       },
       "consideration": {
-        "item_type": 1,
+        "item_type": "ERC20",
         "token": "0x0589edc6e13293530fec9cad58787ed8cff1fce35c3ef80342b7b00651e04d1f",
-        "identifier_or_criteria": {
-          "low": 0,
-          "high": 0
-        },
-        "start_amount": {
-          "low": 1000000,
-          "high": 0
-        },
-        "end_amount": {
-          "low": 1000000,
-          "high": 0
-        },
+        "identifier_or_criteria": 0,
+        "start_amount": 1000000,
+        "end_amount": 1000000,
         "recipient": "0x049c8ce76963bb0d4ae4888d373d223a1fd7c683daa9f959abe3c5cd68894f51"
       },
       "start_time": 1000000000,
       "end_time": 1000003600,
-      "salt": 42,
+      "salt": 0,
       "nonce": 0
     }
   },
   "erc721_for_erc20_offer_signature": {
-    "r": "2864302956369396374303635165940964876370077075516364108499625637403671926890",
-    "s": "2291911592775111967298817946952468191450310871175621456645813427167846041616",
+    "r": "3420455173422010669971073401810056101304317671091306497066700200292602333141",
+    "s": "3426888814854626922664816600065751135310170266088425867341281341069175351988",
     "recovery": 0
   },
   "erc721_for_erc20_fulfillment": {
-    "order_hash": "0x435a0eeac22c332e43828810ee83a87467f3cb1f2c95ab1d23a95638c906b02",
-    "fulfiller": "0x00000000000000000000000000000000d2fbf4eebcadc6998287ee8eed992cec",
+    "order_hash": "0x75b5d71f4ccba6854dca5f11453406b4b01ffc074a301b2697f3070cf60d3d7",
+    "fulfiller": "0x030545f9bc0a25a84d92fe8770f4f23639b960a364201df60536d34605e48538",
     "nonce": 0
   },
   "erc721_for_erc20_fulfillment_typedData": {
     "domain": {
       "name": "Medialane",
-      "version": "1.0.0",
       "chainId": "0x534e5f5345504f4c4941",
+      "version": "1",
       "revision": "1"
     },
     "primaryType": "OrderFulfillment",
@@ -223,6 +181,10 @@
         },
         {
           "name": "chainId",
+          "type": "shortstring"
+        },
+        {
+          "name": "revision",
           "type": "shortstring"
         }
       ],
@@ -242,27 +204,27 @@
       ]
     },
     "message": {
-      "order_hash": "0x435a0eeac22c332e43828810ee83a87467f3cb1f2c95ab1d23a95638c906b02",
-      "fulfiller": "0x00000000000000000000000000000000d2fbf4eebcadc6998287ee8eed992cec",
+      "order_hash": "0x75b5d71f4ccba6854dca5f11453406b4b01ffc074a301b2697f3070cf60d3d7",
+      "fulfiller": "0x030545f9bc0a25a84d92fe8770f4f23639b960a364201df60536d34605e48538",
       "nonce": 0
     }
   },
-  "erc721_for_erc20_fulfillment_hash": "0x23d34fd60c675d1c3ff0ef4a42081a55db4931647f949f538765f4624cf9d46",
+  "erc721_for_erc20_fulfillment_hash": "0x62ac39379fdbbf3441894654acdf7f22db94611599a107784297b7e52406a84",
   "erc721_for_erc20_fulfillment_signature": {
-    "r": "595313802604213693288663762036364457343736028552808625218764038082154943287",
-    "s": "905599232281024479776283747650597198415996523744894941864067486134142437724",
+    "r": "2600114093043223578672460040277460099839393973233617696619621045052279223719",
+    "s": "547360061730058066189216430323890081846696315197245521973184638596866709473",
     "recovery": 0
   },
   "erc721_for_erc20_cancellation": {
-    "order_hash": "0x435a0eeac22c332e43828810ee83a87467f3cb1f2c95ab1d23a95638c906b02",
+    "order_hash": "0x75b5d71f4ccba6854dca5f11453406b4b01ffc074a301b2697f3070cf60d3d7",
     "offerer": "0x049c8ce76963bb0d4ae4888d373d223a1fd7c683daa9f959abe3c5cd68894f51",
     "nonce": 1
   },
   "erc721_for_erc20_cancellation_typedData": {
     "domain": {
       "name": "Medialane",
-      "version": "1.0.0",
       "chainId": "0x534e5f5345504f4c4941",
+      "version": "1",
       "revision": "1"
     },
     "primaryType": "OrderCancellation",
@@ -278,6 +240,10 @@
         },
         {
           "name": "chainId",
+          "type": "shortstring"
+        },
+        {
+          "name": "revision",
           "type": "shortstring"
         }
       ],
@@ -297,14 +263,15 @@
       ]
     },
     "message": {
-      "order_hash": "0x435a0eeac22c332e43828810ee83a87467f3cb1f2c95ab1d23a95638c906b02",
+      "order_hash": "0x75b5d71f4ccba6854dca5f11453406b4b01ffc074a301b2697f3070cf60d3d7",
       "offerer": "0x049c8ce76963bb0d4ae4888d373d223a1fd7c683daa9f959abe3c5cd68894f51",
       "nonce": 1
     }
   },
+  "erc721_for_erc20_cancellation_hash": "0x3dea25b77af7b17894ffbd0b26e64bc2c6c1931d7f40f43d47e1866ab7e97cb",
   "erc721_for_erc20_cancellation_signature": {
-    "r": "759952686121151845237769915495897750343659195990913208970443957556749624674",
-    "s": "2580320157997965341839705449683994981294685365372473878293547034961121770362",
-    "recovery": 0
+    "r": "2905538630829553155003538367338484051818615001188932836138993125915347647959",
+    "s": "582731192243872094791210533079223703898422571635146606201509559657392537136",
+    "recovery": 1
   }
 }

@@ -1,24 +1,19 @@
 import { type BigNumberish } from "starknet";
 
-export type u256 = {
-  low: BigNumberish;
-  high: BigNumberish;
-};
-
 export type OfferItem = {
-  item_type: BigNumberish;
+  item_type: string;
   token: string;
-  identifier_or_criteria: u256;
-  start_amount: u256;
-  end_amount: u256;
+  identifier_or_criteria: BigNumberish;
+  start_amount: BigNumberish;
+  end_amount: BigNumberish;
 };
 
 export type ConsiderationItem = {
-  item_type: BigNumberish;
+  item_type: string;
   token: string;
-  identifier_or_criteria: u256;
-  start_amount: u256;
-  end_amount: u256;
+  identifier_or_criteria: BigNumberish;
+  start_amount: BigNumberish;
+  end_amount: BigNumberish;
   recipient: string;
 };
 

@@ -38,6 +38,7 @@ export async function run() {
     cancellation: erc721_for_erc20_cancellation,
     typedData: erc721_for_erc20_cancellation_typedData,
     signature: erc721_for_erc20_cancellation_signature,
+    cancellationHash: erc721_for_erc20_cancellation_hash,
   } = await handleOrderCancellation(offerer, erc721_for_erc20_order_hash);
 
   console.log("writing logs");
@@ -67,14 +68,15 @@ export async function run() {
     erc721_for_erc20_cancellation_typedData: stringifyBigInts(
       erc721_for_erc20_cancellation_typedData
     ),
+    erc721_for_erc20_cancellation_hash: erc721_for_erc20_cancellation_hash,
     erc721_for_erc20_cancellation_signature: stringifyBigInts(
       erc721_for_erc20_cancellation_signature
     ),
   };
 
   fs.writeFileSync(
-    "./scripts/erc721_for_erc20_order_logs.json",
+    "./scripts/out/erc721_for_erc20_order_logs.json",
     JSON.stringify(logs, null, 2)
   );
-  console.log("Logs written to ./scripts/erc721_for_erc20_order_logs.json");
+  console.log("Logs written to ./scripts/out/erc721_for_erc20_order_logs.json");
 }

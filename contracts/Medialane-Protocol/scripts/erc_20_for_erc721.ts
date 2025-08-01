@@ -25,6 +25,7 @@ export async function run() {
 
   // === Order Fulfillment ===
   console.log("Creating erc20 for erc721 order fulfillment...");
+
   const {
     fulfillment: erc20_for_erc721_fulfillment,
     typedData: erc20_for_erc721_fulfillment_typedData,
@@ -32,12 +33,13 @@ export async function run() {
     signature: erc20_for_erc721_fulfillment_signature,
   } = await handleOrderFulfillment(fulfiller, erc20_for_erc721_order_hash);
 
-  // === Order Cancellation ===
+  // // === Order Cancellation ===
   console.log("Creating erc20 for erc721 order cancellation intent...");
   const {
     cancellation: erc20_for_erc721_cancellation,
     typedData: erc20_for_erc721_cancellation_typedData,
     signature: erc2_for_erc721_cancellation_signature,
+    cancellationHash: erc20_for_erc721_cancellation_hash,
   } = await handleOrderCancellation(offerer, erc20_for_erc721_order_hash);
 
   console.log("writing logs");
@@ -67,14 +69,15 @@ export async function run() {
     erc20_for_erc721_cancellation_typedData: stringifyBigInts(
       erc20_for_erc721_cancellation_typedData
     ),
+    erc20_for_erc721_cancellation_hash: erc20_for_erc721_cancellation_hash,
     erc2_for_erc721_cancellation_signature: stringifyBigInts(
       erc2_for_erc721_cancellation_signature
     ),
   };
 
   fs.writeFileSync(
-    "./scripts/erc20_for_erc721_order_logs.json",
+    "./scripts/out/erc20_for_erc721_order_logs.json",
     JSON.stringify(logs, null, 2)
   );
-  console.log("Logs written to ./scripts/erc20_for_erc721_order_logs.json");
+  console.log("Logs written to ./scripts/out/erc20_for_erc721_order_logs.json");
 }

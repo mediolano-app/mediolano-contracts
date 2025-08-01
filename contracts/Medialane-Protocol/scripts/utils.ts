@@ -14,7 +14,6 @@ import {
   OrderFulfillment,
   ConsiderationItem,
   OfferItem,
-  u256,
   TradeType,
 } from "./types";
 import {
@@ -29,50 +28,112 @@ import {
 } from "./constants";
 
 export function getOrderParametersTypedData(
-  message: OrderParameters,
-  chainId = constants.StarknetChainId.SN_SEPOLIA
+  message: OrderParameters
 ): TypedData {
   return {
     domain: {
       name: "Medialane",
-      version: "1.0.0",
-      chainId,
+      chainId: constants.StarknetChainId.SN_SEPOLIA,
+      version: "1",
       revision: TypedDataRevision.ACTIVE,
     },
     primaryType: "OrderParameters",
     types: {
       StarknetDomain: [
-        { name: "name", type: "shortstring" },
-        { name: "version", type: "shortstring" },
-        { name: "chainId", type: "shortstring" },
-      ],
-      u256: [
-        { name: "low", type: "u128" },
-        { name: "high", type: "u128" },
-      ],
-      OfferItem: [
-        { name: "item_type", type: "felt" },
-        { name: "token", type: "ContractAddress" },
-        { name: "identifier_or_criteria", type: "u256" },
-        { name: "start_amount", type: "u256" },
-        { name: "end_amount", type: "u256" },
-      ],
-      ConsiderationItem: [
-        { name: "item_type", type: "felt" },
-        { name: "token", type: "ContractAddress" },
-        { name: "identifier_or_criteria", type: "u256" },
-        { name: "start_amount", type: "u256" },
-        { name: "end_amount", type: "u256" },
-        { name: "recipient", type: "ContractAddress" },
+        {
+          name: "name",
+          type: "shortstring",
+        },
+        {
+          name: "version",
+          type: "shortstring",
+        },
+        {
+          name: "chainId",
+          type: "shortstring",
+        },
+        {
+          name: "revision",
+          type: "shortstring",
+        },
       ],
       OrderParameters: [
-        { name: "offerer", type: "ContractAddress" },
-        { name: "offer", type: "OfferItem" },
-        { name: "consideration", type: "ConsiderationItem" },
-        { name: "start_time", type: "timestamp" },
-        { name: "end_time", type: "timestamp" },
-        { name: "salt", type: "felt" },
-        { name: "nonce", type: "felt" },
+        {
+          name: "offerer",
+          type: "ContractAddress",
+        },
+        {
+          name: "offer",
+          type: "OfferItem",
+        },
+        {
+          name: "consideration",
+          type: "ConsiderationItem",
+        },
+        {
+          name: "start_time",
+          type: "felt",
+        },
+        {
+          name: "end_time",
+          type: "felt",
+        },
+        {
+          name: "salt",
+          type: "felt",
+        },
+        {
+          name: "nonce",
+          type: "felt",
+        },
+      ],
+      ConsiderationItem: [
+        {
+          name: "item_type",
+          type: "shortstring",
+        },
+        {
+          name: "token",
+          type: "ContractAddress",
+        },
+        {
+          name: "identifier_or_criteria",
+          type: "felt",
+        },
+        {
+          name: "start_amount",
+          type: "felt",
+        },
+        {
+          name: "end_amount",
+          type: "felt",
+        },
+        {
+          name: "recipient",
+          type: "ContractAddress",
+        },
+      ],
+      OfferItem: [
+        {
+          name: "item_type",
+          type: "shortstring",
+        },
+        {
+          name: "token",
+          type: "ContractAddress",
+        },
+        {
+          name: "identifier_or_criteria",
+          type: "felt",
+        },
+        {
+          name: "start_amount",
+          type: "felt",
+        },
+        {
+          name: "end_amount",
+          type: "felt",
+        },
       ],
     },
     message,
@@ -80,27 +141,48 @@ export function getOrderParametersTypedData(
 }
 
 export function getOrderCancellationTypedData(
-  message: OrderCancellation,
-  chainId = constants.StarknetChainId.SN_SEPOLIA
+  message: OrderCancellation
 ): TypedData {
   return {
     domain: {
       name: "Medialane",
-      version: "1.0.0",
-      chainId,
+      chainId: constants.StarknetChainId.SN_SEPOLIA,
+      version: "1",
       revision: TypedDataRevision.ACTIVE,
     },
     primaryType: "OrderCancellation",
     types: {
       StarknetDomain: [
-        { name: "name", type: "shortstring" },
-        { name: "version", type: "shortstring" },
-        { name: "chainId", type: "shortstring" },
+        {
+          name: "name",
+          type: "shortstring",
+        },
+        {
+          name: "version",
+          type: "shortstring",
+        },
+        {
+          name: "chainId",
+          type: "shortstring",
+        },
+        {
+          name: "revision",
+          type: "shortstring",
+        },
       ],
       OrderCancellation: [
-        { name: "order_hash", type: "felt" },
-        { name: "offerer", type: "ContractAddress" },
-        { name: "nonce", type: "felt" },
+        {
+          name: "order_hash",
+          type: "felt",
+        },
+        {
+          name: "offerer",
+          type: "ContractAddress",
+        },
+        {
+          name: "nonce",
+          type: "felt",
+        },
       ],
     },
     message,
@@ -108,27 +190,48 @@ export function getOrderCancellationTypedData(
 }
 
 export function getOrderFulfillmentTypedData(
-  message: OrderFulfillment,
-  chainId = constants.StarknetChainId.SN_SEPOLIA
+  message: OrderFulfillment
 ): TypedData {
   return {
     domain: {
       name: "Medialane",
-      version: "1.0.0",
-      chainId,
+      chainId: constants.StarknetChainId.SN_SEPOLIA,
+      version: "1",
       revision: TypedDataRevision.ACTIVE,
     },
     primaryType: "OrderFulfillment",
     types: {
       StarknetDomain: [
-        { name: "name", type: "shortstring" },
-        { name: "version", type: "shortstring" },
-        { name: "chainId", type: "shortstring" },
+        {
+          name: "name",
+          type: "shortstring",
+        },
+        {
+          name: "version",
+          type: "shortstring",
+        },
+        {
+          name: "chainId",
+          type: "shortstring",
+        },
+        {
+          name: "revision",
+          type: "shortstring",
+        },
       ],
       OrderFulfillment: [
-        { name: "order_hash", type: "felt" },
-        { name: "fulfiller", type: "ContractAddress" },
-        { name: "nonce", type: "felt" },
+        {
+          name: "order_hash",
+          type: "felt",
+        },
+        {
+          name: "fulfiller",
+          type: "ContractAddress",
+        },
+        {
+          name: "nonce",
+          type: "felt",
+        },
       ],
     },
     message,
@@ -141,12 +244,12 @@ export function createOrderParameters(
   consideration: ConsiderationItem
 ): OrderParameters {
   return {
-    offerer: "0x2001",
+    offerer: offerer_address,
     offer: offer,
     consideration: consideration,
     start_time: 1000000000,
     end_time: 1000003600,
-    salt: 42,
+    salt: 0,
     nonce,
   };
 }
@@ -176,11 +279,11 @@ export function createOrderCancellation(
 }
 
 export function createOfferItem(
-  item_type: BigNumberish,
+  item_type: string,
   token: string,
-  start_amount: u256,
-  end_amount: u256,
-  identifier_or_criteria: u256
+  start_amount: BigNumberish,
+  end_amount: BigNumberish,
+  identifier_or_criteria: BigNumberish
 ): OfferItem {
   return {
     item_type,
@@ -192,11 +295,11 @@ export function createOfferItem(
 }
 
 export function createConsiderationItem(
-  item_type: BigNumberish,
+  item_type: string,
   token: string,
-  start_amount: u256,
-  end_amount: u256,
-  identifier_or_criteria: u256,
+  start_amount: BigNumberish,
+  end_amount: BigNumberish,
+  identifier_or_criteria: BigNumberish,
   recipient: string
 ): ConsiderationItem {
   return {
@@ -206,13 +309,6 @@ export function createConsiderationItem(
     start_amount: start_amount,
     end_amount: end_amount,
     recipient,
-  };
-}
-
-export function U256(low: BigNumberish, high: BigNumberish = 0): u256 {
-  return {
-    low: low,
-    high: high,
   };
 }
 
@@ -238,8 +334,20 @@ export function initializeAccountsAndProvider() {
   // Connect to local devnet RPC provider
   const provider = new RpcProvider({ nodeUrl: "http://127.0.0.1:5050/rpc" });
   // Create offerer and fulfiller accounts
-  const offerer = new Account(provider, offerer_address, offerer_pk);
-  const fulfiller = new Account(provider, fulfiller_address, fulfiller_pk);
+  const offerer = new Account({
+    provider,
+    address: offerer_address,
+    signer: offerer_pk,
+  });
+
+  const fulfiller = new Account({
+    provider,
+    address: fulfiller_address,
+    signer: fulfiller_pk,
+  });
+
+  // const offerer = new Account(provider, offerer_address, offerer_pk);
+  // const fulfiller = new Account(provider, fulfiller_address, fulfiller_pk);
   return { provider, offerer, fulfiller };
 }
 
@@ -308,9 +416,10 @@ export async function handleOrderCancellation(
   // Create cancellation intent for the order
   const cancellation = createOrderCancellation(orderHash, offerer_address, 1);
   const typedData = getOrderCancellationTypedData(cancellation);
+  const cancellationHash = await offerer.hashMessage(typedData);
   const signature: Signature = (await offerer.signMessage(
     typedData
   )) as WeierstrassSignatureType;
 
-  return { cancellation, typedData, signature };
+  return { cancellation, cancellationHash, typedData, signature };
 }

@@ -15,6 +15,8 @@ pub mod Medialane {
     use crate::core::events::*;
     use crate::core::interface::*;
     use crate::core::types::*;
+    use crate::core::utils::*;
+
 
     component!(path: NoncesComponent, storage: nonces, event: NoncesEvent);
 
@@ -84,8 +86,11 @@ pub mod Medialane {
             // Validate Order Status (Nonce, Not Filled/Cancelled)
             self._validate_order_status(order_hash, OrderStatus::None);
 
+            let start_time = felt_to_u64(order_parameters.start_time);
+            let end_time = felt_to_u64(order_parameters.end_time);
+
             // Validate Order Timing (Start/End Time)
-            self._validate_order_timing(order_parameters.start_time, order_parameters.end_time);
+            self._validate_order_timing(start_time, end_time);
 
             self.nonces.use_checked_nonce(offerer, order_parameters.nonce);
 
@@ -93,8 +98,8 @@ pub mod Medialane {
                 offerer: order_parameters.offerer,
                 offer: order_parameters.offer,
                 consideration: order_parameters.consideration,
-                start_time: order_parameters.start_time,
-                end_time: order_parameters.end_time,
+                start_time: start_time,
+                end_time: end_time,
                 order_status: OrderStatus::Created,
             };
 
@@ -338,11 +343,11 @@ pub mod Medialane {
             // Note: Recipient for offered items is always the fulfiller
             self
                 ._transfer_item(
-                    offer_item.start_amount,
-                    offer_item.end_amount,
+                    felt_to_u256(offer_item.start_amount),
+                    felt_to_u256(offer_item.end_amount),
                     Option::Some(offer_item.token),
-                    offer_item.item_type,
-                    Option::Some(offer_item.identifier_or_criteria),
+                    offer_item.item_type.try_into().unwrap(),
+                    Option::Some(felt_to_u256(offer_item.identifier_or_criteria)),
                     offerer,
                     fulfiller,
                 );
@@ -356,11 +361,11 @@ pub mod Medialane {
             // Sender for consideration items is always the fulfiller
             self
                 ._transfer_item(
-                    consideration_item.start_amount,
-                    consideration_item.end_amount,
+                    felt_to_u256(consideration_item.start_amount),
+                    felt_to_u256(consideration_item.end_amount),
                     Option::Some(consideration_item.token),
-                    consideration_item.item_type,
-                    Option::Some(consideration_item.identifier_or_criteria),
+                    consideration_item.item_type.try_into().unwrap(),
+                    Option::Some(felt_to_u256(consideration_item.identifier_or_criteria)),
                     fulfiller,
                     consideration_item.recipient,
                 );

@@ -1,7 +1,6 @@
 pub mod core {
     pub mod errors;
     pub mod events;
-    pub mod helper;
     pub mod interface;
     pub mod medialane;
     pub mod types;

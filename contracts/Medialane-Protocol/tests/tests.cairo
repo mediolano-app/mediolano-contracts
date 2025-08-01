@@ -4,27 +4,19 @@ use mediolano_core::core::{errors, events, medialane, utils};
 use mediolano_core::mocks::erc1155::{IMockERC1155Dispatcher, IMockERC1155DispatcherTrait};
 use mediolano_core::mocks::erc20::{IMockERC20Dispatcher, IMockERC20DispatcherTrait};
 use mediolano_core::mocks::erc721::{IMockERC721Dispatcher, IMockERC721DispatcherTrait};
-use openzeppelin_token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
-use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
-use openzeppelin_token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
+// use openzeppelin_token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
+// use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
+// use openzeppelin_token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
 
 #[cfg(test)]
 mod test {
-    use core::array::ArrayTrait;
-    use core::option::OptionTrait;
     use core::result::ResultTrait;
-    use core::traits::{Into, TryInto};
-    use snforge_std::signature::stark_curve::{StarkCurveKeyPairImpl, StarkCurveSignerImpl};
-    use snforge_std::signature::{KeyPair, KeyPairTrait, SignerTrait};
     use snforge_std::{
         CheatSpan, ContractClassTrait, DeclareResultTrait, Event, EventSpyAssertionsTrait,
         cheat_block_timestamp, cheat_caller_address, declare, spy_events,
         start_cheat_block_timestamp, stop_cheat_block_timestamp, stop_cheat_caller_address,
     };
-    use starknet::{
-        ContractAddress, EthAddress, contract_address_const, get_block_timestamp,
-        get_caller_address,
-    };
+    use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
     use super::*;
 
     const OWNER_ADDRESS: felt252 = 0x1001;
@@ -37,14 +29,14 @@ mod test {
     const OFFERER_PK: felt252 = 111;
     const FULFILLER_PK: felt252 = 222;
 
-    const ONE_HOUR: u64 = 3600;
-    const START_TIME_OFFSET: u64 = 100;
-    const END_TIME_OFFSET: u64 = ONE_HOUR * 2;
+    const ONE_HOUR: felt252 = 3600;
+    const START_TIME_OFFSET: felt252 = 100;
+    const END_TIME_OFFSET: felt252 = ONE_HOUR * 2;
 
-    const NFT_TOKEN_ID: u256 = 1;
-    const ERC1155_TOKEN_ID: u256 = 55;
-    const ERC20_AMOUNT: u256 = 1_000_000_000_000_000_000_000;
-    const ERC1155_AMOUNT: u256 = 10;
+    const NFT_TOKEN_ID: felt252 = 1;
+    const ERC1155_TOKEN_ID: felt252 = 55;
+    const ERC20_AMOUNT: felt252 = 1_000_000_000_000_000_000_000;
+    const ERC1155_AMOUNT: felt252 = 10;
 
     #[derive(Clone, Drop)]
     struct DeployedContracts {
@@ -64,10 +56,16 @@ mod test {
 
     fn setup_accounts() -> Accounts {
         Accounts {
-            owner: contract_address_const::<OWNER_ADDRESS>(),
-            offerer: contract_address_const::<OFFERER_ADDRESS>(),
-            fulfiller: contract_address_const::<FULFILLER_ADDRESS>(),
-            recipient: contract_address_const::<RECIPIENT_ADDRESS>(),
+            owner: OWNER_ADDRESS.try_into().unwrap(),
+            offerer: 0x049c8ce76963bb0d4ae4888d373d223a1fd7c683daa9f959abe3c5cd68894f51
+                .try_into()
+                .unwrap(),
+            fulfiller: 0x030545f9bc0a25a84d92fe8770f4f23639b960a364201df60536d34605e48538
+                .try_into()
+                .unwrap(),
+            recipient: 0x049c8ce76963bb0d4ae4888d373d223a1fd7c683daa9f959abe3c5cd68894f51
+                .try_into()
+                .unwrap(),
         }
     }
 
@@ -133,8 +131,8 @@ mod test {
             offerer: offerer,
             offer: offer,
             consideration: consideration,
-            start_time: now + START_TIME_OFFSET,
-            end_time: now + END_TIME_OFFSET,
+            start_time: now.into() + START_TIME_OFFSET,
+            end_time: now.into() + END_TIME_OFFSET,
             salt: salt,
             nonce: nonce,
         }
@@ -211,21 +209,19 @@ mod test {
         cheat_caller_address(contract.contract_address, owner, CheatSpan::TargetCalls(1));
         contract.approve(spender, true);
     }
-
-    #[test]
-    fn test_get_deployments() {
-        let (contracts, accounts) = setup_contracts_and_accounts();
-        println!("{:?}", 0x058623a08ce3bc5121c90ef1d0b0deae1ce9c1279e1c9f7da5c7c72fac3241f8);
-        println!("{:?}", contracts.medialane.contract_address);
-        println!("{:?}", 0x0589edc6e13293530fec9cad58787ed8cff1fce35c3ef80342b7b00651e04d1f);
-        println!("{:?}", contracts.erc20.contract_address);
-        println!("{:?}", 0x01be0d1cd01de34f946a40e8cc305b67ebb13bca8472484b33e408be03de39fe);
-        println!("{:?}", contracts.erc721.contract_address);
-        println!("{:?}", 0x07ca2d381f55b159ea4c80abf84d4343fde9989854a6be2f02585daae7d89d76);
-        println!("{:?}", contracts.erc1155.contract_address);
-        println!("{:?}", accounts);
-    }
-    //     #[test]
+    // #[test]
+// fn test_get_deployments() {
+//     let (contracts, accounts) = setup_contracts_and_accounts();
+//     println!("{:?}", contracts.medialane.contract_address);
+//     println!("{:?}", 0x0589edc6e13293530fec9cad58787ed8cff1fce35c3ef80342b7b00651e04d1f);
+//     println!("{:?}", contracts.erc20.contract_address);
+//     println!("{:?}", 0x01be0d1cd01de34f946a40e8cc305b67ebb13bca8472484b33e408be03de39fe);
+//     println!("{:?}", contracts.erc721.contract_address);
+//     println!("{:?}", 0x07ca2d381f55b159ea4c80abf84d4343fde9989854a6be2f02585daae7d89d76);
+//     println!("{:?}", contracts.erc1155.contract_address);
+//     println!("{:?}", accounts);
+// }
+//     #[test]
 //     fn test_fulfill_erc20_for_erc721_success() {
 //         let (mut contracts, accounts) = setup_contracts_and_accounts();
 //         let offerer_start_balance = contracts.erc20.balance_of(accounts.offerer);
