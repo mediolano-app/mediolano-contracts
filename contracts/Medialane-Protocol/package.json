@@ -1,0 +1,10 @@
+{
+  "dependencies": {
+    "dotenv": "^17.2.1",
+    "starknet": "^8.1.0",
+    "starknet-devnet": "^0.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^24.1.0"
+  }
+}

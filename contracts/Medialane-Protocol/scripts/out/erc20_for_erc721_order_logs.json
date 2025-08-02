@@ -1,0 +1,277 @@
+{
+  "erc20_for_erc721_order_params": {
+    "offerer": "0x040204472aef47d0aa8d68316e773f09a6f7d8d10ff6d30363b353ef3f2d1305",
+    "offer": {
+      "item_type": "ERC721",
+      "token": "0x01be0d1cd01de34f946a40e8cc305b67ebb13bca8472484b33e408be03de39fe",
+      "identifier_or_criteria": 0,
+      "start_amount": 1,
+      "end_amount": 1
+    },
+    "consideration": {
+      "item_type": "ERC20",
+      "token": "0x0589edc6e13293530fec9cad58787ed8cff1fce35c3ef80342b7b00651e04d1f",
+      "identifier_or_criteria": 0,
+      "start_amount": 1000000,
+      "end_amount": 1000000,
+      "recipient": "0x040204472aef47d0aa8d68316e773f09a6f7d8d10ff6d30363b353ef3f2d1305"
+    },
+    "start_time": 1000000000,
+    "end_time": 1000003600,
+    "salt": 0,
+    "nonce": 0
+  },
+  "erc20_for_erc721_order_hash": "0x6e5c9010b1bdaf463d6b93445266d54028c9eacd868ffa91c732962244987df",
+  "erc20_for_erc721_order_typedData": {
+    "domain": {
+      "name": "Medialane",
+      "chainId": "0x534e5f5345504f4c4941",
+      "version": "1",
+      "revision": "1"
+    },
+    "primaryType": "OrderParameters",
+    "types": {
+      "StarknetDomain": [
+        {
+          "name": "name",
+          "type": "shortstring"
+        },
+        {
+          "name": "version",
+          "type": "shortstring"
+        },
+        {
+          "name": "chainId",
+          "type": "shortstring"
+        },
+        {
+          "name": "revision",
+          "type": "shortstring"
+        }
+      ],
+      "OrderParameters": [
+        {
+          "name": "offerer",
+          "type": "ContractAddress"
+        },
+        {
+          "name": "offer",
+          "type": "OfferItem"
+        },
+        {
+          "name": "consideration",
+          "type": "ConsiderationItem"
+        },
+        {
+          "name": "start_time",
+          "type": "felt"
+        },
+        {
+          "name": "end_time",
+          "type": "felt"
+        },
+        {
+          "name": "salt",
+          "type": "felt"
+        },
+        {
+          "name": "nonce",
+          "type": "felt"
+        }
+      ],
+      "ConsiderationItem": [
+        {
+          "name": "item_type",
+          "type": "shortstring"
+        },
+        {
+          "name": "token",
+          "type": "ContractAddress"
+        },
+        {
+          "name": "identifier_or_criteria",
+          "type": "felt"
+        },
+        {
+          "name": "start_amount",
+          "type": "felt"
+        },
+        {
+          "name": "end_amount",
+          "type": "felt"
+        },
+        {
+          "name": "recipient",
+          "type": "ContractAddress"
+        }
+      ],
+      "OfferItem": [
+        {
+          "name": "item_type",
+          "type": "shortstring"
+        },
+        {
+          "name": "token",
+          "type": "ContractAddress"
+        },
+        {
+          "name": "identifier_or_criteria",
+          "type": "felt"
+        },
+        {
+          "name": "start_amount",
+          "type": "felt"
+        },
+        {
+          "name": "end_amount",
+          "type": "felt"
+        }
+      ]
+    },
+    "message": {
+      "offerer": "0x040204472aef47d0aa8d68316e773f09a6f7d8d10ff6d30363b353ef3f2d1305",
+      "offer": {
+        "item_type": "ERC721",
+        "token": "0x01be0d1cd01de34f946a40e8cc305b67ebb13bca8472484b33e408be03de39fe",
+        "identifier_or_criteria": 0,
+        "start_amount": 1,
+        "end_amount": 1
+      },
+      "consideration": {
+        "item_type": "ERC20",
+        "token": "0x0589edc6e13293530fec9cad58787ed8cff1fce35c3ef80342b7b00651e04d1f",
+        "identifier_or_criteria": 0,
+        "start_amount": 1000000,
+        "end_amount": 1000000,
+        "recipient": "0x040204472aef47d0aa8d68316e773f09a6f7d8d10ff6d30363b353ef3f2d1305"
+      },
+      "start_time": 1000000000,
+      "end_time": 1000003600,
+      "salt": 0,
+      "nonce": 0
+    }
+  },
+  "erc20_for_erc721_offer_signature": {
+    "r": "3454928433868771987793737319591141299303880296339125482430761070816410607020",
+    "s": "1687957968351732802669593318187197490044820175724885527288686545380842475828",
+    "recovery": 0
+  },
+  "erc20_for_erc721_fulfillment": {
+    "order_hash": "0x6e5c9010b1bdaf463d6b93445266d54028c9eacd868ffa91c732962244987df",
+    "fulfiller": "0x01d0c57c28e34bf6407c2fbfadbda7ae59d39ff9c8f9ac4ec3fa32ec784fb549",
+    "nonce": 0
+  },
+  "erc20_for_erc721_fulfillment_typedData": {
+    "domain": {
+      "name": "Medialane",
+      "chainId": "0x534e5f5345504f4c4941",
+      "version": "1",
+      "revision": "1"
+    },
+    "primaryType": "OrderFulfillment",
+    "types": {
+      "StarknetDomain": [
+        {
+          "name": "name",
+          "type": "shortstring"
+        },
+        {
+          "name": "version",
+          "type": "shortstring"
+        },
+        {
+          "name": "chainId",
+          "type": "shortstring"
+        },
+        {
+          "name": "revision",
+          "type": "shortstring"
+        }
+      ],
+      "OrderFulfillment": [
+        {
+          "name": "order_hash",
+          "type": "felt"
+        },
+        {
+          "name": "fulfiller",
+          "type": "ContractAddress"
+        },
+        {
+          "name": "nonce",
+          "type": "felt"
+        }
+      ]
+    },
+    "message": {
+      "order_hash": "0x6e5c9010b1bdaf463d6b93445266d54028c9eacd868ffa91c732962244987df",
+      "fulfiller": "0x01d0c57c28e34bf6407c2fbfadbda7ae59d39ff9c8f9ac4ec3fa32ec784fb549",
+      "nonce": 0
+    }
+  },
+  "erc20_for_erc721_fulfillment_hash": "0x607dc855b1b5451544ce700ba9d2fdbcf11d058d689553350eada20a793bec7",
+  "erc20_for_erc721_fulfillment_signature": {
+    "r": "3153762219456228275540139167487013577360679603422098242184045521620900787267",
+    "s": "1775594892691740465900712693775684609458245052498958467425546734232892735538",
+    "recovery": 1
+  },
+  "erc20_for_erc721_cancellation": {
+    "order_hash": "0x6e5c9010b1bdaf463d6b93445266d54028c9eacd868ffa91c732962244987df",
+    "offerer": "0x040204472aef47d0aa8d68316e773f09a6f7d8d10ff6d30363b353ef3f2d1305",
+    "nonce": 1
+  },
+  "erc20_for_erc721_cancellation_typedData": {
+    "domain": {
+      "name": "Medialane",
+      "chainId": "0x534e5f5345504f4c4941",
+      "version": "1",
+      "revision": "1"
+    },
+    "primaryType": "OrderCancellation",
+    "types": {
+      "StarknetDomain": [
+        {
+          "name": "name",
+          "type": "shortstring"
+        },
+        {
+          "name": "version",
+          "type": "shortstring"
+        },
+        {
+          "name": "chainId",
+          "type": "shortstring"
+        },
+        {
+          "name": "revision",
+          "type": "shortstring"
+        }
+      ],
+      "OrderCancellation": [
+        {
+          "name": "order_hash",
+          "type": "felt"
+        },
+        {
+          "name": "offerer",
+          "type": "ContractAddress"
+        },
+        {
+          "name": "nonce",
+          "type": "felt"
+        }
+      ]
+    },
+    "message": {
+      "order_hash": "0x6e5c9010b1bdaf463d6b93445266d54028c9eacd868ffa91c732962244987df",
+      "offerer": "0x040204472aef47d0aa8d68316e773f09a6f7d8d10ff6d30363b353ef3f2d1305",
+      "nonce": 1
+    }
+  },
+  "erc20_for_erc721_cancellation_hash": "0x968c5ff62be6e84de0d3457c1199b0557dba8477d5d74eea3257d8f82c74ad",
+  "erc2_for_erc721_cancellation_signature": {
+    "r": "3428666881081820239052350035163331228699955344013335388546792595001053179231",
+    "s": "641750449764461143285733112189243315208147935584282455090309799624730568160",
+    "recovery": 0
+  }
+}
