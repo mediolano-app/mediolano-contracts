@@ -105,13 +105,16 @@ mod test {
         contract_address
     }
 
-    fn deploy_medialane(native_token: ContractAddress) -> IMedialaneDispatcher {
+    fn deploy_medialane(
+        native_token: ContractAddress, owner_adddress: ContractAddress,
+    ) -> IMedialaneDispatcher {
         let expected_medialane_contract: ContractAddress =
             0x2a0626d1a71fab6c6cdcb262afc48bff92a6844700ebbd16297596e6c53da29
             .try_into()
             .unwrap();
 
         let mut constructor_calldata = array![];
+        owner_adddress.serialize(ref constructor_calldata);
         native_token.serialize(ref constructor_calldata);
         let contract_address = deploy_contract(
             "Medialane", @constructor_calldata, expected_medialane_contract,
@@ -172,7 +175,7 @@ mod test {
     fn setup_contracts_and_accounts() -> (DeployedContracts, Accounts) {
         let accounts = setup_accounts();
         let mut erc20_contract = deploy_erc20(accounts.owner);
-        let medialane_contract = deploy_medialane(erc20_contract.contract_address);
+        let medialane_contract = deploy_medialane(erc20_contract.contract_address, accounts.owner);
         let erc721_contract = deploy_erc721(accounts.owner);
         let erc1155_contract = deploy_erc1155(accounts.owner);
 
