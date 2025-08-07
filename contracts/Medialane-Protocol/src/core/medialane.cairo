@@ -1,17 +1,22 @@
 #[starknet::contract]
 pub mod Medialane {
     use core::integer::u64;
+    use openzeppelin_access::accesscontrol::AccessControlComponent::InternalTrait;
+    use openzeppelin_access::accesscontrol::{AccessControlComponent, DEFAULT_ADMIN_ROLE};
     use openzeppelin_account::interface::{ISRC6Dispatcher, ISRC6DispatcherTrait};
+    use openzeppelin_introspection::src5::SRC5Component;
     use openzeppelin_token::erc1155::interface::{IERC1155Dispatcher, IERC1155DispatcherTrait};
     use openzeppelin_token::erc20::interface::{IERC20Dispatcher, IERC20DispatcherTrait};
     use openzeppelin_token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
+    use openzeppelin_upgrades::interface::IUpgradeable;
+    use openzeppelin_upgrades::upgradeable::UpgradeableComponent;
     use openzeppelin_utils::cryptography::nonces::NoncesComponent;
     use openzeppelin_utils::snip12::{OffchainMessageHash, SNIP12Metadata};
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
-    use starknet::{ContractAddress, get_block_timestamp};
+    use starknet::{ClassHash, ContractAddress, get_block_timestamp};
     use crate::core::errors::*;
     use crate::core::events::*;
     use crate::core::interface::*;
@@ -19,27 +24,53 @@ pub mod Medialane {
     use crate::core::utils::*;
 
     component!(path: NoncesComponent, storage: nonces, event: NoncesEvent);
+    component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
+    component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
+    component!(path: SRC5Component, storage: src5, event: SRC5Event);
 
     #[abi(embed_v0)]
     impl NoncesImpl = NoncesComponent::NoncesImpl<ContractState>;
     impl NoncesInternalImpl = NoncesComponent::InternalImpl<ContractState>;
 
+    #[abi(embed_v0)]
+    impl SRC5Impl = SRC5Component::SRC5Impl<ContractState>;
+
+    #[abi(embed_v0)]
+    impl AccessControlImpl =
+        AccessControlComponent::AccessControlImpl<ContractState>;
+    impl AccessControlInternalImpl = AccessControlComponent::InternalImpl<ContractState>;
+
+
+    impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
+
     #[storage]
     struct Storage {
+        orders: Map<felt252, OrderDetails>,
+        native_token_address: ContractAddress, // STRK token address
         #[substorage(v0)]
         nonces: NoncesComponent::Storage,
-        orders: Map<felt252, OrderDetails>,
-        native_token_address: ContractAddress // STRK token address
+        #[substorage(v0)]
+        upgradeable: UpgradeableComponent::Storage,
+        #[substorage(v0)]
+        src5: SRC5Component::Storage,
+        #[substorage(v0)]
+        accesscontrol: AccessControlComponent::Storage,
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
-        #[flat]
-        NoncesEvent: NoncesComponent::Event,
         OrderCreated: OrderCreated,
         OrderFulfilled: OrderFulfilled,
         OrderCancelled: OrderCancelled,
+        #[flat]
+        NoncesEvent: NoncesComponent::Event,
+        #[flat]
+        UpgradeableEvent: UpgradeableComponent::Event,
+        #[flat]
+        SRC5Event: SRC5Component::Event,
+        #[flat]
+        AccessControlEvent: AccessControlComponent::Event,
     }
 
     /// Required for hash computation.
@@ -53,8 +84,20 @@ pub mod Medialane {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, native_token_address: ContractAddress) {
+    fn constructor(
+        ref self: ContractState, manager: ContractAddress, native_token_address: ContractAddress,
+    ) {
+        self.accesscontrol.initializer();
+        self.accesscontrol._grant_role(DEFAULT_ADMIN_ROLE, manager);
         self.native_token_address.write(native_token_address);
+    }
+
+    #[abi(embed_v0)]
+    impl UpgradeableImpl of IUpgradeable<ContractState> {
+        fn upgrade(ref self: ContractState, new_class_hash: ClassHash) {
+            self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
+            self.upgradeable.upgrade(new_class_hash);
+        }
     }
 
     #[abi(embed_v0)]
