@@ -47,16 +47,6 @@ Mediolano Protocol
 └── Partner Certification
 ```
 
-### Key Features
-
-- **🎯 Zero-Knowledge IP Protection**: Leverage Starknet's ZK-proofs for privacy-preserving IP validation
-- **💰 Revenue Sharing**: Automated distribution of royalties to IP owners and collaborators
-- **🤝 Collective Ownership**: Multi-party IP agreements with governance and voting mechanisms
-- **🏪 Marketplace Integration**: Seamless trading and licensing of IP assets
-- **🎮 Gamification**: Achievement system to reward creators and build reputation
-- **🌐 Community Tools**: NFT-based clubs and communities for creators
-- **📄 Smart Licensing**: Programmable licensing with customizable terms
-- **🔒 Escrow Services**: Secure transaction handling for IP negotiations
 
 ## Roadmap
 
@@ -72,13 +62,13 @@ Mediolano Protocol
 
 - [X] MIP Protocol @ Starknet Mainnet **25.07**
 
-- [ ] MIP Collections Protocol @ Starknet Sepolia **25.07**
+- [X] MIP Collections Protocol @ Starknet Sepolia **25.07**
 
-- [ ] MIP Dapp @ Starknet Mainnet **25.08**
+- [X] MIP Dapp @ Starknet Mainnet **25.08**
 
-- [ ] Mediolano Dapp @ Starknet Mainnet **25.08**
+- [X] MIP Collections Protocol @ Starknet Mainnet **25.08**
 
-- [ ] MIP Collections Protocol @ Starknet Mainnet **25.08**
+- [ ] Mediolano Dapp @ Starknet Mainnet **25.09**
 
 - [ ] Medialane Protocol @ Starknet Sepolia **25.08**
 
@@ -87,6 +77,9 @@ Mediolano Protocol
 - [ ] Medialane Protocol @ Starknet Mainnet **25.11**
 
 - [ ] Medialane Dapp @ Starknet Mainnet **25.11**
+
+
+
 
 ## 🚀 Getting Started
 
