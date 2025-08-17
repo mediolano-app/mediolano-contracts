@@ -1,20 +1,18 @@
 #[starknet::contract]
 pub mod IPNft {
-    use starknet::storage::StorageMapWriteAccess;
-    use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::access::accesscontrol::{AccessControlComponent, DEFAULT_ADMIN_ROLE};
+    use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc721::ERC721Component;
-    use openzeppelin::token::erc721::ERC721Component::InternalTrait;
     use openzeppelin::token::erc721::extensions::ERC721EnumerableComponent;
+    use openzeppelin::token::erc721::interface::IERC721Metadata;
     use openzeppelin::upgrades::UpgradeableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
-    use starknet::{
-        ClassHash, ContractAddress,
-        storage::{Map, StorageMapReadAccess, StoragePointerReadAccess, StoragePointerWriteAccess},
+    use starknet::storage::{
+        Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
+        StoragePointerWriteAccess,
     };
-    use openzeppelin::token::erc721::interface::IERC721Metadata;
-
+    use starknet::{ClassHash, ContractAddress};
     use crate::interfaces::IIPNFT::IIPNft;
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
@@ -38,13 +36,18 @@ pub mod IPNft {
     #[abi(embed_v0)]
     impl ERC721EnumerableImpl =
         ERC721EnumerableComponent::ERC721EnumerableImpl<ContractState>;
-    impl AccessControlMixinImpl = AccessControlComponent::AccessControlMixinImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl AccessControlCamelImpl =
+        AccessControlComponent::AccessControlCamelImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl SRC5Impl = SRC5Component::SRC5Impl<ContractState>;
 
     impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
     impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
     impl ERC721EnumerableInternalImpl = ERC721EnumerableComponent::InternalImpl<ContractState>;
     impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
     impl AccessControlInternalImpl = AccessControlComponent::InternalImpl<ContractState>;
+    impl SRC5ComponentInternalImpl = SRC5Component::InternalImpl<ContractState>;
 
 
     #[storage]
@@ -169,18 +172,6 @@ pub mod IPNft {
             self.erc721.burn(token_id);
         }
 
-        /// Transfers an ERC721 token from one address to another.
-        ///
-        /// # Arguments
-        /// * `from` - The address sending the token.
-        /// * `to` - The address receiving the token.
-        /// * `token_id` - The unique identifier for the token to be transferred.
-        fn transfer(
-            ref self: ContractState, from: ContractAddress, to: ContractAddress, token_id: u256,
-        ) {
-            self.erc721.transfer_from(from, to, token_id);
-        }
-
         /// Returns the collection ID associated with this contract.
         ///
         /// # Returns
@@ -195,62 +186,6 @@ pub mod IPNft {
         /// * `ContractAddress` - The address of the collection manager.
         fn get_collection_manager(self: @ContractState) -> ContractAddress {
             self.collection_manager.read()
-        }
-
-        /// Retrieves all token IDs owned by a specific user.
-        ///
-        /// # Arguments
-        /// * `user` - The address of the token owner.
-        ///
-        /// # Returns
-        /// * `Span<u256>` - A span containing all token IDs owned by the user.
-        fn get_all_user_tokens(self: @ContractState, user: ContractAddress) -> Span<u256> {
-            self.erc721_enumerable.all_tokens_of_owner(user)
-        }
-
-        /// Returns the total supply of tokens in the collection.
-        ///
-        /// # Returns
-        /// * `u256` - The total number of tokens.
-        fn get_total_supply(self: @ContractState) -> u256 {
-            self.erc721_enumerable.total_supply()
-        }
-
-        /// Returns the URI for a specific token.
-        ///
-        /// # Arguments
-        /// * `token_id` - The unique identifier for the token.
-        ///
-        /// # Returns
-        /// * `ByteArray` - The URI of the token.
-        fn get_token_uri(self: @ContractState, token_id: u256) -> ByteArray {
-            self.token_uri(token_id)
-        }
-
-        /// Returns the owner address of a specific token.
-        ///
-        /// # Arguments
-        /// * `token_id` - The unique identifier for the token.
-        ///
-        /// # Returns
-        /// * `ContractAddress` - The address of the token owner.
-        fn get_token_owner(self: @ContractState, token_id: u256) -> ContractAddress {
-            self.erc721.owner_of(token_id)
-        }
-
-        /// Checks if a given address is approved for a specific token.
-        ///
-        /// # Arguments
-        /// * `token_id` - The unique identifier for the token.
-        /// * `spender` - The address to check for approval.
-        ///
-        /// # Returns
-        /// * `bool` - True if `spender` is approved for `token_id`, false otherwise.
-        fn is_approved_for_token(
-            self: @ContractState, token_id: u256, spender: ContractAddress,
-        ) -> bool {
-            let approved = self.erc721.get_approved(token_id);
-            approved == spender
         }
     }
 }

@@ -1,6 +1,6 @@
 /// Interface for IP Collection contract, defining core collection and token management operations.
-use starknet::ContractAddress;
-use crate::types::{Collection, TokenData, CollectionStats};
+use starknet::{ClassHash, ContractAddress};
+use crate::types::{Collection, CollectionStats, TokenData};
 
 #[starknet::interface]
 pub trait IIPCollection<ContractState> {
@@ -161,4 +161,11 @@ pub trait IIPCollection<ContractState> {
     /// # Returns
     /// `true` if valid, `false` otherwise.
     fn is_valid_token(self: @ContractState, token: ByteArray) -> bool;
+
+    /// Upgrades the collection nft class hash
+    ///
+    /// Params:
+    /// - `new_nft_class_hash`: Class hash of new IP NFT contract
+    ///
+    fn upgrade_ip_nft_class_hash(ref self: ContractState, new_nft_class_hash: ClassHash);
 }

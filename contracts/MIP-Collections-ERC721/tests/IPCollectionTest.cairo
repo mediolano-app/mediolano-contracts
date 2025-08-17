@@ -1,25 +1,29 @@
-use starknet::{ContractAddress, contract_address_const};
-use snforge_std::{
-    declare, ContractClassTrait, DeclareResultTrait, cheat_caller_address,
-    start_cheat_caller_address, CheatSpan, stop_cheat_caller_address,
-};
 use core::result::ResultTrait;
-use ip_collection_erc_721::interfaces::{
-    IIPCollection::{IIPCollectionDispatcher, IIPCollectionDispatcherTrait},
+use ip_collection_erc_721::interfaces::IIPCollection::{
+    IIPCollectionDispatcher, IIPCollectionDispatcherTrait,
 };
-
 use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
+use snforge_std::{
+    CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
+    start_cheat_caller_address, stop_cheat_caller_address,
+};
+use starknet::ContractAddress;
 
 // Test constants
 fn OWNER() -> ContractAddress {
-    contract_address_const::<0x123>()
+    0x123.try_into().unwrap()
 }
 fn USER1() -> ContractAddress {
-    contract_address_const::<0x456>()
+    0x456.try_into().unwrap()
 }
 fn USER2() -> ContractAddress {
-    contract_address_const::<0x789>()
+    0x789.try_into().unwrap()
 }
+fn ZERO() -> ContractAddress {
+    0.try_into().unwrap()
+}
+
+
 const COLLECTION_ID: u256 = 1;
 const TOKEN_ID: u256 = 1;
 
@@ -137,9 +141,8 @@ fn test_mint_to_zero_address() {
     let owner = OWNER();
     let collection_id = setup_collection(dispatcher, address);
     let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
-
     start_cheat_caller_address(address, owner);
-    dispatcher.mint(collection_id, contract_address_const::<0>(), token_uri);
+    dispatcher.mint(collection_id, ZERO(), token_uri);
 }
 
 #[test]
@@ -150,7 +153,7 @@ fn test_mint_zero_caller() {
     let collection_id = setup_collection(dispatcher, address);
     let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
 
-    start_cheat_caller_address(address, contract_address_const::<0>());
+    start_cheat_caller_address(address, ZERO());
     dispatcher.mint(collection_id, recipient, token_uri);
 }
 
@@ -200,8 +203,7 @@ fn test_batch_mint_zero_recipient() {
     let owner = OWNER();
     let collection_id = setup_collection(dispatcher, ip_address);
     let token_uris = array!["ipfs://QmCollectionBaseUri/0"];
-    let recipients = array![contract_address_const::<0>()];
-
+    let recipients = array![ZERO()];
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
     dispatcher.batch_mint(collection_id, recipients, token_uris);
 }
@@ -337,13 +339,12 @@ fn test_batch_transfer_tokens_success() {
     let token0 = format!("{}:{}", collection_id, *token_ids.at(0));
     let token1 = format!("{}:{}", collection_id, *token_ids.at(1));
     let tokens = array![token0, token1];
-
     cheat_caller_address(ip_address, from_user, CheatSpan::TargetCalls(1));
     dispatcher.batch_transfer(from_user, to_user, tokens.clone());
 
     // Check new owners
-    let token_data0 = dispatcher.get_token(tokens.at(0).clone());
-    let token_data1 = dispatcher.get_token(tokens.at(1).clone());
+    let token_data0 = dispatcher.get_token(tokens.clone().at(0).clone());
+    let token_data1 = dispatcher.get_token(tokens.clone().at(1_u32).clone());
     assert(token_data0.owner == to_user, 'Token0 should be transferred');
     assert(token_data1.owner == to_user, 'Token1 should be transferred');
 }
