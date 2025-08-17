@@ -43,7 +43,7 @@ pub impl TokenImpl of TokenTrait {
             } else {
                 col_bytes.append_byte(byte);
             }
-        };
+        }
 
         // Convert byte arrays to u256
         let collection_id = bytearray_to_u256(col_bytes);
@@ -114,7 +114,7 @@ fn bytearray_to_u256(bytes: ByteArray) -> u256 {
         let byte = bytes.at(i).unwrap();
         let digit = byte - 48; // '0' = 48 in ASCII
         result = result * 10_u256 + digit.try_into().unwrap();
-    };
+    }
     result
 }
 

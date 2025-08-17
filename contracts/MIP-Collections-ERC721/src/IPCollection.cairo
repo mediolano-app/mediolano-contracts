@@ -3,22 +3,26 @@ pub mod IPCollection {
     use core::num::traits::Zero;
     use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::introspection::src5::SRC5Component;
+    use openzeppelin::token::erc721::extensions::erc721_enumerable::interface::{
+        ERC721EnumerableABIDispatcher as IERC721EnumerableDispatcher,
+        ERC721EnumerableABIDispatcherTrait,
+    };
+    use openzeppelin::token::erc721::{
+        ERC721ABIDispatcher as IERC721Dispatcher, ERC721ABIDispatcherTrait,
+    };
     use openzeppelin::upgrades::UpgradeableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
-    use starknet::{
-        ClassHash, ContractAddress, get_caller_address, get_contract_address, get_block_timestamp,
-        storage::{
-            Map, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
-            StoragePointerWriteAccess,
-        },
+    use starknet::storage::{
+        Map, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
+        StoragePointerWriteAccess,
     };
-
     use starknet::syscalls::deploy_syscall;
-
-    use crate::types::{Collection, CollectionStats, TokenData, TokenTrait};
-    use crate::interfaces::{
-        IIPCollection::IIPCollection, IIPNFT::{IIPNftDispatcher, IIPNftDispatcherTrait},
+    use starknet::{
+        ClassHash, ContractAddress, get_block_timestamp, get_caller_address, get_contract_address,
     };
+    use crate::interfaces::IIPCollection::IIPCollection;
+    use crate::interfaces::IIPNFT::{IIPNftDispatcher, IIPNftDispatcherTrait};
+    use crate::types::{Collection, CollectionStats, TokenData, TokenTrait};
 
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
@@ -175,7 +179,7 @@ pub mod IPCollection {
 
             let collection_manager = get_contract_address();
 
-            let mut constructor_calldata: Array::<felt252> = array![];
+            let mut constructor_calldata: Array<felt252> = array![];
 
             // Serialize constructor arguments for NFT contract
             (
@@ -183,7 +187,7 @@ pub mod IPCollection {
                 symbol.clone(),
                 base_uri.clone(),
                 caller,
-                collection_id.clone(),
+                collection_id,
                 collection_manager,
             )
                 .serialize(ref constructor_calldata);
@@ -251,7 +255,8 @@ pub mod IPCollection {
             collection_stats.total_minted = next_token_id + 1;
             collection_stats.last_mint_time = get_block_timestamp();
 
-            let token_uri = ip_nft.get_token_uri(next_token_id);
+            let token_uri = IERC721Dispatcher { contract_address: collection.ip_nft }
+                .token_uri(next_token_id);
 
             self.collection_stats.entry(collection_id).write(collection_stats);
 
@@ -315,7 +320,7 @@ pub mod IPCollection {
                 token_ids.append(next_token_id);
 
                 i += 1;
-            };
+            }
 
             let timestamp = get_block_timestamp();
 
@@ -330,7 +335,7 @@ pub mod IPCollection {
                 .emit(
                     TokenMintedBatch {
                         collection_id,
-                        token_ids: token_ids.span().clone(),
+                        token_ids: token_ids.span(),
                         owners: recipients.clone(),
                         operator,
                         timestamp,
@@ -354,7 +359,8 @@ pub mod IPCollection {
 
             let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
 
-            let token_owner = ip_nft.get_token_owner(token.token_id);
+            let token_owner = IERC721Dispatcher { contract_address: collection.ip_nft }
+                .owner_of(token.token_id);
 
             assert(token_owner == get_caller_address(), 'Caller not token owner');
 
@@ -410,7 +416,7 @@ pub mod IPCollection {
                 self.collection_stats.entry(token.collection_id).write(collection_stats);
 
                 i += 1;
-            };
+            }
 
             // Emit batch event
             self
@@ -437,13 +443,13 @@ pub mod IPCollection {
 
             assert(collection.is_active, 'Collection is not active');
 
-            let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+            let ip_nft = IERC721Dispatcher { contract_address: collection.ip_nft };
 
-            let approved = ip_nft.is_approved_for_token(token.token_id, get_contract_address());
+            let approved = ip_nft.get_approved(token.token_id);
 
-            assert(approved, 'Contract not approved');
+            assert(approved == get_contract_address(), 'Contract not approved');
 
-            ip_nft.transfer(from, to, token.token_id);
+            ip_nft.transfer_from(from, to, token.token_id);
 
             self
                 .emit(
@@ -472,20 +478,15 @@ pub mod IPCollection {
             let n = tokens.len();
 
             assert(n > 0, 'Tokens array is empty');
-
             let mut i: u32 = 0;
-
             while i < n {
                 let token = TokenTrait::from_bytes(tokens.at(i).clone());
                 let collection = self.collections.read(token.collection_id);
                 assert(collection.is_active, 'Collection is not active');
-
-                let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
-
-                ip_nft.transfer(from, to, token.token_id);
+                let ip_nft = IERC721Dispatcher { contract_address: collection.ip_nft };
+                ip_nft.transfer_from(from, to, token.token_id);
                 i += 1;
-            };
-
+            }
             // Emit batch event
             self
                 .emit(
@@ -515,8 +516,8 @@ pub mod IPCollection {
                 return array![].span();
             }
 
-            let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
-            ip_nft.get_all_user_tokens(user)
+            let ip_nft = IERC721EnumerableDispatcher { contract_address: collection.ip_nft };
+            ip_nft.all_tokens_of_owner(user)
         }
 
         /// Returns a span containing all collection IDs owned by the specified user.
@@ -537,7 +538,7 @@ pub mod IPCollection {
                 let collection_id = self.user_collections.entry(i).read();
                 collections.append(collection_id);
                 i += 1;
-            };
+            }
 
             return collections.span();
         }
@@ -585,11 +586,11 @@ pub mod IPCollection {
             let collection = self.collections.read(token.collection_id);
             if !collection.is_active {
                 return false;
-            };
+            }
 
-            let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+            let ip_nft = IERC721Dispatcher { contract_address: collection.ip_nft };
 
-            !ip_nft.get_token_owner(token.token_id).is_zero()
+            !ip_nft.owner_of(token.token_id).is_zero()
         }
 
         /// Retrieves metadata and ownership information for a specific token.
@@ -606,13 +607,13 @@ pub mod IPCollection {
                 return TokenData {
                     collection_id: 0, token_id: 0, owner: Zero::zero(), metadata_uri: "",
                 };
-            };
+            }
 
-            let ip_nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+            let ip_nft = IERC721Dispatcher { contract_address: collection.ip_nft };
 
-            let token_uri = ip_nft.get_token_uri(token.token_id);
+            let token_uri = ip_nft.token_uri(token.token_id);
 
-            let owner = ip_nft.get_token_owner(token.token_id);
+            let owner = ip_nft.owner_of(token.token_id);
 
             TokenData {
                 collection_id: token.collection_id,
@@ -634,6 +635,16 @@ pub mod IPCollection {
         ) -> bool {
             let collection = self.collections.read(collection_id);
             collection.owner == owner
+        }
+
+        /// Upgrades the collection nft class hash
+        ///
+        /// Params:
+        /// - `new_nft_class_hash`: Class hash of new IP NFT contract
+        ///
+        fn upgrade_ip_nft_class_hash(ref self: ContractState, new_nft_class_hash: ClassHash) {
+            self.ownable.assert_only_owner();
+            self.ip_nft_class_hash.write(new_nft_class_hash)
         }
     }
 }
