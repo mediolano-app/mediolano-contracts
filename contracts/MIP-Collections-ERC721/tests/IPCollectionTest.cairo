@@ -2,7 +2,9 @@ use core::result::ResultTrait;
 use ip_collection_erc_721::interfaces::IIPCollection::{
     IIPCollectionDispatcher, IIPCollectionDispatcherTrait,
 };
-use openzeppelin::token::erc721::interface::{IERC721Dispatcher, IERC721DispatcherTrait};
+use openzeppelin::token::erc721::interface::{
+    ERC721ABIDispatcher, ERC721ABIDispatcherTrait, IERC721Dispatcher, IERC721DispatcherTrait,
+};
 use snforge_std::{
     CheatSpan, ContractClassTrait, DeclareResultTrait, cheat_caller_address, declare,
     start_cheat_caller_address, stop_cheat_caller_address,
@@ -119,6 +121,29 @@ fn test_mint_token() {
     assert(token.token_id == token_id, 'Token ID mismatch');
     assert(token.owner == recipient, 'Token owner mismatch');
     assert(token.metadata_uri == "ipfs://QmCollectionBaseUri/0", 'Token metadata URI mismatch');
+}
+
+#[test]
+fn test_token_uri_match() {
+    let (dispatcher, ip_address) = deploy_contract();
+    let owner = OWNER();
+    let recipient = USER1();
+    let collection_id = setup_collection(dispatcher, ip_address);
+    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
+
+    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
+    let token_id = dispatcher.mint(collection_id, recipient, token_uri.clone());
+    assert(token_id == 0, 'Token ID should be 0');
+
+    let collection_data = dispatcher.get_collection(collection_id);
+
+    let erc721_dispatcher = ERC721ABIDispatcher { contract_address: collection_data.ip_nft };
+
+    let token_uri_1 = erc721_dispatcher.tokenURI(token_id);
+    let token_uri_2 = erc721_dispatcher.token_uri(token_id);
+    assert(token_uri_1 == token_uri, 'Token URI 1 mismatch');
+    assert(token_uri_2 == token_uri, 'Token URI 2 mismatch');
+    assert_eq!(token_uri_1, token_uri_2, "Token URI mismatch");
 }
 
 #[test]
