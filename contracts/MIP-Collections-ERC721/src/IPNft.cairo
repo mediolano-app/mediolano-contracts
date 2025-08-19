@@ -5,7 +5,7 @@ pub mod IPNft {
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc721::ERC721Component;
     use openzeppelin::token::erc721::extensions::ERC721EnumerableComponent;
-    use openzeppelin::token::erc721::interface::IERC721Metadata;
+    use openzeppelin::token::erc721::interface::{IERC721Metadata, IERC721MetadataCamelOnly};
     use openzeppelin::upgrades::UpgradeableComponent;
     use openzeppelin::upgrades::interface::IUpgradeable;
     use starknet::storage::{
@@ -28,9 +28,6 @@ pub mod IPNft {
     impl ERC721Impl = ERC721Component::ERC721Impl<ContractState>;
     #[abi(embed_v0)]
     impl ERC721CamelOnly = ERC721Component::ERC721CamelOnlyImpl<ContractState>;
-    #[abi(embed_v0)]
-    impl ERC721MetadataCamelOnly =
-        ERC721Component::ERC721MetadataCamelOnlyImpl<ContractState>;
     #[abi(embed_v0)]
     impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
     #[abi(embed_v0)]
@@ -140,6 +137,14 @@ pub mod IPNft {
         fn token_uri(self: @ContractState, token_id: u256) -> ByteArray {
             self.erc721._require_owned(token_id);
             self.uris.read(token_id)
+        }
+    }
+
+    #[abi(embed_v0)]
+    impl ERC721MetadataCamelOnly of IERC721MetadataCamelOnly<ContractState> {
+        fn tokenURI(self: @ContractState, tokenId: u256) -> ByteArray {
+            self.erc721._require_owned(tokenId);
+            self.uris.read(tokenId)
         }
     }
 
