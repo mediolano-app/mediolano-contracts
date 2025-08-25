@@ -2,6 +2,7 @@ use core::result::ResultTrait;
 use ip_collection_erc_721::interfaces::IIPCollection::{
     IIPCollectionDispatcher, IIPCollectionDispatcherTrait,
 };
+use ip_collection_erc_721::interfaces::IIPNFT::{IIPNftDispatcher, IIPNftDispatcherTrait};
 use openzeppelin::token::erc721::interface::{
     ERC721ABIDispatcher, ERC721ABIDispatcherTrait, IERC721Dispatcher, IERC721DispatcherTrait,
 };
@@ -478,4 +479,24 @@ fn test_user_collections_mapping() {
 
     let user3_collections = ip_dispatcher.list_user_collections(USER3());
     assert(user3_collections == array![collection_id4, collection_id7].span(), 'mismatch user3');
+}
+
+
+#[test]
+fn test_base_uri() {
+    let (ip_dispatcher, ip_address) = deploy_contract();
+    let owner = OWNER();
+    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
+
+    let name: ByteArray = "My Collection";
+    let symbol: ByteArray = "MC";
+    let base_uri: ByteArray = "ipfs://QmMyCollection";
+    let collection_id = ip_dispatcher
+        .create_collection(name.clone(), symbol.clone(), base_uri.clone());
+
+    let collection = ip_dispatcher.get_collection(collection_id);
+
+    let collection_base_uri = IIPNftDispatcher { contract_address: collection.ip_nft }.base_uri();
+
+    assert(collection_base_uri == base_uri, 'base uri mismatch');
 }
