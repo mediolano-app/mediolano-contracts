@@ -114,6 +114,7 @@ pub trait IIPCollection<ContractState> {
     /// A `Collection` struct.
     fn get_collection(self: @ContractState, collection_id: u256) -> Collection;
 
+
     /// Checks if a `collection_id` is valid (exists).
     ///
     /// # Arguments

@@ -192,6 +192,14 @@ pub mod IPNft {
         fn get_collection_manager(self: @ContractState) -> ContractAddress {
             self.collection_manager.read()
         }
+
+        /// Returns the base uri of the collection.
+        ///
+        /// # Returns
+        /// * `ByteArray` - The base uri of the collection.
+        fn base_uri(self: @ContractState) -> ByteArray {
+            self.erc721._base_uri()
+        }
     }
 }
 

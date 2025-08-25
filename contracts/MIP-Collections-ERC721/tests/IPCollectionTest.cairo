@@ -2,6 +2,7 @@ use core::result::ResultTrait;
 use ip_collection_erc_721::interfaces::IIPCollection::{
     IIPCollectionDispatcher, IIPCollectionDispatcherTrait,
 };
+use ip_collection_erc_721::interfaces::IIPNFT::{IIPNftDispatcher, IIPNftDispatcherTrait};
 use openzeppelin::token::erc721::interface::{
     ERC721ABIDispatcher, ERC721ABIDispatcherTrait, IERC721Dispatcher, IERC721DispatcherTrait,
 };
@@ -20,6 +21,9 @@ fn USER1() -> ContractAddress {
 }
 fn USER2() -> ContractAddress {
     0x789.try_into().unwrap()
+}
+fn USER3() -> ContractAddress {
+    0x987.try_into().unwrap()
 }
 fn ZERO() -> ContractAddress {
     0.try_into().unwrap()
@@ -411,3 +415,88 @@ fn test_verification_functions() {
     stop_cheat_caller_address(address);
 }
 
+#[test]
+fn test_user_collections_mapping() {
+    let (ip_dispatcher, ip_address) = deploy_contract();
+
+    cheat_caller_address(ip_address, USER1(), CheatSpan::TargetCalls(1));
+    let name1: ByteArray = "Collection 1";
+    let symbol1: ByteArray = "C1";
+    let base_uri1: ByteArray = "ipfs://QmCollection1";
+    let collection_id1 = ip_dispatcher.create_collection(name1, symbol1, base_uri1);
+    assert(collection_id1 == 1, 'First collection ID should be 1');
+
+    cheat_caller_address(ip_address, USER2(), CheatSpan::TargetCalls(1));
+    let name2: ByteArray = "Collection 2";
+    let symbol2: ByteArray = "C2";
+    let base_uri2: ByteArray = "ipfs://QmCollection2";
+    let collection_id2 = ip_dispatcher.create_collection(name2, symbol2, base_uri2);
+    assert(collection_id2 == 2, 'Second ID should be 2');
+
+    cheat_caller_address(ip_address, USER2(), CheatSpan::TargetCalls(1));
+    let name3: ByteArray = "Collection 3";
+    let symbol3: ByteArray = "C3";
+    let base_uri3: ByteArray = "ipfs://QmCollection3";
+    let collection_id3 = ip_dispatcher.create_collection(name3, symbol3, base_uri3);
+    assert(collection_id3 == 3, 'Third ID should be 3');
+
+    cheat_caller_address(ip_address, USER3(), CheatSpan::TargetCalls(1));
+    let name4: ByteArray = "Collection 4";
+    let symbol4: ByteArray = "C4";
+    let base_uri4: ByteArray = "ipfs://QmCollection4";
+    let collection_id4 = ip_dispatcher.create_collection(name4, symbol4, base_uri4);
+    assert(collection_id4 == 4, 'Fourth ID should be 4');
+
+    cheat_caller_address(ip_address, USER1(), CheatSpan::TargetCalls(1));
+    let name5: ByteArray = "Collection 5";
+    let symbol5: ByteArray = "C5";
+    let base_uri5: ByteArray = "ipfs://QmCollection5";
+    let collection_id5 = ip_dispatcher.create_collection(name5, symbol5, base_uri5);
+    assert(collection_id5 == 5, 'Fifth ID should be 5');
+
+    cheat_caller_address(ip_address, USER1(), CheatSpan::TargetCalls(1));
+    let name6: ByteArray = "Collection 6";
+    let symbol6: ByteArray = "C6";
+    let base_uri6: ByteArray = "ipfs://QmCollection6";
+    let collection_id6 = ip_dispatcher.create_collection(name6, symbol6, base_uri6);
+    assert(collection_id6 == 6, 'Sixth ID should be 6');
+
+    cheat_caller_address(ip_address, USER3(), CheatSpan::TargetCalls(1));
+    let name7: ByteArray = "Collection 7";
+    let symbol7: ByteArray = "C7";
+    let base_uri7: ByteArray = "ipfs://QmCollection7";
+    let collection_id7 = ip_dispatcher.create_collection(name7, symbol7, base_uri7);
+    assert(collection_id7 == 7, 'Seventh ID should be 7');
+
+    let user1_collections = ip_dispatcher.list_user_collections(USER1());
+    assert(
+        user1_collections == array![collection_id1, collection_id5, collection_id6].span(),
+        'mismatch user1',
+    );
+
+    let user2_collections = ip_dispatcher.list_user_collections(USER2());
+    assert(user2_collections == array![collection_id2, collection_id3].span(), 'mismatch user2');
+
+    let user3_collections = ip_dispatcher.list_user_collections(USER3());
+    assert(user3_collections == array![collection_id4, collection_id7].span(), 'mismatch user3');
+}
+
+
+#[test]
+fn test_base_uri() {
+    let (ip_dispatcher, ip_address) = deploy_contract();
+    let owner = OWNER();
+    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
+
+    let name: ByteArray = "My Collection";
+    let symbol: ByteArray = "MC";
+    let base_uri: ByteArray = "ipfs://QmMyCollection";
+    let collection_id = ip_dispatcher
+        .create_collection(name.clone(), symbol.clone(), base_uri.clone());
+
+    let collection = ip_dispatcher.get_collection(collection_id);
+
+    let collection_base_uri = IIPNftDispatcher { contract_address: collection.ip_nft }.base_uri();
+
+    assert(collection_base_uri == base_uri, 'base uri mismatch');
+}
