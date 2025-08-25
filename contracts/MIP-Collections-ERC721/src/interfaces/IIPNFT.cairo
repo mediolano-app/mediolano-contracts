@@ -30,4 +30,10 @@ pub trait IIPNft<ContractState> {
     /// # Returns
     /// * `ContractAddress` - The address managing the collection.
     fn get_collection_manager(self: @ContractState) -> ContractAddress;
+
+    /// Returns the base uri of the collection.
+    ///
+    /// # Returns
+    /// * `ByteArray` - The base uri of the collection.
+    fn base_uri(self: @ContractState) -> ByteArray;
 }

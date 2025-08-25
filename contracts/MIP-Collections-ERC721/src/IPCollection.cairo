@@ -42,7 +42,7 @@ pub mod IPCollection {
         collection_count: u256,
         collection_stats: Map<u256, CollectionStats>,
         ip_nft_class_hash: ClassHash,
-        user_collections: Map<u256, u256>,
+        user_collections: Map<(ContractAddress, u256), u256>,
         user_collection_index: Map<ContractAddress, u256>,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
@@ -211,7 +211,7 @@ pub mod IPCollection {
 
             let mut user_collection_index = self.user_collection_index.read(caller);
 
-            self.user_collections.entry(user_collection_index).write(collection_id);
+            self.user_collections.entry((caller, user_collection_index)).write(collection_id);
             self.user_collection_index.entry(caller).write(user_collection_index + 1);
 
             self.emit(CollectionCreated { collection_id, owner: caller, name, symbol, base_uri });
@@ -535,7 +535,7 @@ pub mod IPCollection {
             let mut i: u256 = 0;
 
             while i < user_collection_index {
-                let collection_id = self.user_collections.entry(i).read();
+                let collection_id = self.user_collections.entry((user, i)).read();
                 collections.append(collection_id);
                 i += 1;
             }
