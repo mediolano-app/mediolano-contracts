@@ -197,10 +197,11 @@ pub mod IPCollection {
             )
                 .unwrap();
 
+            let base: ByteArray = "https://ipfs.io/ipfs/";
             let collection = Collection {
                 name: name.clone(),
                 symbol: symbol.clone(),
-                base_uri: base_uri.clone(),
+                base_uri: format!("{}{}", base, base_uri.clone()),
                 owner: caller,
                 ip_nft: ip_nft_adddress,
                 is_active: true,
@@ -255,7 +256,7 @@ pub mod IPCollection {
             collection_stats.total_minted = next_token_id + 1;
             collection_stats.last_mint_time = get_block_timestamp();
 
-            let token_uri = IERC721Dispatcher { contract_address: collection.ip_nft }
+            let metadata_uri = IERC721Dispatcher { contract_address: collection.ip_nft }
                 .token_uri(next_token_id);
 
             self.collection_stats.entry(collection_id).write(collection_stats);
@@ -266,7 +267,7 @@ pub mod IPCollection {
                         collection_id,
                         token_id: next_token_id,
                         owner: recipient,
-                        metadata_uri: token_uri,
+                        metadata_uri: metadata_uri,
                     },
                 );
 

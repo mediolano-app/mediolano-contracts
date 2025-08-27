@@ -136,7 +136,9 @@ pub mod IPNft {
 
         fn token_uri(self: @ContractState, token_id: u256) -> ByteArray {
             self.erc721._require_owned(token_id);
-            self.uris.read(token_id)
+            let base: ByteArray = "https://ipfs.io/ipfs/";
+            let uri = self.uris.read(token_id);
+            format!("{}{}", base, uri)
         }
     }
 
@@ -144,7 +146,9 @@ pub mod IPNft {
     impl ERC721MetadataCamelOnly of IERC721MetadataCamelOnly<ContractState> {
         fn tokenURI(self: @ContractState, tokenId: u256) -> ByteArray {
             self.erc721._require_owned(tokenId);
-            self.uris.read(tokenId)
+            let base: ByteArray = "https://ipfs.io/ipfs/";
+            let uri = self.uris.read(tokenId);
+            format!("{}{}", base, uri)
         }
     }
 
@@ -198,7 +202,9 @@ pub mod IPNft {
         /// # Returns
         /// * `ByteArray` - The base uri of the collection.
         fn base_uri(self: @ContractState) -> ByteArray {
-            self.erc721._base_uri()
+            let base: ByteArray = "https://ipfs.io/ipfs/";
+            let uri = self.erc721._base_uri();
+            format!("{}{}", base, uri)
         }
     }
 }
