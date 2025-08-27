@@ -33,6 +33,10 @@ fn ZERO() -> ContractAddress {
 const COLLECTION_ID: u256 = 1;
 const TOKEN_ID: u256 = 1;
 
+fn base() -> ByteArray {
+   "https://ipfs.io/ipfs/"
+}
+
 // // Deploy the IPCollection contract
 fn deploy_contract() -> (IIPCollectionDispatcher, ContractAddress) {
     let owner = OWNER();
@@ -58,7 +62,7 @@ fn setup_collection(dispatcher: IIPCollectionDispatcher, ip_address: ContractAdd
     let owner = OWNER();
     let name: ByteArray = "Test Collection";
     let symbol: ByteArray = "TST";
-    let base_uri: ByteArray = "ipfs://QmCollectionBaseUri/";
+    let base_uri: ByteArray = "QmCollectionBaseUri/";
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
     let collection_id = dispatcher.create_collection(name, symbol, base_uri);
     collection_id
@@ -72,7 +76,7 @@ fn test_create_collection() {
 
     let name: ByteArray = "My Collection";
     let symbol: ByteArray = "MC";
-    let base_uri: ByteArray = "ipfs://QmMyCollection";
+    let base_uri: ByteArray = "QmMyCollection";
     let collection_id = ip_dispatcher
         .create_collection(name.clone(), symbol.clone(), base_uri.clone());
 
@@ -80,7 +84,7 @@ fn test_create_collection() {
     let collection = ip_dispatcher.get_collection(collection_id);
     assert(collection.name == name, 'Collection name mismatch');
     assert(collection.symbol == symbol, 'Collection symbol mismatch');
-    assert(collection.base_uri == base_uri, 'Collection base_uri mismatch');
+    assert(collection.base_uri == format!("{}{}", base(), base_uri), 'Collection base_uri mismatch');
     assert(collection.owner == owner, 'Collection owner mismatch');
     assert(collection.is_active, 'Collection should be active');
 }
@@ -93,13 +97,13 @@ fn test_create_multiple_collections() {
 
     let name1: ByteArray = "Collection 1";
     let symbol1: ByteArray = "C1";
-    let base_uri1: ByteArray = "ipfs://QmCollection1";
+    let base_uri1: ByteArray = "QmCollection1";
     let collection_id1 = dispatcher.create_collection(name1, symbol1, base_uri1);
     assert(collection_id1 == 1, 'First collection ID should be 1');
 
     let name2: ByteArray = "Collection 2";
     let symbol2: ByteArray = "C2";
-    let base_uri2: ByteArray = "ipfs://QmCollection2";
+    let base_uri2: ByteArray = "QmCollection2";
     let collection_id2 = dispatcher.create_collection(name2, symbol2, base_uri2);
     assert(collection_id2 == 2, 'Second ID should be 2');
 
@@ -112,10 +116,10 @@ fn test_mint_token() {
     let owner = OWNER();
     let recipient = USER1();
     let collection_id = setup_collection(dispatcher, ip_address);
-    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
+    let token_uri: ByteArray = "QmCollectionBaseUri";
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    let token_id = dispatcher.mint(collection_id, recipient, token_uri);
+    let token_id = dispatcher.mint(collection_id, recipient, token_uri.clone());
     assert(token_id == 0, 'Token ID should be 0');
 
     let token_id_arr = format!("{}:{}", collection_id, token_id);
@@ -124,7 +128,7 @@ fn test_mint_token() {
     assert(token.collection_id == collection_id, 'Token collection ID mismatch');
     assert(token.token_id == token_id, 'Token ID mismatch');
     assert(token.owner == recipient, 'Token owner mismatch');
-    assert(token.metadata_uri == "ipfs://QmCollectionBaseUri/0", 'Token metadata URI mismatch');
+    assert(token.metadata_uri == format!("{}{}", base(), token_uri), 'Token metadata URI mismatch');
 }
 
 #[test]
@@ -133,7 +137,7 @@ fn test_token_uri_match() {
     let owner = OWNER();
     let recipient = USER1();
     let collection_id = setup_collection(dispatcher, ip_address);
-    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
+    let token_uri: ByteArray = "QmCollectionBaseUri";
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
     let token_id = dispatcher.mint(collection_id, recipient, token_uri.clone());
@@ -145,8 +149,8 @@ fn test_token_uri_match() {
 
     let token_uri_1 = erc721_dispatcher.tokenURI(token_id);
     let token_uri_2 = erc721_dispatcher.token_uri(token_id);
-    assert(token_uri_1 == token_uri, 'Token URI 1 mismatch');
-    assert(token_uri_2 == token_uri, 'Token URI 2 mismatch');
+    assert(token_uri_1 == format!("{}{}", base(),token_uri), 'Token URI 1 mismatch');
+    assert(token_uri_2 == format!("{}{}", base(),token_uri), 'Token URI 2 mismatch');
     assert_eq!(token_uri_1, token_uri_2, "Token URI mismatch");
 }
 
@@ -157,7 +161,7 @@ fn test_mint_not_owner() {
     let non_owner = USER1();
     let recipient = USER2();
     let collection_id = setup_collection(dispatcher, address);
-    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
+    let token_uri: ByteArray = "QmCollectionBaseUri";
 
     start_cheat_caller_address(address, non_owner);
     dispatcher.mint(collection_id, recipient, token_uri);
@@ -169,7 +173,7 @@ fn test_mint_to_zero_address() {
     let (dispatcher, address) = deploy_contract();
     let owner = OWNER();
     let collection_id = setup_collection(dispatcher, address);
-    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
+    let token_uri: ByteArray = "QmCollectionBaseUri";
     start_cheat_caller_address(address, owner);
     dispatcher.mint(collection_id, ZERO(), token_uri);
 }
@@ -180,7 +184,7 @@ fn test_mint_zero_caller() {
     let (dispatcher, address) = deploy_contract();
     let recipient = USER1();
     let collection_id = setup_collection(dispatcher, address);
-    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
+    let token_uri: ByteArray = "QmCollectionBaseUri";
 
     start_cheat_caller_address(address, ZERO());
     dispatcher.mint(collection_id, recipient, token_uri);
@@ -193,7 +197,8 @@ fn test_batch_mint_tokens() {
     let recipient1 = USER1();
     let recipient2 = USER2();
     let collection_id = setup_collection(dispatcher, ip_address);
-    let token_uris = array!["ipfs://QmCollectionBaseUri/0", "ipfs://QmCollectionBaseUri/1"];
+    let token_uris = array!["QmCollectionBaseUri1", "QmCollectionBaseUri2"];
+
 
     let recipients = array![recipient1, recipient2];
 
@@ -207,8 +212,12 @@ fn test_batch_mint_tokens() {
     assert(token1.owner == recipient2, 'Second token owner mismatch');
     assert(token0.token_id == 0, 'First token ID should be 0');
     assert(token1.token_id == 1, 'Second token ID should be 1');
-    assert(token0.metadata_uri == "ipfs://QmCollectionBaseUri/0", 'First token URI mismatch');
-    assert(token1.metadata_uri == "ipfs://QmCollectionBaseUri/1", 'Second token URI mismatch');
+    assert(
+        token0.metadata_uri == format!("{}{}", base(), token_uris.at(0)), 'First token URI mismatch',
+    );
+    assert(
+        token1.metadata_uri == format!("{}{}", base(), token_uris.at(1)), 'Second token URI mismatch',
+    );
 }
 
 #[test]
@@ -231,7 +240,7 @@ fn test_batch_mint_zero_recipient() {
     let (dispatcher, ip_address) = deploy_contract();
     let owner = OWNER();
     let collection_id = setup_collection(dispatcher, ip_address);
-    let token_uris = array!["ipfs://QmCollectionBaseUri/0"];
+    let token_uris = array!["QmCollectionBaseUri"];
     let recipients = array![ZERO()];
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
     dispatcher.batch_mint(collection_id, recipients, token_uris);
@@ -243,7 +252,7 @@ fn test_burn_token() {
     let owner = OWNER();
     let recipient = USER1();
     let collection_id = setup_collection(dispatcher, ip_address);
-    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
+    let token_uri: ByteArray = "QmCollectionBaseUri";
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
     let token_id = dispatcher.mint(collection_id, recipient, token_uri);
@@ -261,7 +270,7 @@ fn test_burn_not_owner() {
     let recipient = USER1();
     let non_owner = USER2();
     let collection_id = setup_collection(dispatcher, ip_address);
-    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
+    let token_uri: ByteArray = "QmCollectionBaseUri";
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
     let token_id = dispatcher.mint(collection_id, recipient, token_uri);
@@ -278,7 +287,7 @@ fn test_transfer_token_success() {
     let from_user = USER1();
     let to_user = USER2();
     let collection_id = setup_collection(dispatcher, ip_address);
-    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
+    let token_uri: ByteArray = "QmCollectionBaseUri";
 
     // Mint token to from_user
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
@@ -304,7 +313,7 @@ fn test_transfer_token_not_approved() {
     let from_user = USER1();
     let to_user = USER2();
     let collection_id = setup_collection(dispatcher, address);
-    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
+    let token_uri: ByteArray = "QmCollectionBaseUri";
 
     start_cheat_caller_address(address, owner);
     let token_id = dispatcher.mint(collection_id, from_user, token_uri);
@@ -322,7 +331,7 @@ fn test_transfer_token_inactive_collection() {
     let from_user = USER1();
     let to_user = USER2();
     let collection_id = setup_collection(dispatcher, ip_address);
-    let token_uri: ByteArray = "ipfs://QmCollectionBaseUri/0";
+    let token_uri: ByteArray = "QmCollectionBaseUri";
 
     // Mint token to from_user
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
@@ -353,7 +362,7 @@ fn test_batch_transfer_tokens_success() {
     // Mint two tokens to from_user
     let recipients = array![from_user, from_user];
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    let token_uris = array!["ipfs://QmCollectionBaseUri/0", "ipfs://QmCollectionBaseUri/1"];
+    let token_uris = array!["QmCollectionBaseUri", "QmCollectionBaseUri"];
     let token_ids = dispatcher.batch_mint(collection_id, recipients.clone(), token_uris);
 
     let collection_data = dispatcher.get_collection(collection_id);
@@ -386,7 +395,7 @@ fn test_batch_transfer_inactive_collection() {
     let from_user = USER1();
     let to_user = USER2();
     let collection_id = setup_collection(dispatcher, ip_address);
-    let token_uris = array!["ipfs://QmCollectionBaseUri/0"];
+    let token_uris = array!["QmCollectionBaseUri"];
     // Mint token to from_user
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
     let token_ids = dispatcher.batch_mint(collection_id, array![from_user], token_uris);
@@ -404,7 +413,7 @@ fn test_verification_functions() {
     let (dispatcher, address) = deploy_contract();
     let owner = OWNER();
     let collection_id = setup_collection(dispatcher, address);
-    let token_uri = "ipfs://QmCollectionBaseUri/0";
+    let token_uri = "QmCollectionBaseUri";
 
     start_cheat_caller_address(address, owner);
     let token_id = dispatcher.mint(collection_id, USER1(), token_uri);
@@ -422,49 +431,49 @@ fn test_user_collections_mapping() {
     cheat_caller_address(ip_address, USER1(), CheatSpan::TargetCalls(1));
     let name1: ByteArray = "Collection 1";
     let symbol1: ByteArray = "C1";
-    let base_uri1: ByteArray = "ipfs://QmCollection1";
+    let base_uri1: ByteArray = "QmCollection1";
     let collection_id1 = ip_dispatcher.create_collection(name1, symbol1, base_uri1);
     assert(collection_id1 == 1, 'First collection ID should be 1');
 
     cheat_caller_address(ip_address, USER2(), CheatSpan::TargetCalls(1));
     let name2: ByteArray = "Collection 2";
     let symbol2: ByteArray = "C2";
-    let base_uri2: ByteArray = "ipfs://QmCollection2";
+    let base_uri2: ByteArray = "QmCollection2";
     let collection_id2 = ip_dispatcher.create_collection(name2, symbol2, base_uri2);
     assert(collection_id2 == 2, 'Second ID should be 2');
 
     cheat_caller_address(ip_address, USER2(), CheatSpan::TargetCalls(1));
     let name3: ByteArray = "Collection 3";
     let symbol3: ByteArray = "C3";
-    let base_uri3: ByteArray = "ipfs://QmCollection3";
+    let base_uri3: ByteArray = "QmCollection3";
     let collection_id3 = ip_dispatcher.create_collection(name3, symbol3, base_uri3);
     assert(collection_id3 == 3, 'Third ID should be 3');
 
     cheat_caller_address(ip_address, USER3(), CheatSpan::TargetCalls(1));
     let name4: ByteArray = "Collection 4";
     let symbol4: ByteArray = "C4";
-    let base_uri4: ByteArray = "ipfs://QmCollection4";
+    let base_uri4: ByteArray = "QmCollection4";
     let collection_id4 = ip_dispatcher.create_collection(name4, symbol4, base_uri4);
     assert(collection_id4 == 4, 'Fourth ID should be 4');
 
     cheat_caller_address(ip_address, USER1(), CheatSpan::TargetCalls(1));
     let name5: ByteArray = "Collection 5";
     let symbol5: ByteArray = "C5";
-    let base_uri5: ByteArray = "ipfs://QmCollection5";
+    let base_uri5: ByteArray = "QmCollection5";
     let collection_id5 = ip_dispatcher.create_collection(name5, symbol5, base_uri5);
     assert(collection_id5 == 5, 'Fifth ID should be 5');
 
     cheat_caller_address(ip_address, USER1(), CheatSpan::TargetCalls(1));
     let name6: ByteArray = "Collection 6";
     let symbol6: ByteArray = "C6";
-    let base_uri6: ByteArray = "ipfs://QmCollection6";
+    let base_uri6: ByteArray = "QmCollection6";
     let collection_id6 = ip_dispatcher.create_collection(name6, symbol6, base_uri6);
     assert(collection_id6 == 6, 'Sixth ID should be 6');
 
     cheat_caller_address(ip_address, USER3(), CheatSpan::TargetCalls(1));
     let name7: ByteArray = "Collection 7";
     let symbol7: ByteArray = "C7";
-    let base_uri7: ByteArray = "ipfs://QmCollection7";
+    let base_uri7: ByteArray = "QmCollection7";
     let collection_id7 = ip_dispatcher.create_collection(name7, symbol7, base_uri7);
     assert(collection_id7 == 7, 'Seventh ID should be 7');
 
@@ -490,7 +499,7 @@ fn test_base_uri() {
 
     let name: ByteArray = "My Collection";
     let symbol: ByteArray = "MC";
-    let base_uri: ByteArray = "ipfs://QmMyCollection";
+    let base_uri: ByteArray = "QmMyCollection";
     let collection_id = ip_dispatcher
         .create_collection(name.clone(), symbol.clone(), base_uri.clone());
 
@@ -498,5 +507,5 @@ fn test_base_uri() {
 
     let collection_base_uri = IIPNftDispatcher { contract_address: collection.ip_nft }.base_uri();
 
-    assert(collection_base_uri == base_uri, 'base uri mismatch');
+    assert(collection_base_uri == format!("{}{}", base(), base_uri), 'base uri mismatch');
 }
