@@ -33,10 +33,6 @@ fn ZERO() -> ContractAddress {
 const COLLECTION_ID: u256 = 1;
 const TOKEN_ID: u256 = 1;
 
-fn base() -> ByteArray {
-   "https://ipfs.io/ipfs/"
-}
-
 // // Deploy the IPCollection contract
 fn deploy_contract() -> (IIPCollectionDispatcher, ContractAddress) {
     let owner = OWNER();
@@ -84,7 +80,7 @@ fn test_create_collection() {
     let collection = ip_dispatcher.get_collection(collection_id);
     assert(collection.name == name, 'Collection name mismatch');
     assert(collection.symbol == symbol, 'Collection symbol mismatch');
-    assert(collection.base_uri == format!("{}{}", base(), base_uri), 'Collection base_uri mismatch');
+    assert(collection.base_uri == base_uri, 'Collection base_uri mismatch');
     assert(collection.owner == owner, 'Collection owner mismatch');
     assert(collection.is_active, 'Collection should be active');
 }
@@ -128,7 +124,7 @@ fn test_mint_token() {
     assert(token.collection_id == collection_id, 'Token collection ID mismatch');
     assert(token.token_id == token_id, 'Token ID mismatch');
     assert(token.owner == recipient, 'Token owner mismatch');
-    assert(token.metadata_uri == format!("{}{}", base(), token_uri), 'Token metadata URI mismatch');
+    assert(token.metadata_uri == token_uri, 'Token metadata URI mismatch');
 }
 
 #[test]
@@ -149,8 +145,8 @@ fn test_token_uri_match() {
 
     let token_uri_1 = erc721_dispatcher.tokenURI(token_id);
     let token_uri_2 = erc721_dispatcher.token_uri(token_id);
-    assert(token_uri_1 == format!("{}{}", base(),token_uri), 'Token URI 1 mismatch');
-    assert(token_uri_2 == format!("{}{}", base(),token_uri), 'Token URI 2 mismatch');
+    assert(token_uri_1 == token_uri, 'Token URI 1 mismatch');
+    assert(token_uri_2 == token_uri, 'Token URI 2 mismatch');
     assert_eq!(token_uri_1, token_uri_2, "Token URI mismatch");
 }
 
@@ -199,7 +195,6 @@ fn test_batch_mint_tokens() {
     let collection_id = setup_collection(dispatcher, ip_address);
     let token_uris = array!["QmCollectionBaseUri1", "QmCollectionBaseUri2"];
 
-
     let recipients = array![recipient1, recipient2];
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
@@ -212,12 +207,8 @@ fn test_batch_mint_tokens() {
     assert(token1.owner == recipient2, 'Second token owner mismatch');
     assert(token0.token_id == 0, 'First token ID should be 0');
     assert(token1.token_id == 1, 'Second token ID should be 1');
-    assert(
-        token0.metadata_uri == format!("{}{}", base(), token_uris.at(0)), 'First token URI mismatch',
-    );
-    assert(
-        token1.metadata_uri == format!("{}{}", base(), token_uris.at(1)), 'Second token URI mismatch',
-    );
+    assert(token0.metadata_uri == token_uris.at(0).clone(), 'First token URI mismatch');
+    assert(token1.metadata_uri == token_uris.at(1).clone(), 'Second token URI mismatch');
 }
 
 #[test]
@@ -506,6 +497,7 @@ fn test_base_uri() {
     let collection = ip_dispatcher.get_collection(collection_id);
 
     let collection_base_uri = IIPNftDispatcher { contract_address: collection.ip_nft }.base_uri();
+    println!("{}", collection_base_uri);
 
-    assert(collection_base_uri == format!("{}{}", base(), base_uri), 'base uri mismatch');
+    assert(collection_base_uri == base_uri, 'base uri mismatch');
 }
