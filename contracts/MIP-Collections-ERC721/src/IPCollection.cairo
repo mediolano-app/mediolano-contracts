@@ -197,11 +197,10 @@ pub mod IPCollection {
             )
                 .unwrap();
 
-            let base: ByteArray = "https://ipfs.io/ipfs/";
             let collection = Collection {
                 name: name.clone(),
                 symbol: symbol.clone(),
-                base_uri: format!("{}{}", base, base_uri.clone()),
+                base_uri: base_uri.clone(),
                 owner: caller,
                 ip_nft: ip_nft_adddress,
                 is_active: true,
