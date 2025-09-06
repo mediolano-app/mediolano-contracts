@@ -8,6 +8,7 @@ pub trait IIPCoin<TContractState> {
         symbol: ByteArray,
         supply: u256,
         decimals: u32,
+        metadata_uri: ByteArray,
         post_id: u256,
     ) -> ContractAddress;
     fn get_ip_coin(self: @TContractState, post_id: u256) -> ContractAddress;
