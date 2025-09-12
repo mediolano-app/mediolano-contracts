@@ -36,4 +36,11 @@ pub trait IIPNft<ContractState> {
     /// # Returns
     /// * `ByteArray` - The base uri of the collection.
     fn base_uri(self: @ContractState) -> ByteArray;
+
+    /// Returns all tokens owned by a specific address.
+    /// # Arguments
+    /// * `owner` - The address whose tokens are to be retrieved.
+    /// # Returns
+    /// * `Span<u256>` - A span containing all token IDs owned by the specified address.
+    fn all_tokens_of_owner(self: @ContractState, owner: ContractAddress) -> Span<u256>;
 }
