@@ -501,3 +501,39 @@ fn test_base_uri() {
 
     assert(collection_base_uri == base_uri, 'base uri mismatch');
 }
+
+
+#[test]
+fn test_get_all_user_tokens() {
+    let (dispatcher, ip_address) = deploy_contract();
+    let owner = OWNER();
+    let recipient1 = USER1();
+    let recipient2 = USER2();
+    let collection_id = setup_collection(dispatcher, ip_address);
+    let token_uris = array!["QmCollectionBaseUri1", "QmCollectionBaseUri2"];
+
+    let recipients = array![recipient1, recipient2];
+
+    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
+    let token_ids = dispatcher.batch_mint(collection_id, recipients.clone(), token_uris.clone());
+
+    assert(token_ids.len() == 2, 'Should mint 2 tokens in batch');
+    let recipient_token = dispatcher.list_user_tokens_per_collection(collection_id, recipient1);
+    assert(recipient_token.len() == 1, 'Recipient1 should have 1 token');
+    assert(*recipient_token.at(0) == *token_ids.at(0), 'TokenID mismatch for recipient1');
+
+    // mint another token to  recipient1 in same collection
+    let token_uri3 = "QmTokenBaseUri1";
+    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
+    let token_id3 = dispatcher.mint(collection_id, recipient1, token_uri3);
+    assert(token_id3 == 2, 'Token ID should be 2');
+    let recipients_token = dispatcher.list_user_tokens_per_collection(collection_id, recipient1);
+    assert(recipients_token.len() == 2, 'Recipient1 should have 2 tokens');
+    assert(*recipients_token.at(0) == *token_ids.at(0), 'TokenID mismatch for recipient1');
+    assert(*recipients_token.at(1) == token_id3, 'TokenID mismatch for recipient1');
+
+    // check that recipient2 has only 1 token
+    let recipient2_token = dispatcher.list_user_tokens_per_collection(collection_id, recipient2);
+    assert(recipient2_token.len() == 1, 'Recipient2 should have 1 token');
+    assert(*recipient2_token.at(0) == *token_ids.at(1), 'TokenID mismatch for recipient2');
+}
