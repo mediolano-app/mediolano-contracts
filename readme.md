@@ -1,4 +1,4 @@
-# Mediolano Codebase
+# Programmable IP for the Integrity Web
 
 Cairo smart contracts for Mediolano, the intellectual property provider of the integrity web, powered on Starknet.
 
@@ -17,7 +17,7 @@ Quick links:
 > [!IMPORTANT]
 > Mediolano dapp is in constant development and the current version runs on Starknet's Sepolia devnet. Use for testing purposes only.
 
-## Programmable IP for the Integrity Web
+## Mediolano
 
 Mediolano empowers creators, artists and organizations to make money from their content, without requiring them to know anything about crypto.
 
@@ -68,16 +68,15 @@ Mediolano Protocol
 
 - [X] MIP Collections Protocol @ Starknet Mainnet **25.08**
 
-- [ ] Mediolano Dapp @ Starknet Mainnet **25.09**
+- [ ] Mediolano Dapp @ Starknet Mainnet **25.10**
 
-- [ ] Medialane Protocol @ Starknet Sepolia **25.08**
+- [ ] Medialane Protocol @ Starknet Sepolia **25.11**
 
-- [ ] Medialane Dapp @ Starknet Sepolia **25.09**
+- [ ] Medialane Dapp @ Starknet Sepolia **25.11**
 
-- [ ] Medialane Protocol @ Starknet Mainnet **25.11**
+- [ ] Medialane Protocol @ Starknet Mainnet **25.12**
 
-- [ ] Medialane Dapp @ Starknet Mainnet **25.11**
-
+- [ ] Medialane Dapp @ Starknet Mainnet **25.12**
 
 
 
