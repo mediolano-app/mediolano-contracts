@@ -68,15 +68,19 @@ Mediolano Protocol
 
 - [X] MIP Collections Protocol @ Starknet Mainnet **25.08**
 
-- [ ] Mediolano Dapp @ Starknet Mainnet **25.10**
+- [X] MIP Mobile @ Android Google Play **25.09**
 
-- [ ] Medialane Protocol @ Starknet Sepolia **25.11**
+- [X] MIP Mobile @ iPhone iOS App Store **25.12**
 
-- [ ] Medialane Dapp @ Starknet Sepolia **25.11**
+- [ ] Mediolano Dapp @ Starknet Mainnet **25.12**
 
-- [ ] Medialane Protocol @ Starknet Mainnet **25.12**
+- [ ] Medialane Protocol @ Starknet Sepolia **25.12**
 
-- [ ] Medialane Dapp @ Starknet Mainnet **25.12**
+- [ ] Medialane Dapp @ Starknet Sepolia **25.12**
+
+- [ ] Medialane Protocol @ Starknet Mainnet **26.02**
+
+- [ ] Medialane Dapp @ Starknet Mainnet **26.02**
 
 
 
