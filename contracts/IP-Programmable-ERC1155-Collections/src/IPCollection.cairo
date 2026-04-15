@@ -1,0 +1,264 @@
+// DESIGN: IPCollection is permanently immutable — no UpgradeableComponent, no admin roles
+// beyond the collection owner's mint rights. Each collection is a standalone ERC-1155
+// contract deployed by IPCollectionFactory. The original creator address and registration
+// timestamp are written once at the first mint of each token type and can never be changed.
+// This constitutes the immutable IP provenance record under the Berne Convention standard.
+//
+// ERC-2981 royalty support: the collection owner can set a default royalty (applies to all
+// token types) and per-token overrides. Royalty starts at 0% and is fully owner-controlled.
+// Fee denominator is 10,000 — so fee_numerator 500 = 5%, 1000 = 10%, etc.
+
+#[starknet::contract]
+pub mod IPCollection {
+    use openzeppelin::introspection::src5::SRC5Component;
+    use openzeppelin::access::ownable::OwnableComponent;
+    use openzeppelin::token::erc1155::ERC1155Component;
+    use openzeppelin::token::erc1155::ERC1155HooksEmptyImpl;
+    use openzeppelin::token::erc1155::interface::IERC1155MetadataURI;
+    use openzeppelin::token::common::erc2981::{ERC2981Component, DefaultConfig};
+    use starknet::storage::{
+        Map, StoragePointerReadAccess, StoragePointerWriteAccess, StorageMapReadAccess,
+        StorageMapWriteAccess,
+    };
+    use core::num::traits::Zero;
+    use starknet::{ContractAddress, get_block_timestamp};
+    use crate::interfaces::IIPCollection::IIPCollection;
+    use crate::types::TokenData;
+
+    component!(path: SRC5Component, storage: src5, event: SRC5Event);
+    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
+    component!(path: ERC1155Component, storage: erc1155, event: ERC1155Event);
+    component!(path: ERC2981Component, storage: erc2981, event: ERC2981Event);
+
+    // --- Exposed ABI implementations ---
+    #[abi(embed_v0)]
+    impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
+    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
+
+    #[abi(embed_v0)]
+    impl SRC5Impl = SRC5Component::SRC5Impl<ContractState>;
+
+    // Embed ERC1155 transfers/approvals but NOT ERC1155MetadataURIImpl —
+    // we provide our own uri() that returns per-token URIs from storage.
+    #[abi(embed_v0)]
+    impl ERC1155Impl = ERC1155Component::ERC1155Impl<ContractState>;
+    #[abi(embed_v0)]
+    impl ERC1155CamelImpl = ERC1155Component::ERC1155CamelImpl<ContractState>;
+    impl ERC1155InternalImpl = ERC1155Component::InternalImpl<ContractState>;
+
+    // ERC-2981: royalty_info (read), default_royalty/token_royalty (info), admin (owner-gated)
+    #[abi(embed_v0)]
+    impl ERC2981Impl = ERC2981Component::ERC2981Impl<ContractState>;
+    #[abi(embed_v0)]
+    impl ERC2981InfoImpl = ERC2981Component::ERC2981InfoImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl ERC2981AdminOwnableImpl = ERC2981Component::ERC2981AdminOwnableImpl<ContractState>;
+    impl ERC2981InternalImpl = ERC2981Component::InternalImpl<ContractState>;
+
+    #[storage]
+    struct Storage {
+        #[substorage(v0)]
+        src5: SRC5Component::Storage,
+        #[substorage(v0)]
+        ownable: OwnableComponent::Storage,
+        #[substorage(v0)]
+        erc1155: ERC1155Component::Storage,
+        #[substorage(v0)]
+        erc2981: ERC2981Component::Storage,
+        /// Human-readable collection name (display only, not part of ERC-1155 standard).
+        collection_name: ByteArray,
+        /// Collection ticker symbol (display only).
+        collection_symbol: ByteArray,
+        /// Address that deployed this collection via the factory. Informational only.
+        collection_creator: ContractAddress,
+        /// Per-token-type URI. Written once at first mint of each token_id, never modified.
+        token_uris: Map<u256, ByteArray>,
+        /// Original minter per token type — immutable Berne Convention authorship record.
+        token_creators: Map<u256, ContractAddress>,
+        /// Block timestamp at first mint — immutable proof of creation date.
+        token_registered_at: Map<u256, u64>,
+    }
+
+    #[event]
+    #[derive(Drop, starknet::Event)]
+    pub enum Event {
+        #[flat]
+        SRC5Event: SRC5Component::Event,
+        #[flat]
+        OwnableEvent: OwnableComponent::Event,
+        #[flat]
+        ERC1155Event: ERC1155Component::Event,
+        #[flat]
+        ERC2981Event: ERC2981Component::Event,
+        IPMinted: IPMinted,
+    }
+
+    /// Emitted on every mint_item call (single or via batch_mint_item).
+    /// `token_id` and `recipient` are indexed for efficient indexer filtering.
+    #[derive(Drop, starknet::Event)]
+    pub struct IPMinted {
+        #[key]
+        pub token_id: u256,
+        #[key]
+        pub recipient: ContractAddress,
+        pub value: u256,
+        pub uri: ByteArray,
+        pub creator: ContractAddress,
+        pub registered_at: u64,
+    }
+
+    /// Deploys a new standalone IPCollection.
+    ///
+    /// # Arguments
+    /// * `name`   - Human-readable collection name (e.g. "My IP Collection")
+    /// * `symbol` - Collection ticker symbol (e.g. "MIP1155")
+    /// * `owner`  - Address that owns this collection and can mint into it
+    ///
+    /// Royalty starts at 0% pointing to `owner`. Call `set_default_royalty` to activate.
+    #[constructor]
+    fn constructor(
+        ref self: ContractState,
+        name: ByteArray,
+        symbol: ByteArray,
+        owner: ContractAddress,
+    ) {
+        // Initialize ERC1155 with empty base URI — per-token URIs stored in token_uris map.
+        self.erc1155.initializer("");
+        self.ownable.initializer(owner);
+        self.collection_name.write(name);
+        self.collection_symbol.write(symbol);
+        self.collection_creator.write(owner);
+        // Initialize ERC-2981 with 0% royalty pointing to owner.
+        // Owner can activate royalties post-deploy via set_default_royalty(receiver, fee_numerator).
+        self.erc2981.initializer(owner, 0);
+    }
+
+    // --- ERC1155 URI override ---
+    // Returns the per-token URI from storage instead of the OZ base URI.
+    // This satisfies the IERC1155MetadataURI interface with content-addressed per-token URIs.
+
+    #[abi(embed_v0)]
+    impl ERC1155MetadataURIImpl of IERC1155MetadataURI<ContractState> {
+        fn uri(self: @ContractState, token_id: u256) -> ByteArray {
+            self.token_uris.read(token_id)
+        }
+    }
+
+    // --- IIPCollection implementation ---
+
+    #[abi(embed_v0)]
+    impl IPCollectionImpl of IIPCollection<ContractState> {
+        fn mint_item(
+            ref self: ContractState,
+            to: ContractAddress,
+            token_id: u256,
+            value: u256,
+            token_uri: ByteArray,
+        ) {
+            self.ownable.assert_only_owner();
+            assert(!to.is_zero(), 'Recipient is zero address');
+
+            self._mint_single(to, token_id, value, token_uri);
+        }
+
+        fn batch_mint_item(
+            ref self: ContractState,
+            to: ContractAddress,
+            token_ids: Span<u256>,
+            values: Span<u256>,
+            token_uris: Array<ByteArray>,
+        ) {
+            self.ownable.assert_only_owner();
+            assert(!to.is_zero(), 'Recipient is zero address');
+            assert(token_ids.len() == values.len(), 'Array length mismatch');
+            assert(token_ids.len() == token_uris.len(), 'Array length mismatch');
+
+            for i in 0..token_ids.len() {
+                self._mint_single(to, *token_ids.at(i), *values.at(i), token_uris.at(i).clone());
+            }
+        }
+
+        fn get_collection_creator(self: @ContractState) -> ContractAddress {
+            self.collection_creator.read()
+        }
+
+        fn get_token_creator(self: @ContractState, token_id: u256) -> ContractAddress {
+            assert(self.token_creators.read(token_id).is_non_zero(), 'Token does not exist');
+            self.token_creators.read(token_id)
+        }
+
+        fn get_token_registered_at(self: @ContractState, token_id: u256) -> u64 {
+            assert(self.token_creators.read(token_id).is_non_zero(), 'Token does not exist');
+            self.token_registered_at.read(token_id)
+        }
+
+        fn get_token_data(self: @ContractState, token_id: u256) -> TokenData {
+            assert(self.token_creators.read(token_id).is_non_zero(), 'Token does not exist');
+            TokenData {
+                token_id,
+                metadata_uri: self.token_uris.read(token_id),
+                original_creator: self.token_creators.read(token_id),
+                registered_at: self.token_registered_at.read(token_id),
+            }
+        }
+    }
+
+    // --- Internal helpers ---
+
+    #[generate_trait]
+    impl InternalImpl of InternalTrait {
+        /// Mints a single token type, setting IP provenance on first mint.
+        fn _mint_single(
+            ref self: ContractState,
+            to: ContractAddress,
+            token_id: u256,
+            value: u256,
+            token_uri: ByteArray,
+        ) {
+            let is_new = self.token_creators.read(token_id).is_zero();
+            let timestamp = get_block_timestamp();
+
+            if is_new {
+                // Validate URI only for new token types (first mint).
+                let valid_uri = Self::_starts_with(@token_uri, @"ipfs://")
+                    || Self::_starts_with(@token_uri, @"ar://");
+                assert(valid_uri, 'URI must be ipfs:// or ar://');
+
+                self.token_uris.write(token_id, token_uri.clone());
+                self.token_creators.write(token_id, to);
+                self.token_registered_at.write(token_id, timestamp);
+            }
+
+            self.erc1155.mint_with_acceptance_check(to, token_id, value, array![].span());
+
+            // Use local vars on first mint — avoid reading back what we just wrote.
+            let (creator, registered_at, uri) = if is_new {
+                (to, timestamp, token_uri)
+            } else {
+                (
+                    self.token_creators.read(token_id),
+                    self.token_registered_at.read(token_id),
+                    self.token_uris.read(token_id),
+                )
+            };
+
+            self.emit(IPMinted { token_id, recipient: to, value, uri, creator, registered_at });
+        }
+
+        /// Returns true if `haystack` starts with `needle`.
+        fn _starts_with(haystack: @ByteArray, needle: @ByteArray) -> bool {
+            let needle_len = needle.len();
+            if haystack.len() < needle_len {
+                return false;
+            }
+            let mut i = 0;
+            while i < needle_len {
+                if haystack.at(i) != needle.at(i) {
+                    return false;
+                }
+                i += 1;
+            };
+            true
+        }
+    }
+}

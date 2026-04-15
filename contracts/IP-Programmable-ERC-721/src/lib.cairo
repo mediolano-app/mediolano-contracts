@@ -1,14 +1,16 @@
-mod MIP;
-mod MIPL;
-mod components {
-    pub mod Counter;
-    pub mod ERC721Enumerable;
+pub mod IPCollection;
+pub mod types;
+
+pub mod interfaces {
+    pub mod IIPCollection;
+}
+
+pub mod mock_contracts {
+    pub mod MockAccount;
+    pub mod Receiver;
 }
 
 #[cfg(test)]
-mod test {
-    mod TestContract;
-}
-mod mock_contracts {
-    pub mod Receiver;
+mod tests {
+    mod IPCollectionTest;
 }

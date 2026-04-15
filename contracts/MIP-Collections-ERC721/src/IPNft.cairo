@@ -1,38 +1,44 @@
 #[starknet::contract]
 pub mod IPNft {
     use openzeppelin::access::accesscontrol::{AccessControlComponent, DEFAULT_ADMIN_ROLE};
-    use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc721::ERC721Component;
     use openzeppelin::token::erc721::extensions::ERC721EnumerableComponent;
     use openzeppelin::token::erc721::interface::{IERC721Metadata, IERC721MetadataCamelOnly};
-    use openzeppelin::upgrades::UpgradeableComponent;
-    use openzeppelin::upgrades::interface::IUpgradeable;
     use starknet::storage::{
         Map, StorageMapReadAccess, StorageMapWriteAccess, StoragePointerReadAccess,
         StoragePointerWriteAccess,
     };
-    use starknet::{ClassHash, ContractAddress};
+    use core::num::traits::Zero;
+    use starknet::{ContractAddress, get_block_timestamp};
     use crate::interfaces::IIPNFT::IIPNft;
+    use crate::types::bytearray_starts_with;
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
-    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
     component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(
         path: ERC721EnumerableComponent, storage: erc721_enumerable, event: ERC721EnumerableEvent,
     );
-    component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
+
+    // COMP-01: UpgradeableComponent intentionally removed.
+    // IPNft contracts are permanently immutable by design — the per-token URI, creator,
+    // and timestamp constitute the legal IP registration record under the Berne Convention.
+    // Upgradeability of this contract would allow altering that record, which is prohibited.
+
+    // R-04: OwnableComponent removed — all access control is unified under AccessControlComponent.
+    // The collection creator's identity is recorded immutably as `original_creator` per token.
 
     #[abi(embed_v0)]
     impl ERC721Impl = ERC721Component::ERC721Impl<ContractState>;
     #[abi(embed_v0)]
     impl ERC721CamelOnly = ERC721Component::ERC721CamelOnlyImpl<ContractState>;
     #[abi(embed_v0)]
-    impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
-    #[abi(embed_v0)]
     impl ERC721EnumerableImpl =
         ERC721EnumerableComponent::ERC721EnumerableImpl<ContractState>;
+    #[abi(embed_v0)]
+    impl AccessControlImpl =
+        AccessControlComponent::AccessControlImpl<ContractState>;
     #[abi(embed_v0)]
     impl AccessControlCamelImpl =
         AccessControlComponent::AccessControlCamelImpl<ContractState>;
@@ -40,30 +46,30 @@ pub mod IPNft {
     impl SRC5Impl = SRC5Component::SRC5Impl<ContractState>;
 
     impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
-    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
     impl ERC721EnumerableInternalImpl = ERC721EnumerableComponent::InternalImpl<ContractState>;
-    impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
     impl AccessControlInternalImpl = AccessControlComponent::InternalImpl<ContractState>;
     impl SRC5ComponentInternalImpl = SRC5Component::InternalImpl<ContractState>;
-
 
     #[storage]
     struct Storage {
         collection_manager: ContractAddress,
         collection_id: u256,
+        /// Per-token metadata URIs — written once at mint, never updated (immutable).
         uris: Map<u256, ByteArray>,
+        /// COMP-02: Original creator per token — immutable Berne Convention authorship record.
+        token_creators: Map<u256, ContractAddress>,
+        /// COMP-03: Registration timestamp per token — immutable proof of creation date.
+        token_registered_at: Map<u256, u64>,
+        /// COMP-05: Archived state per token — preserves the record while marking as inactive.
+        token_archived: Map<u256, bool>,
         #[substorage(v0)]
         erc721: ERC721Component::Storage,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
         #[substorage(v0)]
-        ownable: OwnableComponent::Storage,
-        #[substorage(v0)]
         accesscontrol: AccessControlComponent::Storage,
         #[substorage(v0)]
         erc721_enumerable: ERC721EnumerableComponent::Storage,
-        #[substorage(v0)]
-        upgradeable: UpgradeableComponent::Storage,
     }
 
     #[event]
@@ -74,31 +80,27 @@ pub mod IPNft {
         #[flat]
         SRC5Event: SRC5Component::Event,
         #[flat]
-        OwnableEvent: OwnableComponent::Event,
-        #[flat]
         AccessControlEvent: AccessControlComponent::Event,
         #[flat]
         ERC721EnumerableEvent: ERC721EnumerableComponent::Event,
-        #[flat]
-        UpgradeableEvent: UpgradeableComponent::Event,
     }
 
+    /// Constructor.
+    /// R-04: `owner` parameter removed — OwnableComponent is gone.
+    /// The `collection_manager` (IPCollection factory address) receives DEFAULT_ADMIN_ROLE,
+    /// granting it exclusive control over mint and archive operations.
     #[constructor]
     fn constructor(
         ref self: ContractState,
         name: ByteArray,
         symbol: ByteArray,
         base_uri: ByteArray,
-        owner: ContractAddress,
         collection_id: u256,
         collection_manager: ContractAddress,
     ) {
         self.erc721.initializer(name, symbol, base_uri);
-        self.ownable.initializer(owner);
         self.accesscontrol.initializer();
-
         self.accesscontrol._grant_role(DEFAULT_ADMIN_ROLE, collection_manager);
-
         self.erc721_enumerable.initializer();
         self.collection_id.write(collection_id);
         self.collection_manager.write(collection_manager);
@@ -112,15 +114,11 @@ pub mod IPNft {
             auth: ContractAddress,
         ) {
             let mut contract_state = self.get_contract_mut();
+            // COMP-05: Block any transfer of an archived token.
+            // Archived tokens are permanently immobile — their record is preserved as-is.
+            // This fires on both mint and transfer; Map defaults to false so mints pass cleanly.
+            assert(!contract_state.token_archived.read(token_id), 'Token is archived');
             contract_state.erc721_enumerable.before_update(to, token_id);
-        }
-    }
-
-    #[abi(embed_v0)]
-    impl UpgradeableImpl of IUpgradeable<ContractState> {
-        fn upgrade(ref self: ContractState, new_class_hash: ClassHash) {
-            self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
-            self.upgradeable.upgrade(new_class_hash);
         }
     }
 
@@ -150,13 +148,13 @@ pub mod IPNft {
 
     #[abi(embed_v0)]
     impl IPNftImpl of IIPNft<ContractState> {
-        /// Mints a new ERC721 token to the specified recipient.
-        /// Only callable by accounts with the DEFAULT_ADMIN_ROLE.
+        /// Mints a new ERC-721 token to the specified recipient.
+        /// Only callable by DEFAULT_ADMIN_ROLE (the IPCollection factory).
         ///
-        /// # Arguments
-        /// * `recipient` - The address to receive the minted token.
-        /// * `token_id` - The unique identifier for the token to be minted.
-        /// * `token_uri` - The URI metadata associated with the token.
+        /// COMP-04: token_uri must begin with "ipfs://" or "ar://" to guarantee
+        /// permanent, content-addressed metadata storage.
+        /// COMP-02: recipient is stored as the immutable original_creator.
+        /// COMP-03: block timestamp is stored as the immutable registered_at.
         fn mint(
             ref self: ContractState,
             recipient: ContractAddress,
@@ -164,52 +162,94 @@ pub mod IPNft {
             token_uri: ByteArray,
         ) {
             self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
+
+            // R-05: token IDs must be > 0 (IPCollection assigns IDs starting at 1)
+            assert(token_id != 0, 'Token ID cannot be zero');
+
+            // COMP-04: only permanent, content-addressed storage URIs are legally valid
+            let valid_uri = bytearray_starts_with(@token_uri, @"ipfs://")
+                || bytearray_starts_with(@token_uri, @"ar://");
+            assert(valid_uri, 'URI must be ipfs:// or ar://');
+
             self.erc721.mint(recipient, token_id);
             self.uris.write(token_id, token_uri);
+
+            // COMP-02: store original creator — permanent, never overwritten
+            self.token_creators.write(token_id, recipient);
+
+            // COMP-03: store registration timestamp — permanent, never overwritten
+            self.token_registered_at.write(token_id, get_block_timestamp());
         }
 
-        /// Burns (removes) an ERC721 token.
-        ///
-        /// # Arguments
-        /// * `token_id` - The unique identifier for the token to be burned.
-        fn burn(ref self: ContractState, token_id: u256) {
+        /// Archives a token permanently.
+        /// The on-chain record (URI, creator, timestamp, ownership) is preserved forever.
+        /// Archived tokens cannot be transferred or re-archived.
+        /// Only callable by DEFAULT_ADMIN_ROLE (the IPCollection factory).
+        fn archive(ref self: ContractState, token_id: u256) {
             self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
-            self.erc721.burn(token_id);
+            self.erc721._require_owned(token_id);
+            assert(!self.token_archived.read(token_id), 'Already archived');
+            // Write the archived flag — the ERC721 state is intentionally preserved
+            self.token_archived.write(token_id, true);
+        }
+
+        /// Returns true if the token has been archived.
+        fn is_archived(self: @ContractState, token_id: u256) -> bool {
+            self.token_archived.read(token_id)
         }
 
         /// Returns the collection ID associated with this contract.
-        ///
-        /// # Returns
-        /// * `u256` - The collection ID.
         fn get_collection_id(self: @ContractState) -> u256 {
             self.collection_id.read()
         }
 
-        /// Returns the address of the collection manager.
-        ///
-        /// # Returns
-        /// * `ContractAddress` - The address of the collection manager.
+        /// Returns the address of the collection manager (IPCollection factory).
         fn get_collection_manager(self: @ContractState) -> ContractAddress {
             self.collection_manager.read()
         }
 
-        /// Returns the base uri of the collection.
-        ///
-        /// # Returns
-        /// * `ByteArray` - The base uri of the collection.
+        /// Returns the base URI of the collection.
         fn base_uri(self: @ContractState) -> ByteArray {
             self.erc721._base_uri()
         }
 
-        // Returns all tokens owned by a specific address.
-        // # Arguments
-        // * `owner` - The address whose tokens are to be retrieved.
-        // # Returns
-        // * `Span<u256>` - A span containing all token IDs owned by the specified
-        // address.
+        /// Returns all token IDs owned by a specific address.
         fn all_tokens_of_owner(self: @ContractState, owner: ContractAddress) -> Span<u256> {
             self.erc721_enumerable.all_tokens_of_owner(owner)
         }
+
+        /// Returns true if the token exists without panicking.
+        /// Reads the ERC721 owner slot directly — zero means the token doesn't exist.
+        fn token_exists(self: @ContractState, token_id: u256) -> bool {
+            !self.erc721.ERC721_owners.read(token_id).is_zero()
+        }
+
+        /// Returns all legal record fields for a token in a single call.
+        /// Reverts if the token does not exist.
+        /// Replaces four separate cross-contract calls from IPCollection.get_token.
+        fn get_full_token_data(
+            self: @ContractState, token_id: u256,
+        ) -> (ContractAddress, ByteArray, ContractAddress, u64) {
+            self.erc721._require_owned(token_id);
+            let owner = self.erc721.ERC721_owners.read(token_id);
+            let metadata_uri = self.uris.read(token_id);
+            let original_creator = self.token_creators.read(token_id);
+            let registered_at = self.token_registered_at.read(token_id);
+            (owner, metadata_uri, original_creator, registered_at)
+        }
+
+        /// Returns the original creator address stored immutably at mint time.
+        /// Reverts if the token does not exist.
+        fn get_token_creator(self: @ContractState, token_id: u256) -> ContractAddress {
+            self.erc721._require_owned(token_id);
+            self.token_creators.read(token_id)
+        }
+
+        /// Returns the block timestamp stored immutably at mint time.
+        /// Reverts if the token does not exist.
+        fn get_token_registered_at(self: @ContractState, token_id: u256) -> u64 {
+            self.erc721._require_owned(token_id);
+            self.token_registered_at.read(token_id)
+        }
     }
 }
-

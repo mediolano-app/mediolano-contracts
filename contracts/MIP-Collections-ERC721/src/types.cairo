@@ -17,6 +17,7 @@ pub struct Token {
 #[generate_trait]
 pub impl TokenImpl of TokenTrait {
     /// Constructs a `Token` from a `ByteArray` formatted as `<collection_id:token_id>`.
+    /// Exactly one `:` separator must be present and both segments must be non-empty digits.
     ///
     /// # Arguments
     /// * `data` - A `ByteArray` containing the string representation of the token.
@@ -24,32 +25,35 @@ pub impl TokenImpl of TokenTrait {
     /// # Returns
     /// * `Token` - The parsed token with `collection_id` and `token_id` fields.
     fn from_bytes(data: ByteArray) -> Token {
-        let mut col_bytes = ""; // Holds bytes for collection_id
-        let mut tok_bytes = ""; // Holds bytes for token_id
-        let parsing_token: ByteArray = ":"; // Separator between collection_id and token_id
-        let mut parsing_token_id = false; // Flag to indicate parsing token_id
+        let colon: u8 = 58; // ':' in ASCII
+        let mut col_bytes: ByteArray = "";
+        let mut tok_bytes: ByteArray = "";
+        let mut colon_count: u32 = 0;
 
-        // Iterate through each byte in the input data
+        // Single pass: count colons and split simultaneously
         for i in 0..data.len() {
             let byte = data.at(i).unwrap();
-            // Check for separator
-            if byte == parsing_token.at(0).unwrap() {
-                parsing_token_id = true;
+            if byte == colon {
+                colon_count += 1;
                 continue;
             }
-            // Append byte to the appropriate buffer
-            if parsing_token_id {
-                tok_bytes.append_byte(byte);
-            } else {
+            if colon_count == 0 {
                 col_bytes.append_byte(byte);
+            } else {
+                tok_bytes.append_byte(byte);
             }
+        };
+
+        // Validate: exactly one colon, both segments non-empty
+        assert(
+            colon_count == 1 && col_bytes.len() > 0 && tok_bytes.len() > 0,
+            'Invalid token format',
+        );
+
+        Token {
+            collection_id: bytearray_to_u256(col_bytes),
+            token_id: bytearray_to_u256(tok_bytes),
         }
-
-        // Convert byte arrays to u256
-        let collection_id = bytearray_to_u256(col_bytes);
-        let token_id = bytearray_to_u256(tok_bytes);
-
-        Token { collection_id, token_id }
     }
 }
 
@@ -70,17 +74,21 @@ pub struct Collection {
     pub is_active: bool,
 }
 
-/// Represents data associated with a specific token.
+/// Represents data associated with a specific token, including immutable legal record fields.
 #[derive(Drop, Serde, starknet::Store)]
 pub struct TokenData {
     /// The unique identifier of the collection this token belongs to.
     pub collection_id: u256,
     /// The unique identifier of the token within the collection.
     pub token_id: u256,
-    /// Owner of the token.
+    /// Current owner of the token.
     pub owner: ContractAddress,
-    /// URI pointing to the token's metadata.
+    /// URI pointing to the token's metadata (must be ipfs:// or ar://).
     pub metadata_uri: ByteArray,
+    /// Original creator — immutable Berne Convention authorship record.
+    pub original_creator: ContractAddress,
+    /// Block timestamp at mint — immutable proof of creation date.
+    pub registered_at: u64,
 }
 
 /// Stores statistics related to a collection.
@@ -88,19 +96,20 @@ pub struct TokenData {
 pub struct CollectionStats {
     /// Total number of tokens minted in the collection.
     pub total_minted: u256,
-    /// Total number of tokens burned in the collection.
-    pub total_burned: u256,
+    /// Total number of tokens archived in the collection.
+    pub total_archived: u256,
     /// Total number of token transfers in the collection.
     pub total_transfers: u256,
     /// Timestamp of the last mint operation.
     pub last_mint_time: u64,
-    /// Timestamp of the last burn operation.
-    pub last_burn_time: u64,
+    /// Timestamp of the last archive operation.
+    pub last_archive_time: u64,
     /// Timestamp of the last transfer operation.
     pub last_transfer_time: u64,
 }
 
-/// Helper function to convert a `ByteArray` containing a decimal string to `u256`.
+/// Converts a `ByteArray` containing only ASCII decimal digits to `u256`.
+/// Panics with a clear message if any non-digit byte is encountered.
 ///
 /// # Arguments
 /// * `bytes` - A `ByteArray` representing a decimal number as a string.
@@ -109,13 +118,32 @@ pub struct CollectionStats {
 /// * `u256` - The parsed unsigned integer value.
 fn bytearray_to_u256(bytes: ByteArray) -> u256 {
     let mut result = 0_u256;
-    // Iterate through each byte, converting ASCII digits to their numeric value
     for i in 0..bytes.len() {
         let byte = bytes.at(i).unwrap();
-        let digit = byte - 48; // '0' = 48 in ASCII
+        // M-04: validate digit range before subtracting to avoid underflow
+        assert(byte >= 48_u8 && byte <= 57_u8, 'Invalid digit in token ID');
+        let digit = byte - 48;
         result = result * 10_u256 + digit.try_into().unwrap();
-    }
+    };
     result
+}
+
+/// Returns true if `haystack` starts with `needle`, compared byte-by-byte.
+pub fn bytearray_starts_with(haystack: @ByteArray, needle: @ByteArray) -> bool {
+    let n = needle.len();
+    if haystack.len() < n {
+        return false;
+    }
+    let mut i: u32 = 0;
+    let mut matches = true;
+    while i < n {
+        if haystack.at(i).unwrap() != needle.at(i).unwrap() {
+            matches = false;
+            break;
+        }
+        i += 1;
+    };
+    matches
 }
 
 #[cfg(test)]
@@ -137,6 +165,13 @@ mod tests {
     }
 
     #[test]
+    #[should_panic(expected: ('Invalid digit in token ID',))]
+    fn test_bytearray_to_u256_non_digit_panics() {
+        let data: ByteArray = "12a3";
+        bytearray_to_u256(data);
+    }
+
+    #[test]
     fn test_token_id_from_bytes_basic() {
         let data: ByteArray = "42:314";
         let token_id = TokenTrait::from_bytes(data);
@@ -150,7 +185,6 @@ mod tests {
         let token_id = TokenTrait::from_bytes(data);
         let expected_col: u256 = 98765432109876543210_u256;
         let expected_tok: u256 = 12345678901234567890_u256;
-
         assert(token_id.collection_id == expected_col, 'large_col_id_failed');
         assert(token_id.token_id == expected_tok, 'large_token_id_failed');
     }
@@ -161,5 +195,61 @@ mod tests {
         let token_id = TokenTrait::from_bytes(data);
         assert(token_id.collection_id == 42_u256, 'leading_zeros_col_failed');
         assert(token_id.token_id == 314_u256, 'leading_zeros_token_failed');
+    }
+
+    #[test]
+    #[should_panic(expected: ('Invalid token format',))]
+    fn test_from_bytes_no_separator_panics() {
+        let data: ByteArray = "123";
+        TokenTrait::from_bytes(data);
+    }
+
+    #[test]
+    #[should_panic(expected: ('Invalid token format',))]
+    fn test_from_bytes_multiple_colons_panics() {
+        let data: ByteArray = "1:2:3";
+        TokenTrait::from_bytes(data);
+    }
+
+    #[test]
+    #[should_panic(expected: ('Invalid token format',))]
+    fn test_from_bytes_leading_colon_panics() {
+        let data: ByteArray = ":123";
+        TokenTrait::from_bytes(data);
+    }
+
+    #[test]
+    #[should_panic(expected: ('Invalid token format',))]
+    fn test_from_bytes_trailing_colon_panics() {
+        let data: ByteArray = "123:";
+        TokenTrait::from_bytes(data);
+    }
+
+    #[test]
+    fn test_bytearray_starts_with_ipfs() {
+        let uri: ByteArray = "ipfs://QmFoo";
+        let prefix: ByteArray = "ipfs://";
+        assert(bytearray_starts_with(@uri, @prefix), 'should match ipfs prefix');
+    }
+
+    #[test]
+    fn test_bytearray_starts_with_ar() {
+        let uri: ByteArray = "ar://txid123";
+        let prefix: ByteArray = "ar://";
+        assert(bytearray_starts_with(@uri, @prefix), 'should match ar prefix');
+    }
+
+    #[test]
+    fn test_bytearray_starts_with_http_fails() {
+        let uri: ByteArray = "https://example.com";
+        let prefix: ByteArray = "ipfs://";
+        assert(!bytearray_starts_with(@uri, @prefix), 'should not match ipfs');
+    }
+
+    #[test]
+    fn test_bytearray_starts_with_shorter_than_needle() {
+        let uri: ByteArray = "ip";
+        let prefix: ByteArray = "ipfs://";
+        assert(!bytearray_starts_with(@uri, @prefix), 'shorter should not match');
     }
 }

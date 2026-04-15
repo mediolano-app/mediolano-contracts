@@ -1,8 +1,4 @@
-Below is a detailed documentation for your `IPRevenueSharing` Cairo smart contract on Starknet. This documentation is designed to provide clarity for users and developers, explaining the contract’s purpose, functionality, and how it aligns with your project decisions (repurposing an existing NFT, using ERC-721, implementing a pull system, integrating with a separate marketplace, and handling revenue in ERC-20 tokens). It includes an overview, prerequisites, usage instructions, function descriptions, and notes on limitations and assumptions.
-
----
-
-# IPRevenueSharing Contract Documentation
+# IP Revenue Share
 
 ## Overview
 

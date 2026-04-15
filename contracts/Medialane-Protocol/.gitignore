@@ -1,7 +1,0 @@
-target
-.snfoundry_cache/
-snfoundry_trace/
-coverage/
-profile/
-node_modules/
-package-lock.json

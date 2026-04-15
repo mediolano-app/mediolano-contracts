@@ -1,32 +1,60 @@
-# IP Collection for Digital Assets - Cairo Smart Contract ERC-721
+# IP Collection ERC-721
 
-To develop a Cairo smart contract to manage an IP collection of digital assets, following the ERC-721 standard. This smart contract should enable the basic functionalities to Mint, List, View, and Transfer these assets, with the metadata being stored in IPFS. Architecture of the contract should be able to keep each user’s NFTs IDs to use them futurely for licensing, exhibiting, etc.
+An ownable, enumerable, upgradeable ERC-721 collection contract for IP assets with per-user token tracking via Alexandria storage lists.
 
-### Requirements:
+## Overview
 
-Minting: Ability to mint new tokens.
-Listing: Ability to list all tokens owned by a specific address.
-Viewing: Ability to view details of a specific token, including metadata.
-Transferring: Ability to transfer tokens between addresses.
-Metadata URI: All metadata should be stored in IPFS.
+`IPCollection` is a fully OZ-component-based ERC-721 contract. The owner can mint tokens to any recipient; any holder can burn or transfer. A `List<u256>` in Alexandria storage tracks each user's owned token IDs for efficient enumeration. The contract supports upgrades via `UpgradeableComponent`.
 
-### Criteria:
+## Storage
 
-The smart contract must be written in Cairo.
-Conforms to the ERC-721 standard.
-Implements functions for Minting, Listing, Viewing, and Transferring tokens.
-Metadata is stored in IPFS and properly linked to the tokens.
-Include unit tests to ensure all functionalities work as expected.
+| Field | Type | Description |
+|---|---|---|
+| `token_id_count` | `u256` | Auto-incrementing token ID counter |
+| `user_tokens` | `Map<ContractAddress, List<u256>>` | Per-address list of owned token IDs |
 
-### Additional Information:
+Plus `ERC721Component`, `ERC721EnumerableComponent`, `OwnableComponent`, and `UpgradeableComponent` substorages.
 
-Please refer to the ERC-721 standard documentation for details on the required functionalities.
-Ensure that the contract is optimized for efficiency and security.
-Provide comprehensive documentation for the smart contract code.
+## Interface / Functions
 
+```cairo
+fn mint(ref self, recipient: ContractAddress) -> u256
+```
+Owner-only. Mints the next token ID to `recipient` and appends the ID to their token list.
 
-![Mediolano.app](https://mediolano.app/wp-content/uploads/2024/09/mediolano-logo-dark-1.svg)
+```cairo
+fn burn(ref self, token_id: u256)
+```
+Burns `token_id` by transferring to the zero address.
 
+```cairo
+fn list_user_tokens(self: @, owner: ContractAddress) -> Array<u256>
+```
+Returns the array of token IDs held by `owner`.
 
-> [!IMPORTANT]
-> Mediolano dapp is in constant development and the current version runs on Starknet's Sepolia devnet. Use for testing purposes only. 
+```cairo
+fn transfer_token(ref self, from: ContractAddress, to: ContractAddress, token_id: u256)
+```
+Transfers `token_id` via the ERC-721 component. Requires the contract itself to be approved.
+
+```cairo
+fn upgrade(ref self, new_class_hash: ClassHash)
+```
+Owner-only. Upgrades the contract to a new class hash.
+
+## Development
+
+```bash
+cd contracts/IP-collection-ERC-721
+scarb build
+scarb test
+```
+
+## Dependencies
+
+| Package | Version |
+|---|---|
+| `starknet` | 2.12.0 |
+| `openzeppelin` | 0.20.0 (git) |
+| `alexandria_storage` | git (keep-starknet-strange) |
+| `snforge_std` (dev) | 0.58.0 |

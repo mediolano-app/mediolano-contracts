@@ -1,3 +1,19 @@
-pub mod erc1155_collection;
-pub mod erc1155_collections_factory;
-pub mod interfaces;
+pub mod IPCollection;
+pub mod IPCollectionFactory;
+pub mod types;
+
+pub mod interfaces {
+    pub mod IIPCollection;
+    pub mod IIPCollectionFactory;
+}
+
+pub mod mock_contracts {
+    pub mod ERC1155Receiver;
+    pub mod MockAccount;
+}
+
+#[cfg(test)]
+mod tests {
+    mod IPCollectionTest;
+    mod IPCollectionFactoryTest;
+}

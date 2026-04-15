@@ -1,14 +1,6 @@
-[sncast.myprofile]
-account = "myprofile"
-accounts-file = "~/.starkli-wallets/deployer/account.json"
-url = "https://free-rpc.nethermind.io/sepolia-juno/"
-
-[sncast.deploy_dev]
-account = "deploy_dev"
-accounts-file = "/home/pedrorosalba/.starknet_accounts/starknet_open_zeppelin_accounts.json"
-url = "https://free-rpc.nethermind.io/sepolia-juno/"
-
-[sncast.test]
-account = "test"
-accounts-file = "/home/pedrorosalba/.starknet_accounts/starknet_open_zeppelin_accounts.json"
-url = "https://starknet-sepolia.public.blastapi.io/rpc/v0_7"
+[sncast.default]
+url = "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_10/5Kaw8bJUF3QFKknr4N6Uo"
+account = "mediolano-deployer"
+wait-params = { timeout = 300, retry-interval = 10 }
+block-explorer = "Voyager"
+show-explorer-links = true
