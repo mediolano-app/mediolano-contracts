@@ -17,10 +17,16 @@ pub trait IIPCollectionFactory<TContractState> {
 
     /// Deploys a new IPCollection instance.
     ///
-    /// Callable by anyone — the caller becomes the collection owner.
+    /// Callable by anyone — the caller becomes the collection owner and IP creator.
+    /// `name` and `symbol` must be non-empty.
+    /// `base_uri` should point to the collection-level metadata JSON on IPFS (e.g.
+    /// `ipfs://Qm…/collection.json`). May be empty if no collection metadata is available.
     /// Returns the address of the newly deployed collection.
     /// Emits `CollectionDeployed`.
     fn deploy_collection(
-        ref self: TContractState, name: ByteArray, symbol: ByteArray,
+        ref self: TContractState,
+        name: ByteArray,
+        symbol: ByteArray,
+        base_uri: ByteArray,
     ) -> ContractAddress;
 }

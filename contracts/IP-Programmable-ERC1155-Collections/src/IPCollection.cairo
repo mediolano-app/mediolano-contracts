@@ -4,6 +4,13 @@
 // timestamp are written once at the first mint of each token type and can never be changed.
 // This constitutes the immutable IP provenance record under the Berne Convention standard.
 //
+// URI strategy:
+//   - `base_uri` is the collection-level metadata URI set at deploy time (e.g. an IPFS
+//     JSON containing the collection image, description, and external link).
+//   - `uri(token_id)` returns the per-token URI if one has been minted, otherwise falls
+//     back to `base_uri`. This mirrors the ERC-721 base_uri pattern while still supporting
+//     content-addressed per-token URIs for IP provenance.
+//
 // ERC-2981 royalty support: the collection owner can set a default royalty (applies to all
 // token types) and per-token overrides. Royalty starts at 0% and is fully owner-controlled.
 // Fee denominator is 10,000 — so fee_numerator 500 = 5%, 1000 = 10%, etc.
@@ -21,7 +28,7 @@ pub mod IPCollection {
         StorageMapWriteAccess,
     };
     use core::num::traits::Zero;
-    use starknet::{ContractAddress, get_block_timestamp};
+    use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
     use crate::interfaces::IIPCollection::IIPCollection;
     use crate::types::TokenData;
 
@@ -39,7 +46,7 @@ pub mod IPCollection {
     impl SRC5Impl = SRC5Component::SRC5Impl<ContractState>;
 
     // Embed ERC1155 transfers/approvals but NOT ERC1155MetadataURIImpl —
-    // we provide our own uri() that returns per-token URIs from storage.
+    // we provide our own uri() that returns per-token URIs with base_uri fallback.
     #[abi(embed_v0)]
     impl ERC1155Impl = ERC1155Component::ERC1155Impl<ContractState>;
     #[abi(embed_v0)]
@@ -69,7 +76,11 @@ pub mod IPCollection {
         collection_name: ByteArray,
         /// Collection ticker symbol (display only).
         collection_symbol: ByteArray,
-        /// Address that deployed this collection via the factory. Informational only.
+        /// Collection-level metadata URI. Points to a JSON with collection image, description,
+        /// and external link. Also serves as fallback for uri(token_id) on unminted tokens.
+        collection_base_uri: ByteArray,
+        /// Address that originally deployed this collection via the factory.
+        /// Immutable — does not change if ownership is transferred.
         collection_creator: ContractAddress,
         /// Per-token-type URI. Written once at first mint of each token_id, never modified.
         token_uris: Map<u256, ByteArray>,
@@ -110,9 +121,11 @@ pub mod IPCollection {
     /// Deploys a new standalone IPCollection.
     ///
     /// # Arguments
-    /// * `name`   - Human-readable collection name (e.g. "My IP Collection")
-    /// * `symbol` - Collection ticker symbol (e.g. "MIP1155")
-    /// * `owner`  - Address that owns this collection and can mint into it
+    /// * `name`     - Human-readable collection name (e.g. "My IP Collection")
+    /// * `symbol`   - Collection ticker symbol (e.g. "MIP1155")
+    /// * `base_uri` - Collection-level metadata URI (e.g. "ipfs://Qm…/collection.json").
+    ///                May be empty. Used as fallback for uri(token_id) on unminted tokens.
+    /// * `owner`    - Address that owns this collection and can mint into it
     ///
     /// Royalty starts at 0% pointing to `owner`. Call `set_default_royalty` to activate.
     #[constructor]
@@ -120,13 +133,15 @@ pub mod IPCollection {
         ref self: ContractState,
         name: ByteArray,
         symbol: ByteArray,
+        base_uri: ByteArray,
         owner: ContractAddress,
     ) {
-        // Initialize ERC1155 with empty base URI — per-token URIs stored in token_uris map.
+        // Initialize ERC1155 with empty base URI — we manage URIs ourselves.
         self.erc1155.initializer("");
         self.ownable.initializer(owner);
         self.collection_name.write(name);
         self.collection_symbol.write(symbol);
+        self.collection_base_uri.write(base_uri);
         self.collection_creator.write(owner);
         // Initialize ERC-2981 with 0% royalty pointing to owner.
         // Owner can activate royalties post-deploy via set_default_royalty(receiver, fee_numerator).
@@ -134,13 +149,19 @@ pub mod IPCollection {
     }
 
     // --- ERC1155 URI override ---
-    // Returns the per-token URI from storage instead of the OZ base URI.
-    // This satisfies the IERC1155MetadataURI interface with content-addressed per-token URIs.
+    // Returns the per-token URI if one has been set, otherwise falls back to base_uri.
+    // This satisfies the IERC1155MetadataURI interface while supporting both per-token
+    // content-addressed URIs (for IP provenance) and collection-level base_uri fallback.
 
     #[abi(embed_v0)]
     impl ERC1155MetadataURIImpl of IERC1155MetadataURI<ContractState> {
         fn uri(self: @ContractState, token_id: u256) -> ByteArray {
-            self.token_uris.read(token_id)
+            let token_uri = self.token_uris.read(token_id);
+            if token_uri.len() > 0 {
+                token_uri
+            } else {
+                self.collection_base_uri.read()
+            }
         }
     }
 
@@ -148,6 +169,22 @@ pub mod IPCollection {
 
     #[abi(embed_v0)]
     impl IPCollectionImpl of IIPCollection<ContractState> {
+        // ── Collection metadata ────────────────────────────────────────────────
+
+        fn name(self: @ContractState) -> ByteArray {
+            self.collection_name.read()
+        }
+
+        fn symbol(self: @ContractState) -> ByteArray {
+            self.collection_symbol.read()
+        }
+
+        fn base_uri(self: @ContractState) -> ByteArray {
+            self.collection_base_uri.read()
+        }
+
+        // ── Minting ────────────────────────────────────────────────────────────
+
         fn mint_item(
             ref self: ContractState,
             to: ContractAddress,
@@ -157,8 +194,10 @@ pub mod IPCollection {
         ) {
             self.ownable.assert_only_owner();
             assert(!to.is_zero(), 'Recipient is zero address');
+            assert(value > 0, 'Value must be > 0');
 
-            self._mint_single(to, token_id, value, token_uri);
+            let creator = get_caller_address();
+            self._mint_single(creator, to, token_id, value, token_uri);
         }
 
         fn batch_mint_item(
@@ -173,31 +212,44 @@ pub mod IPCollection {
             assert(token_ids.len() == values.len(), 'Array length mismatch');
             assert(token_ids.len() == token_uris.len(), 'Array length mismatch');
 
+            let creator = get_caller_address();
             for i in 0..token_ids.len() {
-                self._mint_single(to, *token_ids.at(i), *values.at(i), token_uris.at(i).clone());
+                self
+                    ._mint_single(
+                        creator,
+                        to,
+                        *token_ids.at(i),
+                        *values.at(i),
+                        token_uris.at(i).clone(),
+                    );
             }
         }
+
+        // ── Provenance queries ─────────────────────────────────────────────────
 
         fn get_collection_creator(self: @ContractState) -> ContractAddress {
             self.collection_creator.read()
         }
 
         fn get_token_creator(self: @ContractState, token_id: u256) -> ContractAddress {
-            assert(self.token_creators.read(token_id).is_non_zero(), 'Token does not exist');
-            self.token_creators.read(token_id)
+            let creator = self.token_creators.read(token_id);
+            assert(creator.is_non_zero(), 'Token does not exist');
+            creator
         }
 
         fn get_token_registered_at(self: @ContractState, token_id: u256) -> u64 {
-            assert(self.token_creators.read(token_id).is_non_zero(), 'Token does not exist');
+            let creator = self.token_creators.read(token_id);
+            assert(creator.is_non_zero(), 'Token does not exist');
             self.token_registered_at.read(token_id)
         }
 
         fn get_token_data(self: @ContractState, token_id: u256) -> TokenData {
-            assert(self.token_creators.read(token_id).is_non_zero(), 'Token does not exist');
+            let creator = self.token_creators.read(token_id);
+            assert(creator.is_non_zero(), 'Token does not exist');
             TokenData {
                 token_id,
                 metadata_uri: self.token_uris.read(token_id),
-                original_creator: self.token_creators.read(token_id),
+                original_creator: creator,
                 registered_at: self.token_registered_at.read(token_id),
             }
         }
@@ -207,14 +259,21 @@ pub mod IPCollection {
 
     #[generate_trait]
     impl InternalImpl of InternalTrait {
-        /// Mints a single token type, setting IP provenance on first mint.
+        /// Mints a single token type, recording immutable IP provenance on first mint.
+        ///
+        /// `creator` is the caller (collection owner) — the IP author under the Berne Convention.
+        /// `to` is the recipient who receives the minted supply (may differ from creator).
+        /// `value` must be > 0.
         fn _mint_single(
             ref self: ContractState,
+            creator: ContractAddress,
             to: ContractAddress,
             token_id: u256,
             value: u256,
             token_uri: ByteArray,
         ) {
+            assert(value > 0, 'Value must be > 0');
+
             let is_new = self.token_creators.read(token_id).is_zero();
             let timestamp = get_block_timestamp();
 
@@ -225,15 +284,15 @@ pub mod IPCollection {
                 assert(valid_uri, 'URI must be ipfs:// or ar://');
 
                 self.token_uris.write(token_id, token_uri.clone());
-                self.token_creators.write(token_id, to);
+                self.token_creators.write(token_id, creator);
                 self.token_registered_at.write(token_id, timestamp);
             }
 
             self.erc1155.mint_with_acceptance_check(to, token_id, value, array![].span());
 
-            // Use local vars on first mint — avoid reading back what we just wrote.
-            let (creator, registered_at, uri) = if is_new {
-                (to, timestamp, token_uri)
+            // Use local vars on first mint to avoid reading back what we just wrote.
+            let (event_creator, registered_at, uri) = if is_new {
+                (creator, timestamp, token_uri)
             } else {
                 (
                     self.token_creators.read(token_id),
@@ -242,7 +301,17 @@ pub mod IPCollection {
                 )
             };
 
-            self.emit(IPMinted { token_id, recipient: to, value, uri, creator, registered_at });
+            self
+                .emit(
+                    IPMinted {
+                        token_id,
+                        recipient: to,
+                        value,
+                        uri,
+                        creator: event_creator,
+                        registered_at,
+                    },
+                );
         }
 
         /// Returns true if `haystack` starts with `needle`.
@@ -251,12 +320,10 @@ pub mod IPCollection {
             if haystack.len() < needle_len {
                 return false;
             }
-            let mut i = 0;
-            while i < needle_len {
+            for i in 0..needle_len {
                 if haystack.at(i) != needle.at(i) {
                     return false;
                 }
-                i += 1;
             };
             true
         }

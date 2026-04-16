@@ -9,12 +9,27 @@ use crate::types::TokenData;
 /// at first mint of each token type, satisfying the Berne Convention authorship standard.
 #[starknet::interface]
 pub trait IIPCollection<TContractState> {
+    // ── Collection metadata ────────────────────────────────────────────────────
+
+    /// Human-readable collection name set at deploy time.
+    fn name(self: @TContractState) -> ByteArray;
+
+    /// Collection ticker symbol set at deploy time.
+    fn symbol(self: @TContractState) -> ByteArray;
+
+    /// Collection-level metadata URI (e.g. ipfs://Qm…/collection.json).
+    /// Points to the JSON that contains the collection image, description, and external link.
+    /// Also used as fallback `uri(token_id)` response for unminted token types.
+    fn base_uri(self: @TContractState) -> ByteArray;
+
+    // ── Minting ────────────────────────────────────────────────────────────────
+
     /// Mints `value` copies of a new or existing token type to `to`.
     ///
-    /// Owner only. `to` must not be the zero address.
+    /// Owner only. `to` must not be the zero address. `value` must be > 0.
     /// For new token types (first mint of this `token_id`):
     ///   - `token_uri` is stored permanently and must start with `ipfs://` or `ar://`.
-    ///   - `to` is recorded as the original creator.
+    ///   - The caller (owner) is recorded as the original IP creator.
     ///   - Block timestamp is recorded as the registration date.
     /// For existing token types (subsequent mints): `token_uri` is ignored.
     fn mint_item(
@@ -27,7 +42,9 @@ pub trait IIPCollection<TContractState> {
 
     /// Batch version of `mint_item`. All token IDs in the batch are minted to `to`.
     ///
-    /// Owner only. `token_ids`, `values`, and `token_uris` must have equal length.
+    /// Owner only. `to` must not be the zero address.
+    /// `token_ids`, `values`, and `token_uris` must have equal length.
+    /// All `value` entries must be > 0.
     /// For each token_id: URI is stored only on first mint of that type.
     fn batch_mint_item(
         ref self: TContractState,
@@ -37,11 +54,13 @@ pub trait IIPCollection<TContractState> {
         token_uris: Array<ByteArray>,
     );
 
+    // ── Provenance queries ─────────────────────────────────────────────────────
+
     /// Returns the address that deployed this collection via the factory.
-    /// Informational only — holds no special power beyond the Ownable owner.
+    /// Immutable — does not change if ownership is transferred.
     fn get_collection_creator(self: @TContractState) -> ContractAddress;
 
-    /// Returns the address that first minted this token type.
+    /// Returns the address that first minted this token type (the IP creator/author).
     /// Immutable Berne Convention authorship record.
     /// Reverts if the token type has never been minted.
     fn get_token_creator(self: @TContractState, token_id: u256) -> ContractAddress;

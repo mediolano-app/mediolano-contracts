@@ -1,5 +1,5 @@
 // DESIGN: IPCollectionFactory is the single deploy point for all IPCollection contracts.
-// Anyone can deploy a new collection — the caller becomes its owner.
+// Anyone can deploy a new collection — the caller becomes its owner and IP creator.
 // The factory owner can update the class hash for future deployments without affecting
 // already-deployed collections (which are immutable standalone contracts).
 
@@ -47,6 +47,7 @@ pub mod IPCollectionFactory {
         pub owner: ContractAddress,
         pub name: ByteArray,
         pub symbol: ByteArray,
+        pub base_uri: ByteArray,
     }
 
     /// Deploys a new IPCollectionFactory.
@@ -62,7 +63,7 @@ pub mod IPCollectionFactory {
     ) {
         self.ownable.initializer(owner);
         self.ip_collection_class_hash.write(collection_class_hash);
-        self.deploy_nonce.write(0);
+        // deploy_nonce defaults to 0 — no explicit write needed
     }
 
     #[abi(embed_v0)]
@@ -77,34 +78,39 @@ pub mod IPCollectionFactory {
         }
 
         fn deploy_collection(
-            ref self: ContractState, name: ByteArray, symbol: ByteArray,
+            ref self: ContractState,
+            name: ByteArray,
+            symbol: ByteArray,
+            base_uri: ByteArray,
         ) -> ContractAddress {
+            assert(name.len() > 0, 'Name must not be empty');
+            assert(symbol.len() > 0, 'Symbol must not be empty');
+
             let caller = get_caller_address();
 
             // Derive a unique salt from caller + nonce using Poseidon.
             let nonce = self.deploy_nonce.read();
-            let salt = PoseidonTrait::new()
-                .update_with(caller)
-                .update_with(nonce)
-                .finalize();
+            let salt = PoseidonTrait::new().update_with(caller).update_with(nonce).finalize();
             self.deploy_nonce.write(nonce + 1);
 
-            // Serialize constructor calldata: (name, symbol, owner).
-            // ByteArray::serialize takes @self so name and symbol remain owned after this call.
+            // Serialize constructor calldata: (name, symbol, base_uri, owner).
             let mut calldata: Array<felt252> = array![];
             name.serialize(ref calldata);
             symbol.serialize(ref calldata);
+            base_uri.serialize(ref calldata);
             caller.serialize(ref calldata);
 
             let (collection_address, _) = deploy_syscall(
-                self.ip_collection_class_hash.read(),
-                salt,
-                calldata.span(),
-                false,
+                self.ip_collection_class_hash.read(), salt, calldata.span(), false,
             )
                 .unwrap_syscall();
 
-            self.emit(CollectionDeployed { collection_address, owner: caller, name, symbol });
+            self
+                .emit(
+                    CollectionDeployed {
+                        collection_address, owner: caller, name, symbol, base_uri,
+                    },
+                );
 
             collection_address
         }
