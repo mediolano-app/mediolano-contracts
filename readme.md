@@ -5,17 +5,12 @@ Cairo smart contracts for Mediolano, the intellectual property provider of the i
 
 Quick links:
 <br>
-<a href="https://ip.mediolano.app">Mediolano Dapp (Sepolia)</a>
+<a href="https://ip.mediolano.app">Mediolano IP Creator</a>
 <br>
-<a href="https://mediolano.xyz">Website mediolano.xyz</a>
-<br>
-<a href="https://t.me/MediolanoStarknet">Telegram</a> | <a href="https://www.youtube.com/@Mediolano-app">YouTube</a> | <a href="https://x.com/mediolanoapp">X / Twitter</a>
+<a href="https://t.me/integrityweb">Telegram</a> | <a href="https://x.com/mediolanoapp">X / Twitter</a>
 <br>
 
-![medialane-screen](https://github.com/user-attachments/assets/2b4c1d1d-6322-4a0c-8bb8-67e735ae1761)
 
-> [!IMPORTANT]
-> Mediolano dapp is in constant development and the current version runs on Starknet's Sepolia devnet. Use for testing purposes only.
 
 ## Mediolano
 
