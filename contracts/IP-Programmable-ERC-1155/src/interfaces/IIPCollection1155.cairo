@@ -52,11 +52,17 @@ pub trait IIPCollection1155<TContractState> {
     fn get_token_registered_at(self: @TContractState, token_id: u256) -> u64;
 
     /// Returns the current license terms for a token type.
-    /// Returns an empty ByteArray if no license has been set.
+    /// Reverts if the token does not exist.
     fn get_license(self: @TContractState, token_id: u256) -> ByteArray;
 
     /// Returns all provenance fields for a token type in a single call.
     /// Avoids multiple separate cross-contract calls.
     /// Reverts if the token does not exist.
     fn get_token_data(self: @TContractState, token_id: u256) -> TokenData;
+
+    /// Returns true if `token_id` has been minted (creator is non-zero).
+    fn token_exists(self: @TContractState, token_id: u256) -> bool;
+
+    /// Returns the total number of distinct token types minted in this contract.
+    fn total_supply(self: @TContractState) -> u256;
 }

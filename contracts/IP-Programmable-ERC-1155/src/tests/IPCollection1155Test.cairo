@@ -103,12 +103,6 @@ fn test_deploy_succeeds() {
 }
 
 #[test]
-fn test_collection_creator_is_set() {
-    let (col, _) = deploy_contract(CREATOR());
-    assert(col.get_collection_creator() == CREATOR(), 'creator mismatch');
-}
-
-#[test]
 fn test_collection_creator_different_from_user() {
     let (col, _) = deploy_contract(USER1());
     assert(col.get_collection_creator() == USER1(), 'creator should be USER1');
@@ -238,9 +232,9 @@ fn test_mint_emits_ipminted_event() {
         IPMinted {
             token_id,
             recipient: user1,
+            creator: USER1(),
             amount: 10,
             uri: IPFS_URI(),
-            creator: USER1(),
             registered_at: ts,
         },
     );
@@ -514,4 +508,81 @@ fn test_mint_one_amount_works() {
     col.mint_item(user1, 1, IPFS_URI(), "");
     let erc1155 = IERC1155Dispatcher { contract_address: addr };
     assert(erc1155.balance_of(user1, 1) == 1, 'balance of 1 should work');
+}
+
+// ---------------------------------------------------------------------------
+// token_exists
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_token_exists_true_after_mint() {
+    let (col, _, user1, _) = setup();
+    assert(!col.token_exists(1), 'should not exist before mint');
+    col.mint_item(user1, 1, IPFS_URI(), "");
+    assert(col.token_exists(1), 'should exist after mint');
+}
+
+#[test]
+fn test_token_exists_false_for_unminted() {
+    let (col, _, _, _) = setup();
+    assert(!col.token_exists(0), 'id 0 should never exist');
+    assert(!col.token_exists(999), 'id 999 should not exist');
+}
+
+#[test]
+fn test_token_exists_multiple_ids() {
+    let (col, _, user1, user2) = setup();
+    col.mint_item(user1, 1, IPFS_URI(), "");
+    col.mint_item(user2, 1, AR_URI(), "");
+    assert(col.token_exists(1), 'id 1 should exist');
+    assert(col.token_exists(2), 'id 2 should exist');
+    assert(!col.token_exists(3), 'id 3 should not exist');
+}
+
+// ---------------------------------------------------------------------------
+// total_supply
+// ---------------------------------------------------------------------------
+
+#[test]
+fn test_total_supply_zero_before_mint() {
+    let (col, _, _, _) = setup();
+    assert(col.total_supply() == 0, 'supply should be 0');
+}
+
+#[test]
+fn test_total_supply_increments_per_mint() {
+    let (col, _, user1, user2) = setup();
+    col.mint_item(user1, 10, IPFS_URI(), "");
+    assert(col.total_supply() == 1, 'supply should be 1');
+    col.mint_item(user2, 5, AR_URI(), "");
+    assert(col.total_supply() == 2, 'supply should be 2');
+}
+
+#[test]
+fn test_total_supply_counts_types_not_amounts() {
+    let (col, _, user1, _) = setup();
+    // Minting 1000 units of one type still counts as 1 token type
+    col.mint_item(user1, 1000, IPFS_URI(), "");
+    assert(col.total_supply() == 1, 'supply should be 1 type');
+}
+
+// ---------------------------------------------------------------------------
+// get_license — existence check (now consistent with other getters)
+// ---------------------------------------------------------------------------
+
+#[test]
+#[should_panic(expected: ('Token does not exist',))]
+fn test_get_license_nonexistent_token_panics() {
+    let (col, _, _, _) = setup();
+    col.get_license(999);
+}
+
+#[test]
+fn test_set_license_to_empty_string_clears_it() {
+    let (col, addr, user1, _) = setup();
+    cheat_caller_address(addr, USER1(), CheatSpan::TargetCalls(3));
+    col.mint_item(user1, 1, IPFS_URI(), LICENSE_CC0());
+    assert(col.get_license(1) == LICENSE_CC0(), 'license should be CC0');
+    col.set_license(1, "");
+    assert(col.get_license(1) == "", 'license should be cleared');
 }

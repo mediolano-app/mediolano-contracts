@@ -77,16 +77,17 @@ pub mod IPCollection1155 {
     }
 
     /// Emitted on every successful mint_item call.
-    /// `token_id` and `recipient` are indexed for efficient indexer filtering.
+    /// `token_id`, `recipient`, and `creator` are indexed for efficient indexer filtering.
     #[derive(Drop, starknet::Event)]
     pub struct IPMinted {
         #[key]
         pub token_id: u256,
         #[key]
         pub recipient: ContractAddress,
+        #[key]
+        pub creator: ContractAddress,
         pub amount: u256,
         pub uri: ByteArray,
-        pub creator: ContractAddress,
         pub registered_at: u64,
     }
 
@@ -95,6 +96,7 @@ pub mod IPCollection1155 {
     pub struct LicenseUpdated {
         #[key]
         pub token_id: u256,
+        #[key]
         pub creator: ContractAddress,
         pub license: ByteArray,
     }
@@ -179,8 +181,7 @@ pub mod IPCollection1155 {
         /// Updates the license terms for a token type.
         /// Only the original creator can call this.
         fn set_license(ref self: ContractState, token_id: u256, license: ByteArray) {
-            let creator = self.token_creators.read(token_id);
-            assert(creator.is_non_zero(), 'Token does not exist');
+            let creator = self._require_token_exists(token_id);
             let caller = get_caller_address();
             assert(caller == creator, 'Only creator can set license');
 
@@ -195,34 +196,56 @@ pub mod IPCollection1155 {
         /// Returns the original creator of a token type.
         /// Reverts if the token does not exist.
         fn get_token_creator(self: @ContractState, token_id: u256) -> ContractAddress {
-            let creator = self.token_creators.read(token_id);
-            assert(creator.is_non_zero(), 'Token does not exist');
-            creator
+            self._require_token_exists(token_id)
         }
 
         /// Returns the block timestamp recorded at first mint.
         /// Reverts if the token does not exist.
         fn get_token_registered_at(self: @ContractState, token_id: u256) -> u64 {
-            let creator = self.token_creators.read(token_id);
-            assert(creator.is_non_zero(), 'Token does not exist');
+            self._require_token_exists(token_id);
             self.token_registered_at.read(token_id)
         }
 
+        /// Returns the current license terms for a token type.
+        /// Reverts if the token does not exist.
         fn get_license(self: @ContractState, token_id: u256) -> ByteArray {
+            self._require_token_exists(token_id);
             self.token_licenses.read(token_id)
         }
 
         /// Returns all provenance fields for a token type in a single call.
         /// Reverts if the token does not exist.
         fn get_token_data(self: @ContractState, token_id: u256) -> TokenData {
-            let creator = self.token_creators.read(token_id);
-            assert(creator.is_non_zero(), 'Token does not exist');
+            let creator = self._require_token_exists(token_id);
             TokenData {
                 token_id,
                 metadata_uri: self.token_uris.read(token_id),
                 original_creator: creator,
                 registered_at: self.token_registered_at.read(token_id),
             }
+        }
+
+        /// Returns true if `token_id` has been minted.
+        fn token_exists(self: @ContractState, token_id: u256) -> bool {
+            self.token_creators.read(token_id).is_non_zero()
+        }
+
+        /// Returns the total number of distinct token types minted so far.
+        fn total_supply(self: @ContractState) -> u256 {
+            self.next_token_id.read() - 1
+        }
+    }
+
+    // --- Private helpers ---
+
+    #[generate_trait]
+    impl InternalImpl of InternalTrait {
+        /// Reads the creator of `token_id` and panics if zero (token never minted).
+        /// Returns the creator address so callers avoid a second storage read.
+        fn _require_token_exists(self: @ContractState, token_id: u256) -> ContractAddress {
+            let creator = self.token_creators.read(token_id);
+            assert(creator.is_non_zero(), 'Token does not exist');
+            creator
         }
     }
 }
