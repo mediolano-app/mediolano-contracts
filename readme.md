@@ -28,25 +28,6 @@ With zero fees, Mediolano’s open-source protocol and dapp ensures immediate to
 The platform also introduces advanced monetization, enabling diverse approaches to licensing, royalties, and financing creators economies. These tools are designed to offer integrations with various ecosystems, including communities, games, and AI agents, unlocking the true power of Programmable IP for the Integrity Web.
 
 
-## 🏗️ Architecture Overview
-
-### Core Components
-
-```
-Mediolano Protocol
-├── Medialane Protocol (Marketplace Core)
-├── User Achievements System
-├── IP Tokenization (ERC-721/ERC-1155)
-├── Programmable Licensing
-├── Revenue Sharing & Royalties
-├── Community & Club Management
-├── Franchise & Monetization
-├── Escrow & Negotiations
-├── Collective Agreements
-├── Collaborative Storytelling
-└── Partner Certification
-```
-
 
 ## Roadmap
 
@@ -72,16 +53,9 @@ Mediolano Protocol
 
 - [X] MIP Mobile @ iPhone iOS App Store **25.12**
 
-- [ ] Mediolano Dapp @ Starknet Mainnet **25.12**
+- [X] Mediolano IP Creator Dapp @ Starknet Mainnet **26.01**
 
-- [ ] Medialane Protocol @ Starknet Sepolia **25.12**
-
-- [ ] Medialane Dapp @ Starknet Sepolia **25.12**
-
-- [ ] Medialane Protocol @ Starknet Mainnet **26.02**
-
-- [ ] Medialane Dapp @ Starknet Mainnet **26.02**
-
+- [X] Security Audit and Review: IP Collections erc-721 Protocol +  IP Collections erc-1155 Protocol **26.04**
 
 
 ## 🚀 Getting Started
