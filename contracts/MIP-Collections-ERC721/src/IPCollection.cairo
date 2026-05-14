@@ -2,7 +2,6 @@
 pub mod IPCollection {
     use core::dict::Felt252Dict;
     use core::num::traits::Zero;
-    use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc721::extensions::erc721_enumerable::interface::{
         ERC721EnumerableABIDispatcher as IERC721EnumerableDispatcher,
         ERC721EnumerableABIDispatcherTrait,
@@ -22,9 +21,12 @@ pub mod IPCollection {
     use crate::interfaces::IIPNFT::{IIPNftDispatcher, IIPNftDispatcherTrait};
     use crate::types::{Collection, CollectionStats, TokenData, TokenTrait};
 
+    const MAX_NAME_LEN: u32 = 256;
+    const MAX_SYMBOL_LEN: u32 = 64;
+    const MAX_BASE_URI_LEN: u32 = 2048;
+
     // IPCollection is intentionally immutable. It deploys immutable IPNft
     // contracts and provides a permanent registry view over their records.
-    component!(path: SRC5Component, storage: src5, event: SRC5Event);
 
     #[storage]
     struct Storage {
@@ -35,15 +37,11 @@ pub mod IPCollection {
         user_collections: Map<(ContractAddress, u256), u256>,
         user_collection_index: Map<ContractAddress, u256>,
         collection_owner_index: Map<u256, u256>,
-        #[substorage(v0)]
-        src5: SRC5Component::Storage,
     }
 
     #[event]
     #[derive(Drop, starknet::Event)]
     pub enum Event {
-        #[flat]
-        SRC5Event: SRC5Component::Event,
         CollectionCreated: CollectionCreated,
         CollectionOwnershipTransferred: CollectionOwnershipTransferred,
         TokenMinted: TokenMinted,
@@ -107,6 +105,8 @@ pub mod IPCollection {
     pub struct TokenTransferred {
         pub collection_id: u256,
         pub token_id: u256,
+        pub from: ContractAddress,
+        pub to: ContractAddress,
         pub operator: ContractAddress,
         pub timestamp: u64,
     }
@@ -136,16 +136,17 @@ pub mod IPCollection {
             assert(!caller.is_zero(), 'Caller is zero address');
 
             // L-02: validate non-empty name and symbol
-            assert(name.len() > 0, 'Name cannot be empty');
-            assert(symbol.len() > 0, 'Symbol cannot be empty');
+            assert(name.len() > 0 && name.len() <= MAX_NAME_LEN, 'Invalid name length');
+            assert(symbol.len() > 0 && symbol.len() <= MAX_SYMBOL_LEN, 'Invalid symbol length');
+            assert(base_uri.len() <= MAX_BASE_URI_LEN, 'Base URI too long');
 
             let collection_id = self.collection_count.read() + 1;
-            let collection_manager = get_contract_address();
+            let registry = get_contract_address();
 
             // 4-M CRITICAL: calldata must match IPNft constructor exactly.
-            // IPNft constructor: (name, symbol, base_uri, collection_id, collection_manager)
+            // IPNft constructor: (name, symbol, base_uri, collection_id, registry)
             let mut constructor_calldata: Array<felt252> = array![];
-            (name.clone(), symbol.clone(), base_uri.clone(), collection_id, collection_manager)
+            (name.clone(), symbol.clone(), base_uri.clone(), collection_id, registry)
                 .serialize(ref constructor_calldata);
 
             let (ip_nft_address, _) = deploy_syscall(
@@ -296,6 +297,7 @@ pub mod IPCollection {
                 self.user_collections.entry((old_owner, old_index)).write(moved_collection_id);
                 self.collection_owner_index.entry(moved_collection_id).write(old_index);
             }
+            // Collection IDs start at 1, so zero is an unambiguous cleared slot marker.
             self.user_collections.entry((old_owner, last_index)).write(0);
             self.user_collection_index.entry(old_owner).write(last_index);
 
@@ -369,6 +371,7 @@ pub mod IPCollection {
             let mut i: u32 = 0;
             while i < n {
                 let token = TokenTrait::from_bytes(tokens.at(i).clone());
+                assert(token.collection_id.high == 0, 'Collection ID too large');
                 let collection = self.collections.read(token.collection_id);
                 assert(!collection.ip_nft.is_zero(), 'Invalid collection');
 
@@ -393,6 +396,7 @@ pub mod IPCollection {
             let mut j: u32 = 0;
             while j < unique_cols.len() {
                 let col_id = *unique_cols.at(j);
+                assert(col_id.high == 0, 'Collection ID too large');
                 let count: u256 = col_counts.get(col_id.low.into()).into();
                 let mut stats = self.collection_stats.read(col_id);
                 stats.total_archived += count;
@@ -420,13 +424,18 @@ pub mod IPCollection {
             let caller = get_caller_address();
             let ip_nft = IERC721Dispatcher { contract_address: collection.ip_nft };
 
-            let approved = ip_nft.get_approved(token.token_id);
-            assert(approved == get_contract_address(), 'Contract not approved');
-
             // M-02 FIX: caller must be owner or approved operator
             let token_owner = ip_nft.owner_of(token.token_id);
+            let approved = ip_nft.get_approved(token.token_id);
+            let registry = get_contract_address();
             assert(
-                caller == token_owner || ip_nft.is_approved_for_all(token_owner, caller),
+                approved == registry || ip_nft.is_approved_for_all(token_owner, registry),
+                'Contract not approved',
+            );
+            assert(
+                caller == token_owner
+                    || approved == caller
+                    || ip_nft.is_approved_for_all(token_owner, caller),
                 'Not authorized',
             );
 
@@ -444,6 +453,8 @@ pub mod IPCollection {
                     TokenTransferred {
                         collection_id: token.collection_id,
                         token_id: token.token_id,
+                        from,
+                        to,
                         operator: caller,
                         timestamp,
                     },
@@ -472,19 +483,27 @@ pub mod IPCollection {
             let mut i: u32 = 0;
             while i < n {
                 let token = TokenTrait::from_bytes(tokens.at(i).clone());
+                assert(token.collection_id.high == 0, 'Collection ID too large');
                 let collection = self.collections.read(token.collection_id);
                 assert(!collection.ip_nft.is_zero(), 'Invalid collection');
 
                 let ip_nft = IERC721Dispatcher { contract_address: collection.ip_nft };
 
-                // H-01 FIX: require contract approval (was missing in batch path)
+                let token_owner = ip_nft.owner_of(token.token_id);
                 let approved = ip_nft.get_approved(token.token_id);
-                assert(approved == get_contract_address(), 'Contract not approved');
+                let registry = get_contract_address();
+
+                // H-01 FIX: require contract approval (was missing in batch path)
+                assert(
+                    approved == registry || ip_nft.is_approved_for_all(token_owner, registry),
+                    'Contract not approved',
+                );
 
                 // H-01 FIX: require caller is authorized (was missing entirely)
-                let token_owner = ip_nft.owner_of(token.token_id);
                 assert(
-                    caller == token_owner || ip_nft.is_approved_for_all(token_owner, caller),
+                    caller == token_owner
+                        || approved == caller
+                        || ip_nft.is_approved_for_all(token_owner, caller),
                     'Not authorized',
                 );
 
@@ -504,6 +523,7 @@ pub mod IPCollection {
             let mut j: u32 = 0;
             while j < unique_cols.len() {
                 let col_id = *unique_cols.at(j);
+                assert(col_id.high == 0, 'Collection ID too large');
                 let count: u256 = col_counts.get(col_id.low.into()).into();
                 let mut stats = self.collection_stats.read(col_id);
                 stats.total_transfers += count;
@@ -600,6 +620,17 @@ pub mod IPCollection {
             // token_exists reads the owner slot directly and returns false for non-existent
             // tokens — owner_of would panic, making is_valid_token unusable as a guard
             IIPNftDispatcher { contract_address: collection.ip_nft }.token_exists(token.token_id)
+        }
+
+        /// Checks if a token exists and has not been archived.
+        fn is_transferable_token(self: @ContractState, token: ByteArray) -> bool {
+            let token = TokenTrait::from_bytes(token);
+            let collection = self.collections.read(token.collection_id);
+            if collection.ip_nft.is_zero() {
+                return false;
+            }
+            let nft = IIPNftDispatcher { contract_address: collection.ip_nft };
+            nft.token_exists(token.token_id) && !nft.is_archived(token.token_id)
         }
 
         /// Checks if a given address is the owner of a specific collection.

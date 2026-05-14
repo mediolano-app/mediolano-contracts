@@ -13,6 +13,11 @@ pub mod IPNft {
     use crate::interfaces::IIPNFT::IIPNft;
     use crate::types::bytearray_starts_with;
 
+    const MAX_NAME_LEN: u32 = 256;
+    const MAX_SYMBOL_LEN: u32 = 64;
+    const MAX_BASE_URI_LEN: u32 = 2048;
+    const MAX_TOKEN_URI_LEN: u32 = 2048;
+
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
     component!(
@@ -25,7 +30,7 @@ pub mod IPNft {
     // Upgradeability of this contract would allow altering that record, which is prohibited.
 
     // No owner or role admin exists. Mint/archive authority is the immutable
-    // collection_manager address written once in the constructor.
+    // registry address written once in the constructor.
 
     #[abi(embed_v0)]
     impl ERC721Impl = ERC721Component::ERC721Impl<ContractState>;
@@ -43,7 +48,7 @@ pub mod IPNft {
 
     #[storage]
     struct Storage {
-        collection_manager: ContractAddress,
+        registry: ContractAddress,
         collection_id: u256,
         /// Per-token metadata URIs — written once at mint, never updated (immutable).
         uris: Map<u256, ByteArray>,
@@ -74,8 +79,8 @@ pub mod IPNft {
 
     /// Constructor.
     /// R-04: `owner` parameter removed — OwnableComponent is gone.
-    /// The `collection_manager` (IPCollection factory address) is immutable and is the
-    /// only address allowed to mint or archive.
+    /// The `registry` (IPCollection factory address) is immutable and is the only
+    /// address allowed to mint or archive.
     #[constructor]
     fn constructor(
         ref self: ContractState,
@@ -83,12 +88,17 @@ pub mod IPNft {
         symbol: ByteArray,
         base_uri: ByteArray,
         collection_id: u256,
-        collection_manager: ContractAddress,
+        registry: ContractAddress,
     ) {
+        assert(name.len() > 0 && name.len() <= MAX_NAME_LEN, 'Invalid name length');
+        assert(symbol.len() > 0 && symbol.len() <= MAX_SYMBOL_LEN, 'Invalid symbol length');
+        assert(base_uri.len() <= MAX_BASE_URI_LEN, 'Base URI too long');
+        assert(!registry.is_zero(), 'Registry is zero address');
+
         self.erc721.initializer(name, symbol, base_uri);
         self.erc721_enumerable.initializer();
         self.collection_id.write(collection_id);
-        self.collection_manager.write(collection_manager);
+        self.registry.write(registry);
     }
 
     impl ERC721HooksImpl of ERC721Component::ERC721HooksTrait<ContractState> {
@@ -103,10 +113,6 @@ pub mod IPNft {
             // Archived tokens are permanently immobile — their record is preserved as-is.
             // This fires on both mint and transfer; Map defaults to false so mints pass cleanly.
             assert(!contract_state.token_archived.read(token_id), 'Token is archived');
-
-            // All ownership changes must flow through the immutable collection manager.
-            // This keeps registry stats/events/policy aligned with ERC721 ownership.
-            assert(get_caller_address() == contract_state.collection_manager.read(), 'Only manager');
             contract_state.erc721_enumerable.before_update(to, token_id);
         }
     }
@@ -150,16 +156,19 @@ pub mod IPNft {
             token_id: u256,
             token_uri: ByteArray,
         ) {
-            assert(get_caller_address() == self.collection_manager.read(), 'Only manager');
+            assert(get_caller_address() == self.registry.read(), 'Only registry');
 
             // R-05: token IDs must be > 0 (IPCollection assigns IDs starting at 1)
             assert(token_id != 0, 'Token ID cannot be zero');
+            assert(token_uri.len() > 0 && token_uri.len() <= MAX_TOKEN_URI_LEN, 'Invalid URI length');
 
             // COMP-04: only permanent, content-addressed storage URIs are legally valid
             let valid_uri = bytearray_starts_with(@token_uri, @"ipfs://")
                 || bytearray_starts_with(@token_uri, @"ar://");
             assert(valid_uri, 'URI must be ipfs:// or ar://');
 
+            // mint intentionally does not call safe_mint; IP records can be minted to any
+            // account/contract without requiring an ERC721 receiver callback.
             self.erc721.mint(recipient, token_id);
             self.uris.write(token_id, token_uri);
 
@@ -175,7 +184,7 @@ pub mod IPNft {
         /// Archived tokens cannot be transferred or re-archived.
         /// Only callable by the immutable IPCollection factory.
         fn archive(ref self: ContractState, token_id: u256) {
-            assert(get_caller_address() == self.collection_manager.read(), 'Only manager');
+            assert(get_caller_address() == self.registry.read(), 'Only registry');
             self.erc721._require_owned(token_id);
             assert(!self.token_archived.read(token_id), 'Already archived');
             // Write the archived flag — the ERC721 state is intentionally preserved
@@ -192,9 +201,9 @@ pub mod IPNft {
             self.collection_id.read()
         }
 
-        /// Returns the address of the collection manager (IPCollection factory).
-        fn get_collection_manager(self: @ContractState) -> ContractAddress {
-            self.collection_manager.read()
+        /// Returns the address of the immutable registry (IPCollection factory).
+        fn get_registry(self: @ContractState) -> ContractAddress {
+            self.registry.read()
         }
 
         /// Returns the base URI of the collection.

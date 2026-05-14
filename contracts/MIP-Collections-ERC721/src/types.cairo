@@ -121,7 +121,7 @@ fn bytearray_to_u256(bytes: ByteArray) -> u256 {
         // M-04: validate digit range before subtracting to avoid underflow
         assert(byte >= 48_u8 && byte <= 57_u8, 'Invalid digit in token ID');
         let digit = byte - 48;
-        result = result * 10_u256 + digit.try_into().unwrap();
+        result = result * 10_u256 + digit.into();
     };
     result
 }
@@ -133,15 +133,13 @@ pub fn bytearray_starts_with(haystack: @ByteArray, needle: @ByteArray) -> bool {
         return false;
     }
     let mut i: u32 = 0;
-    let mut matches = true;
     while i < n {
         if haystack.at(i).unwrap() != needle.at(i).unwrap() {
-            matches = false;
-            break;
+            return false;
         }
         i += 1;
     };
-    matches
+    true
 }
 
 #[cfg(test)]

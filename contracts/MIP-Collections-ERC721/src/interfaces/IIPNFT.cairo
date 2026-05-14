@@ -38,11 +38,11 @@ pub trait IIPNft<ContractState> {
     /// * `u256` - The collection ID.
     fn get_collection_id(self: @ContractState) -> u256;
 
-    /// Returns the address of the collection manager (IPCollection factory).
+    /// Returns the address of the immutable registry (IPCollection factory).
     ///
     /// # Returns
-    /// * `ContractAddress` - The address managing the collection.
-    fn get_collection_manager(self: @ContractState) -> ContractAddress;
+    /// * `ContractAddress` - The registry address.
+    fn get_registry(self: @ContractState) -> ContractAddress;
 
     /// Returns the base URI of the collection.
     ///

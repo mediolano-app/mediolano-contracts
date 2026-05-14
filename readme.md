@@ -66,7 +66,8 @@ The platform also introduces advanced monetization, enabling diverse approaches 
 - Ownership transfer only changes future mint authority; already minted token records remain unchanged.
 - Token legal records store immutable `metadata_uri`, `original_creator`, and `registered_at` fields.
 - Token archive preserves the on-chain legal record instead of burning it.
-- ERC-721 transfers flow through `IPCollection` so protocol stats, events, and transfer policy stay coherent.
+- Active ERC-721 tokens keep standard direct transfer behavior for wallet and marketplace composability.
+- Transfers routed through `IPCollection` additionally update protocol transfer stats and emit protocol transfer events.
 
 This architecture is designed for creator sovereignty and social-login wallet handoff flows. For example, a creator can initialize a collection through an embedded wallet and later transfer collection stewardship to a regular wallet without changing historical authorship records.
 
@@ -222,11 +223,11 @@ starkli deploy ./target/dev/contract_name.contract_class.json \
 
 ### Security Measures
 
-- **Contract-Specific Authorization**: Permissions are scoped per contract; MIP Collections ERC-721 uses immutable manager and collection-owner checks instead of a global admin.
+- **Contract-Specific Authorization**: Permissions are scoped per contract; MIP Collections ERC-721 uses immutable registry and collection-owner checks instead of a global admin.
 - **Immutable IP Collections**: MIP Collections ERC-721 has no global admin owner, no upgrade entrypoint, no mutable class hash, and no pause switch.
 - **Permanent Provenance**: IP collection tokens preserve immutable metadata URI, original creator, and registration timestamp.
 - **Transferable Stewardship**: Collection ownership can move atomically to another wallet for future mint authority without changing historical token records.
-- **Controlled ERC-721 Transfer Path**: MIP collection token transfers route through the registry to keep protocol events and stats consistent.
+- **Composable ERC-721 Transfers**: Active MIP collection tokens support direct ERC-721 transfers; the registry transfer path remains available for protocol stats/events.
 - **Reentrancy Protection**: Guards against reentrancy attacks
 - **Input Validation**: Comprehensive validation of all user inputs
 - **Overflow Protection**: Safe math operations throughout

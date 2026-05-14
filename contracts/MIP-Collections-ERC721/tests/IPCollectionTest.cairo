@@ -106,7 +106,7 @@ fn test_create_multiple_collections() {
 }
 
 #[test]
-#[should_panic(expected: ('Name cannot be empty',))]
+#[should_panic(expected: ('Invalid name length',))]
 fn test_create_collection_empty_name() {
     let (dispatcher, ip_address) = deploy_contract();
     start_cheat_caller_address(ip_address, OWNER());
@@ -114,7 +114,7 @@ fn test_create_collection_empty_name() {
 }
 
 #[test]
-#[should_panic(expected: ('Symbol cannot be empty',))]
+#[should_panic(expected: ('Invalid symbol length',))]
 fn test_create_collection_empty_symbol() {
     let (dispatcher, ip_address) = deploy_contract();
     start_cheat_caller_address(ip_address, OWNER());
@@ -407,6 +407,30 @@ fn test_transfer_token_success() {
 }
 
 #[test]
+fn test_transfer_token_accepts_operator_approval_for_collection_contract() {
+    let (dispatcher, ip_address) = deploy_contract();
+    let owner = OWNER();
+    let from_user = USER1();
+    let to_user = USER2();
+    let collection_id = setup_collection(dispatcher, ip_address);
+
+    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
+    let token_id = dispatcher.mint(collection_id, from_user, IPFS_URI());
+
+    let collection_data = dispatcher.get_collection(collection_id);
+    let erc721 = IERC721Dispatcher { contract_address: collection_data.ip_nft };
+
+    cheat_caller_address(collection_data.ip_nft, from_user, CheatSpan::TargetCalls(1));
+    erc721.set_approval_for_all(ip_address, true);
+
+    let token_key = format!("{}:{}", collection_id, token_id);
+    cheat_caller_address(ip_address, from_user, CheatSpan::TargetCalls(1));
+    dispatcher.transfer_token(from_user, to_user, token_key);
+
+    assert(erc721.owner_of(token_id) == to_user, 'Operator approval transfer failed');
+}
+
+#[test]
 #[should_panic(expected: ('Contract not approved',))]
 fn test_transfer_token_not_approved() {
     let (dispatcher, address) = deploy_contract();
@@ -589,8 +613,7 @@ fn test_batch_transfer_invalid_collection() {
 }
 
 #[test]
-#[should_panic(expected: ('Only manager',))]
-fn test_direct_erc721_transfer_blocked() {
+fn test_direct_erc721_transfer_success_without_protocol_stats() {
     let (dispatcher, ip_address) = deploy_contract();
     let owner = OWNER();
     let from_user = USER1();
@@ -599,6 +622,33 @@ fn test_direct_erc721_transfer_blocked() {
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
     let token_id = dispatcher.mint(collection_id, from_user, IPFS_URI());
+
+    let collection_data = dispatcher.get_collection(collection_id);
+    let erc721 = IERC721Dispatcher { contract_address: collection_data.ip_nft };
+
+    cheat_caller_address(collection_data.ip_nft, from_user, CheatSpan::TargetCalls(1));
+    erc721.transfer_from(from_user, to_user, token_id);
+
+    assert(erc721.owner_of(token_id) == to_user, 'Direct transfer failed');
+    let stats = dispatcher.get_collection_stats(collection_id);
+    assert(stats.total_transfers == 0, 'Direct transfer should not update protocol stats');
+}
+
+#[test]
+#[should_panic(expected: ('Token is archived',))]
+fn test_direct_erc721_transfer_archived_token_blocked() {
+    let (dispatcher, ip_address) = deploy_contract();
+    let owner = OWNER();
+    let from_user = USER1();
+    let to_user = USER2();
+    let collection_id = setup_collection(dispatcher, ip_address);
+
+    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
+    let token_id = dispatcher.mint(collection_id, from_user, IPFS_URI());
+
+    let token_key = format!("{}:{}", collection_id, token_id);
+    cheat_caller_address(ip_address, from_user, CheatSpan::TargetCalls(1));
+    dispatcher.archive(token_key);
 
     let collection_data = dispatcher.get_collection(collection_id);
     let erc721 = IERC721Dispatcher { contract_address: collection_data.ip_nft };
@@ -860,9 +910,28 @@ fn test_verification_functions() {
     let token_id = dispatcher.mint(collection_id, USER1(), IPFS_URI());
     let token_key = format!("{}:{}", collection_id, token_id);
     assert(dispatcher.is_valid_collection(collection_id), 'Collection should be valid');
-    assert(dispatcher.is_valid_token(token_key), 'Token should be valid');
+    assert(dispatcher.is_valid_token(token_key.clone()), 'Token should be valid');
+    assert(dispatcher.is_transferable_token(token_key), 'Token should be transferable');
     assert(dispatcher.is_collection_owner(collection_id, owner), 'Owner should be correct');
     stop_cheat_caller_address(address);
+}
+
+#[test]
+fn test_is_transferable_token_false_after_archive() {
+    let (dispatcher, ip_address) = deploy_contract();
+    let owner = OWNER();
+    let recipient = USER1();
+    let collection_id = setup_collection(dispatcher, ip_address);
+
+    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
+    let token_id = dispatcher.mint(collection_id, recipient, IPFS_URI());
+
+    let token_key = format!("{}:{}", collection_id, token_id);
+    cheat_caller_address(ip_address, recipient, CheatSpan::TargetCalls(1));
+    dispatcher.archive(token_key.clone());
+
+    assert(dispatcher.is_valid_token(token_key.clone()), 'Archived token should exist');
+    assert(!dispatcher.is_transferable_token(token_key), 'Archived token should not transfer');
 }
 
 #[test]

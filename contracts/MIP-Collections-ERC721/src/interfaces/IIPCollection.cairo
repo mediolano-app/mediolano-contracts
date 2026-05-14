@@ -194,4 +194,14 @@ pub trait IIPCollection<ContractState> {
     /// `true` if valid, `false` otherwise.
     fn is_valid_token(self: @ContractState, token: ByteArray) -> bool;
 
+    /// Checks if a `token` identifier exists and is not archived.
+    /// Use this for trade/transfer eligibility checks.
+    ///
+    /// # Arguments
+    /// * `token` - The identifier of the token.
+    ///
+    /// # Returns
+    /// `true` if the token exists and has not been archived, `false` otherwise.
+    fn is_transferable_token(self: @ContractState, token: ByteArray) -> bool;
+
 }

@@ -100,6 +100,7 @@ fn transfer_token(from, to, token)
 fn batch_transfer(from, to, tokens[])
 fn get_token(token: ByteArray) -> TokenData
 fn is_valid_token(token: ByteArray) -> bool
+fn is_transferable_token(token: ByteArray) -> bool
 fn list_user_tokens_per_collection(collection_id, user) -> Span<u256>
 ```
 
@@ -115,7 +116,7 @@ There are no admin or upgrade entrypoints.
 | `TokenMintedBatch` | collection_id, token_ids, owners, operator, timestamp |
 | `TokenArchived` | collection_id, token_id, operator, timestamp |
 | `TokenArchivedBatch` | tokens, operator, timestamp |
-| `TokenTransferred` | collection_id, token_id, operator, timestamp |
+| `TokenTransferred` | collection_id, token_id, from, to, operator, timestamp |
 | `TokenTransferredBatch` | from, to, tokens, operator, timestamp |
 
 ## Archive vs Burn
@@ -128,7 +129,9 @@ Collection ownership can be transferred atomically by the current collection own
 
 ## Transfer Flow
 
-Transfers go through `IPCollection` (not directly through the `IPNft`). Before calling `transfer_token` or `batch_transfer`, the caller must have approved `IPCollection`'s contract address on the `IPNft`. The caller must also be the token owner or an approved operator. The `IPNft` transfer hook rejects direct ERC-721 transfers unless the caller is the immutable collection manager.
+Active tokens support standard ERC-721 direct transfers on `IPNft`, preserving marketplace and wallet compatibility. Archived tokens cannot be transferred.
+
+The `IPCollection.transfer_token` and `batch_transfer` methods are optional protocol-aware transfer paths. They update collection transfer stats and emit protocol transfer events. Before using them, the token owner must approve `IPCollection` either with per-token approval or `set_approval_for_all`. The caller must be the token owner, token-approved address, or an approved operator.
 
 ## Deployments
 
