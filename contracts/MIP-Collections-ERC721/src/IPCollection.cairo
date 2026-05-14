@@ -53,6 +53,7 @@ pub mod IPCollection {
 
     #[derive(Drop, starknet::Event)]
     pub struct CollectionCreated {
+        #[key]
         pub collection_id: u256,
         pub owner: ContractAddress,
         pub name: ByteArray,
@@ -62,6 +63,7 @@ pub mod IPCollection {
 
     #[derive(Drop, starknet::Event)]
     pub struct CollectionOwnershipTransferred {
+        #[key]
         pub collection_id: u256,
         pub previous_owner: ContractAddress,
         pub new_owner: ContractAddress,
@@ -70,7 +72,9 @@ pub mod IPCollection {
 
     #[derive(Drop, starknet::Event)]
     pub struct TokenMinted {
+        #[key]
         pub collection_id: u256,
+        #[key]
         pub token_id: u256,
         pub owner: ContractAddress,
         pub metadata_uri: ByteArray,
@@ -78,6 +82,7 @@ pub mod IPCollection {
 
     #[derive(Drop, starknet::Event)]
     pub struct TokenMintedBatch {
+        #[key]
         pub collection_id: u256,
         pub token_ids: Span<u256>,
         pub owners: Array<ContractAddress>,
@@ -87,7 +92,9 @@ pub mod IPCollection {
 
     #[derive(Drop, starknet::Event)]
     pub struct TokenArchived {
+        #[key]
         pub collection_id: u256,
+        #[key]
         pub token_id: u256,
         pub operator: ContractAddress,
         pub timestamp: u64,
@@ -102,7 +109,9 @@ pub mod IPCollection {
 
     #[derive(Drop, starknet::Event)]
     pub struct TokenTransferred {
+        #[key]
         pub collection_id: u256,
+        #[key]
         pub token_id: u256,
         pub from: ContractAddress,
         pub to: ContractAddress,
