@@ -185,4 +185,4 @@ snforge test test_create_collection
 |---|---|
 | `starknet` | `2.12.0` |
 | `openzeppelin` | `v0.20.0` |
-| `snforge_std` | `0.58.0` |
+| `snforge_std` | `0.59.0` |

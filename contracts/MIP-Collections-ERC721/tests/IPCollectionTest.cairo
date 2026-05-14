@@ -302,6 +302,8 @@ fn test_archive_preserves_record() {
     let owner = OWNER();
     let recipient = USER1();
     let collection_id = setup_collection(dispatcher, ip_address);
+    let collection_data = dispatcher.get_collection(collection_id);
+    cheat_block_timestamp(collection_data.ip_nft, 1700000000, CheatSpan::TargetCalls(5));
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
     let token_id = dispatcher.mint(collection_id, recipient, IPFS_URI());
@@ -427,7 +429,7 @@ fn test_transfer_token_accepts_operator_approval_for_collection_contract() {
     cheat_caller_address(ip_address, from_user, CheatSpan::TargetCalls(1));
     dispatcher.transfer_token(from_user, to_user, token_key);
 
-    assert(erc721.owner_of(token_id) == to_user, 'Operator approval transfer failed');
+    assert(erc721.owner_of(token_id) == to_user, 'Operator transfer failed');
 }
 
 #[test]
@@ -631,7 +633,7 @@ fn test_direct_erc721_transfer_success_without_protocol_stats() {
 
     assert(erc721.owner_of(token_id) == to_user, 'Direct transfer failed');
     let stats = dispatcher.get_collection_stats(collection_id);
-    assert(stats.total_transfers == 0, 'Direct transfer should not update protocol stats');
+    assert(stats.total_transfers == 0, 'Stats changed');
 }
 
 #[test]
@@ -931,7 +933,7 @@ fn test_is_transferable_token_false_after_archive() {
     dispatcher.archive(token_key.clone());
 
     assert(dispatcher.is_valid_token(token_key.clone()), 'Archived token should exist');
-    assert(!dispatcher.is_transferable_token(token_key), 'Archived token should not transfer');
+    assert(!dispatcher.is_transferable_token(token_key), 'Archived token transfers');
 }
 
 #[test]
