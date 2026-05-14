@@ -2,7 +2,6 @@
 pub mod IPCollection {
     use core::dict::Felt252Dict;
     use core::num::traits::Zero;
-    use openzeppelin::access::ownable::OwnableComponent;
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc721::extensions::erc721_enumerable::interface::{
         ERC721EnumerableABIDispatcher as IERC721EnumerableDispatcher,
@@ -11,8 +10,6 @@ pub mod IPCollection {
     use openzeppelin::token::erc721::{
         ERC721ABIDispatcher as IERC721Dispatcher, ERC721ABIDispatcherTrait,
     };
-    use openzeppelin::upgrades::UpgradeableComponent;
-    use openzeppelin::upgrades::interface::IUpgradeable;
     use starknet::storage::{
         Map, StorageMapReadAccess, StoragePathEntry, StoragePointerReadAccess,
         StoragePointerWriteAccess,
@@ -25,17 +22,9 @@ pub mod IPCollection {
     use crate::interfaces::IIPNFT::{IIPNftDispatcher, IIPNftDispatcherTrait};
     use crate::types::{Collection, CollectionStats, TokenData, TokenTrait};
 
-    // IPCollection (the factory/registry) remains upgradeable because it holds
-    // only collection metadata and indexes — not the legal IP records themselves.
-    // The legal records live in the individual IPNft contracts, which are immutable.
+    // IPCollection is intentionally immutable. It deploys immutable IPNft
+    // contracts and provides a permanent registry view over their records.
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
-    component!(path: OwnableComponent, storage: ownable, event: OwnableEvent);
-    component!(path: UpgradeableComponent, storage: upgradeable, event: UpgradeableEvent);
-
-    #[abi(embed_v0)]
-    impl OwnableMixinImpl = OwnableComponent::OwnableMixinImpl<ContractState>;
-    impl OwnableInternalImpl = OwnableComponent::InternalImpl<ContractState>;
-    impl UpgradeableInternalImpl = UpgradeableComponent::InternalImpl<ContractState>;
 
     #[storage]
     struct Storage {
@@ -45,12 +34,9 @@ pub mod IPCollection {
         ip_nft_class_hash: ClassHash,
         user_collections: Map<(ContractAddress, u256), u256>,
         user_collection_index: Map<ContractAddress, u256>,
+        collection_owner_index: Map<u256, u256>,
         #[substorage(v0)]
         src5: SRC5Component::Storage,
-        #[substorage(v0)]
-        ownable: OwnableComponent::Storage,
-        #[substorage(v0)]
-        upgradeable: UpgradeableComponent::Storage,
     }
 
     #[event]
@@ -58,12 +44,8 @@ pub mod IPCollection {
     pub enum Event {
         #[flat]
         SRC5Event: SRC5Component::Event,
-        #[flat]
-        OwnableEvent: OwnableComponent::Event,
-        #[flat]
-        UpgradeableEvent: UpgradeableComponent::Event,
         CollectionCreated: CollectionCreated,
-        CollectionUpdated: CollectionUpdated,
+        CollectionOwnershipTransferred: CollectionOwnershipTransferred,
         TokenMinted: TokenMinted,
         TokenMintedBatch: TokenMintedBatch,
         TokenArchived: TokenArchived,
@@ -82,12 +64,10 @@ pub mod IPCollection {
     }
 
     #[derive(Drop, starknet::Event)]
-    pub struct CollectionUpdated {
+    pub struct CollectionOwnershipTransferred {
         pub collection_id: u256,
-        pub owner: ContractAddress,
-        pub name: ByteArray,
-        pub symbol: ByteArray,
-        pub base_uri: ByteArray,
+        pub previous_owner: ContractAddress,
+        pub new_owner: ContractAddress,
         pub timestamp: u64,
     }
 
@@ -141,17 +121,8 @@ pub mod IPCollection {
     }
 
     #[constructor]
-    fn constructor(ref self: ContractState, owner: ContractAddress, ip_nft_class_hash: ClassHash) {
-        self.ownable.initializer(owner);
+    fn constructor(ref self: ContractState, ip_nft_class_hash: ClassHash) {
         self.ip_nft_class_hash.write(ip_nft_class_hash);
-    }
-
-    #[abi(embed_v0)]
-    impl UpgradeableImpl of IUpgradeable<ContractState> {
-        fn upgrade(ref self: ContractState, new_class_hash: ClassHash) {
-            self.ownable.assert_only_owner();
-            self.upgradeable.upgrade(new_class_hash);
-        }
     }
 
     #[abi(embed_v0)]
@@ -173,7 +144,6 @@ pub mod IPCollection {
 
             // 4-M CRITICAL: calldata must match IPNft constructor exactly.
             // IPNft constructor: (name, symbol, base_uri, collection_id, collection_manager)
-            // OwnableComponent was removed from IPNft — `owner` arg is gone.
             let mut constructor_calldata: Array<felt252> = array![];
             (name.clone(), symbol.clone(), base_uri.clone(), collection_id, collection_manager)
                 .serialize(ref constructor_calldata);
@@ -189,7 +159,6 @@ pub mod IPCollection {
                 base_uri: base_uri.clone(),
                 owner: caller,
                 ip_nft: ip_nft_address,
-                is_active: true,
             };
 
             self.collections.entry(collection_id).write(collection);
@@ -198,6 +167,7 @@ pub mod IPCollection {
             let user_collection_index = self.user_collection_index.read(caller);
             self.user_collections.entry((caller, user_collection_index)).write(collection_id);
             self.user_collection_index.entry(caller).write(user_collection_index + 1);
+            self.collection_owner_index.entry(collection_id).write(user_collection_index);
 
             self.emit(CollectionCreated { collection_id, owner: caller, name, symbol, base_uri });
 
@@ -216,8 +186,8 @@ pub mod IPCollection {
             assert(!recipient.is_zero(), 'Recipient is zero address');
 
             let collection = self.collections.read(collection_id);
+            assert(!collection.ip_nft.is_zero(), 'Invalid collection');
             assert(get_caller_address() == collection.owner, 'Only collection owner can mint');
-            assert(collection.is_active, 'Collection is not active');
 
             let mut collection_stats = self.collection_stats.read(collection_id);
 
@@ -260,7 +230,7 @@ pub mod IPCollection {
             assert(token_uris.len() == n, 'Array lengths mismatch');
 
             let collection = self.collections.read(collection_id);
-            assert(collection.is_active, 'Collection is not active');
+            assert(!collection.ip_nft.is_zero(), 'Invalid collection');
 
             let operator = get_caller_address();
             assert(operator == collection.owner, 'Only collection owner can mint');
@@ -302,13 +272,59 @@ pub mod IPCollection {
             token_ids.span()
         }
 
+        /// Transfers collection ownership atomically.
+        /// This changes only future collection stewardship and mint authority.
+        /// Existing token URI, creator, timestamp, and ownership records are untouched.
+        fn transfer_collection_ownership(
+            ref self: ContractState, collection_id: u256, new_owner: ContractAddress,
+        ) {
+            assert(!new_owner.is_zero(), 'New owner is zero address');
+
+            let caller = get_caller_address();
+            let mut collection = self.collections.read(collection_id);
+            assert(!collection.ip_nft.is_zero(), 'Invalid collection');
+            assert(collection.owner == caller, 'Not collection owner');
+            assert(new_owner != caller, 'New owner is current owner');
+
+            let old_owner = collection.owner;
+            let old_index = self.collection_owner_index.read(collection_id);
+            let old_count = self.user_collection_index.read(old_owner);
+            let last_index = old_count - 1;
+
+            if old_index != last_index {
+                let moved_collection_id = self.user_collections.entry((old_owner, last_index)).read();
+                self.user_collections.entry((old_owner, old_index)).write(moved_collection_id);
+                self.collection_owner_index.entry(moved_collection_id).write(old_index);
+            }
+            self.user_collections.entry((old_owner, last_index)).write(0);
+            self.user_collection_index.entry(old_owner).write(last_index);
+
+            let new_index = self.user_collection_index.read(new_owner);
+            self.user_collections.entry((new_owner, new_index)).write(collection_id);
+            self.user_collection_index.entry(new_owner).write(new_index + 1);
+            self.collection_owner_index.entry(collection_id).write(new_index);
+
+            collection.owner = new_owner;
+            self.collections.entry(collection_id).write(collection);
+
+            self
+                .emit(
+                    CollectionOwnershipTransferred {
+                        collection_id,
+                        previous_owner: old_owner,
+                        new_owner,
+                        timestamp: get_block_timestamp(),
+                    },
+                );
+        }
+
         /// Archives a token, permanently preserving the on-chain provenance record.
         /// Only the token owner can archive their token.
         /// Replaces destructive burn — the IP registration record is never destroyed.
         fn archive(ref self: ContractState, token: ByteArray) {
             let token = TokenTrait::from_bytes(token);
             let collection = self.collections.read(token.collection_id);
-            assert(collection.is_active, 'Collection is not active');
+            assert(!collection.ip_nft.is_zero(), 'Invalid collection');
 
             let caller = get_caller_address();
             let token_owner = IERC721Dispatcher { contract_address: collection.ip_nft }
@@ -354,7 +370,7 @@ pub mod IPCollection {
             while i < n {
                 let token = TokenTrait::from_bytes(tokens.at(i).clone());
                 let collection = self.collections.read(token.collection_id);
-                assert(collection.is_active, 'Collection is not active');
+                assert(!collection.ip_nft.is_zero(), 'Invalid collection');
 
                 // C-01 FIX: verify ownership for every token
                 let token_owner = IERC721Dispatcher { contract_address: collection.ip_nft }
@@ -399,7 +415,7 @@ pub mod IPCollection {
         ) {
             let token = TokenTrait::from_bytes(token);
             let collection = self.collections.read(token.collection_id);
-            assert(collection.is_active, 'Collection is not active');
+            assert(!collection.ip_nft.is_zero(), 'Invalid collection');
 
             let caller = get_caller_address();
             let ip_nft = IERC721Dispatcher { contract_address: collection.ip_nft };
@@ -457,7 +473,7 @@ pub mod IPCollection {
             while i < n {
                 let token = TokenTrait::from_bytes(tokens.at(i).clone());
                 let collection = self.collections.read(token.collection_id);
-                assert(collection.is_active, 'Collection is not active');
+                assert(!collection.ip_nft.is_zero(), 'Invalid collection');
 
                 let ip_nft = IERC721Dispatcher { contract_address: collection.ip_nft };
 
@@ -504,57 +520,12 @@ pub mod IPCollection {
                 );
         }
 
-        /// Updates mutable metadata (name, symbol, base_uri) for a collection.
-        /// Only the collection owner can update. Emits CollectionUpdated.
-        fn update_collection_metadata(
-            ref self: ContractState,
-            collection_id: u256,
-            name: ByteArray,
-            symbol: ByteArray,
-            base_uri: ByteArray,
-        ) {
-            let caller = get_caller_address();
-            let mut collection = self.collections.read(collection_id);
-            assert(collection.owner == caller, 'Not collection owner');
-            assert(name.len() > 0, 'Name cannot be empty');
-            assert(symbol.len() > 0, 'Symbol cannot be empty');
-
-            collection.name = name.clone();
-            collection.symbol = symbol.clone();
-            collection.base_uri = base_uri.clone();
-            self.collections.entry(collection_id).write(collection);
-
-            self
-                .emit(
-                    CollectionUpdated {
-                        collection_id,
-                        owner: caller,
-                        name,
-                        symbol,
-                        base_uri,
-                        timestamp: get_block_timestamp(),
-                    },
-                );
-        }
-
-        /// Toggles the active state of a collection.
-        /// Only the collection owner can toggle this.
-        fn set_collection_active(
-            ref self: ContractState, collection_id: u256, is_active: bool,
-        ) {
-            let caller = get_caller_address();
-            let mut collection = self.collections.read(collection_id);
-            assert(collection.owner == caller, 'Not collection owner');
-            collection.is_active = is_active;
-            self.collections.entry(collection_id).write(collection);
-        }
-
         /// Lists all token IDs owned by a user in a specific collection.
         fn list_user_tokens_per_collection(
             self: @ContractState, collection_id: u256, user: ContractAddress,
         ) -> Span<u256> {
             let collection = self.collections.read(collection_id);
-            if !collection.is_active {
+            if collection.ip_nft.is_zero() {
                 return array![].span();
             }
             let ip_nft = IERC721EnumerableDispatcher { contract_address: collection.ip_nft };
@@ -589,19 +560,19 @@ pub mod IPCollection {
             self.collection_stats.read(collection_id)
         }
 
-        /// Checks if a collection is valid and active.
+        /// Checks if a collection exists.
         fn is_valid_collection(self: @ContractState, collection_id: u256) -> bool {
             let collection = self.collections.read(collection_id);
-            collection.is_active
+            !collection.ip_nft.is_zero()
         }
 
         /// Retrieves full token data including the immutable legal record fields.
-        /// Reverts if the collection is inactive or the token does not exist.
+        /// Reverts if the collection is invalid or the token does not exist.
         /// Uses a single cross-contract call (get_full_token_data) instead of four.
         fn get_token(self: @ContractState, token: ByteArray) -> TokenData {
             let token = TokenTrait::from_bytes(token);
             let collection = self.collections.read(token.collection_id);
-            assert(collection.is_active, 'Collection is not active');
+            assert(!collection.ip_nft.is_zero(), 'Invalid collection');
 
             // Single cross-contract call returns all four fields at once
             let nft = IIPNftDispatcher { contract_address: collection.ip_nft };
@@ -618,12 +589,12 @@ pub mod IPCollection {
             }
         }
 
-        /// Checks if a token is valid (exists in an active collection).
+        /// Checks if a token is valid (exists in a valid collection).
         /// Safe: uses token_exists which never panics, unlike owner_of.
         fn is_valid_token(self: @ContractState, token: ByteArray) -> bool {
             let token = TokenTrait::from_bytes(token);
             let collection = self.collections.read(token.collection_id);
-            if !collection.is_active {
+            if collection.ip_nft.is_zero() {
                 return false;
             }
             // token_exists reads the owner slot directly and returns false for non-existent
@@ -637,13 +608,6 @@ pub mod IPCollection {
         ) -> bool {
             let collection = self.collections.read(collection_id);
             collection.owner == owner
-        }
-
-        /// Updates the IPNft class hash used for future collection deployments.
-        /// Only affects new collections — already-deployed IPNft contracts are immutable.
-        fn upgrade_ip_nft_class_hash(ref self: ContractState, new_nft_class_hash: ClassHash) {
-            self.ownable.assert_only_owner();
-            self.ip_nft_class_hash.write(new_nft_class_hash)
         }
     }
 }

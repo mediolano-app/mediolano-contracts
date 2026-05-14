@@ -19,7 +19,7 @@ pub trait IIPNft<ContractState> {
     /// Archived tokens cannot be transferred or re-archived.
     /// The provenance record (creator, timestamp, URI) remains queryable forever for
     /// Berne Convention compliance — the legal evidence of creation is never destroyed.
-    /// Only callable by DEFAULT_ADMIN_ROLE (the IPCollection factory).
+    /// Only callable by the immutable IPCollection factory.
     ///
     /// # Arguments
     /// * `token_id` - The unique identifier for the token to be archived.

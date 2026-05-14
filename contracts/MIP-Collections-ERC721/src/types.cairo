@@ -70,8 +70,6 @@ pub struct Collection {
     pub owner: ContractAddress,
     /// Address of the associated IP NFT contract.
     pub ip_nft: ContractAddress,
-    /// Indicates if the collection is active.
-    pub is_active: bool,
 }
 
 /// Represents data associated with a specific token, including immutable legal record fields.

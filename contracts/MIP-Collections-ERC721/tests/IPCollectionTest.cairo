@@ -43,10 +43,8 @@ const TOKEN_ID: u256 = 1; // R-05: first token ID is now 1
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 fn deploy_contract() -> (IIPCollectionDispatcher, ContractAddress) {
-    let owner = OWNER();
     let ip_nft_class_hash = declare("IPNft").unwrap().contract_class();
     let mut calldata = array![];
-    owner.serialize(ref calldata);
     ip_nft_class_hash.serialize(ref calldata);
 
     let declare_result = declare("IPCollection").expect('Failed to declare contract');
@@ -88,7 +86,6 @@ fn test_create_collection() {
     assert(collection.symbol == symbol, 'Collection symbol mismatch');
     assert(collection.base_uri == base_uri, 'Collection base_uri mismatch');
     assert(collection.owner == owner, 'Collection owner mismatch');
-    assert(collection.is_active, 'Collection should be active');
 }
 
 #[test]
@@ -288,6 +285,8 @@ fn test_archive_token() {
     let owner = OWNER();
     let recipient = USER1();
     let collection_id = setup_collection(dispatcher, ip_address);
+    let collection_data = dispatcher.get_collection(collection_id);
+    cheat_block_timestamp(collection_data.ip_nft, 1700000000, CheatSpan::TargetCalls(5));
 
     cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
     let token_id = dispatcher.mint(collection_id, recipient, IPFS_URI());
@@ -312,12 +311,11 @@ fn test_archive_preserves_record() {
     dispatcher.archive(token_key.clone());
 
     // COMP-05: after archiving, the legal record must still be queryable
-    let collection_data = dispatcher.get_collection(collection_id);
     let nft = IIPNftDispatcher { contract_address: collection_data.ip_nft };
 
     assert(nft.is_archived(token_id), 'Token should be archived');
     assert(nft.get_token_creator(token_id) == recipient, 'Creator must be preserved');
-    assert(nft.get_token_registered_at(token_id) != 0 || true, 'Timestamp must exist');
+    assert(nft.get_token_registered_at(token_id) == 1700000000, 'Timestamp must be preserved');
 
     let erc721 = IERC721Dispatcher { contract_address: collection_data.ip_nft };
     assert(erc721.owner_of(token_id) == recipient, 'Owner record must be preserved');
@@ -454,8 +452,8 @@ fn test_transfer_token_unauthorized_caller() {
 }
 
 #[test]
-#[should_panic(expected: ('Collection is not active',))]
-fn test_transfer_token_inactive_collection() {
+#[should_panic(expected: ('Invalid collection',))]
+fn test_transfer_token_invalid_collection() {
     let (dispatcher, ip_address) = deploy_contract();
     let owner = OWNER();
     let from_user = USER1();
@@ -466,7 +464,7 @@ fn test_transfer_token_inactive_collection() {
     let token_id = dispatcher.mint(collection_id, from_user, IPFS_URI());
 
     cheat_caller_address(ip_address, from_user, CheatSpan::TargetCalls(1));
-    // Use a non-existent (inactive) collection ID
+    // Use a non-existent collection ID
     let token_key = format!("{}:{}", collection_id + 1, token_id);
     dispatcher.transfer_token(from_user, to_user, token_key);
 }
@@ -574,8 +572,8 @@ fn test_batch_transfer_unauthorized_caller() {
 }
 
 #[test]
-#[should_panic(expected: ('Collection is not active',))]
-fn test_batch_transfer_inactive_collection() {
+#[should_panic(expected: ('Invalid collection',))]
+fn test_batch_transfer_invalid_collection() {
     let (dispatcher, ip_address) = deploy_contract();
     let owner = OWNER();
     let from_user = USER1();
@@ -588,6 +586,25 @@ fn test_batch_transfer_inactive_collection() {
     let token_key = format!("{}:{}", collection_id + 1, *token_ids.at(0));
     cheat_caller_address(ip_address, from_user, CheatSpan::TargetCalls(1));
     dispatcher.batch_transfer(from_user, to_user, array![token_key]);
+}
+
+#[test]
+#[should_panic(expected: ('Only manager',))]
+fn test_direct_erc721_transfer_blocked() {
+    let (dispatcher, ip_address) = deploy_contract();
+    let owner = OWNER();
+    let from_user = USER1();
+    let to_user = USER2();
+    let collection_id = setup_collection(dispatcher, ip_address);
+
+    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
+    let token_id = dispatcher.mint(collection_id, from_user, IPFS_URI());
+
+    let collection_data = dispatcher.get_collection(collection_id);
+    let erc721 = IERC721Dispatcher { contract_address: collection_data.ip_nft };
+
+    cheat_caller_address(collection_data.ip_nft, from_user, CheatSpan::TargetCalls(1));
+    erc721.transfer_from(from_user, to_user, token_id);
 }
 
 // ─── Legal record (COMP-02, COMP-03, COMP-06, COMP-07) ─────────────────────────
@@ -676,65 +693,111 @@ fn test_creator_unchanged_after_transfer() {
     assert(erc721.owner_of(token_id) == buyer, 'New owner should be buyer');
 }
 
-// ─── Collection management ──────────────────────────────────────────────────────
+// ─── Collection immutability ───────────────────────────────────────────────────
 
 #[test]
-fn test_set_collection_active_toggle() {
+fn test_collection_metadata_is_immutable_after_creation() {
     let (dispatcher, ip_address) = deploy_contract();
-    let owner = OWNER();
     let collection_id = setup_collection(dispatcher, ip_address);
 
-    assert(dispatcher.is_valid_collection(collection_id), 'Should be active initially');
+    let collection = dispatcher.get_collection(collection_id);
+    let erc721 = ERC721ABIDispatcher { contract_address: collection.ip_nft };
 
-    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    dispatcher.set_collection_active(collection_id, false);
-    assert(!dispatcher.is_valid_collection(collection_id), 'Should be inactive');
+    assert(collection.name == "Test Collection", 'Registry name mismatch');
+    assert(collection.symbol == "TST", 'Registry symbol mismatch');
+    assert(collection.base_uri == "ipfs://QmCollectionBaseUri/", 'Registry base URI mismatch');
+    assert(erc721.name() == collection.name, 'NFT name mismatch');
+    assert(erc721.symbol() == collection.symbol, 'NFT symbol mismatch');
+}
 
-    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    dispatcher.set_collection_active(collection_id, true);
-    assert(dispatcher.is_valid_collection(collection_id), 'Should be active again');
+#[test]
+fn test_transfer_collection_ownership_updates_owner_and_mint_authority() {
+    let (dispatcher, ip_address) = deploy_contract();
+    let collection_id = setup_collection(dispatcher, ip_address);
+
+    cheat_caller_address(ip_address, OWNER(), CheatSpan::TargetCalls(1));
+    dispatcher.transfer_collection_ownership(collection_id, USER2());
+
+    let collection = dispatcher.get_collection(collection_id);
+    assert(collection.owner == USER2(), 'Owner should transfer');
+    assert(dispatcher.is_collection_owner(collection_id, USER2()), 'New owner mismatch');
+    assert(!dispatcher.is_collection_owner(collection_id, OWNER()), 'Old owner mismatch');
+
+    cheat_caller_address(ip_address, USER2(), CheatSpan::TargetCalls(1));
+    let token_id = dispatcher.mint(collection_id, USER1(), IPFS_URI());
+    assert(token_id == 1, 'New owner should mint');
+}
+
+#[test]
+#[should_panic(expected: ('Only collection owner can mint',))]
+fn test_previous_collection_owner_cannot_mint_after_transfer() {
+    let (dispatcher, ip_address) = deploy_contract();
+    let collection_id = setup_collection(dispatcher, ip_address);
+
+    cheat_caller_address(ip_address, OWNER(), CheatSpan::TargetCalls(1));
+    dispatcher.transfer_collection_ownership(collection_id, USER2());
+
+    cheat_caller_address(ip_address, OWNER(), CheatSpan::TargetCalls(1));
+    dispatcher.mint(collection_id, USER1(), IPFS_URI());
+}
+
+#[test]
+fn test_transfer_collection_ownership_updates_owner_collection_lists() {
+    let (dispatcher, ip_address) = deploy_contract();
+
+    cheat_caller_address(ip_address, USER1(), CheatSpan::TargetCalls(1));
+    let collection_id1 = dispatcher.create_collection("C1", "S1", "ipfs://QmC1");
+
+    cheat_caller_address(ip_address, USER1(), CheatSpan::TargetCalls(1));
+    let collection_id2 = dispatcher.create_collection("C2", "S2", "ipfs://QmC2");
+
+    cheat_caller_address(ip_address, USER1(), CheatSpan::TargetCalls(1));
+    dispatcher.transfer_collection_ownership(collection_id1, USER2());
+
+    let user1_collections = dispatcher.list_user_collections(USER1());
+    assert(user1_collections == array![collection_id2].span(), 'Old owner list mismatch');
+
+    let user2_collections = dispatcher.list_user_collections(USER2());
+    assert(user2_collections == array![collection_id1].span(), 'New owner list mismatch');
 }
 
 #[test]
 #[should_panic(expected: ('Not collection owner',))]
-fn test_set_collection_active_not_owner() {
+fn test_transfer_collection_ownership_not_owner() {
     let (dispatcher, ip_address) = deploy_contract();
     let collection_id = setup_collection(dispatcher, ip_address);
+
     cheat_caller_address(ip_address, USER2(), CheatSpan::TargetCalls(1));
-    dispatcher.set_collection_active(collection_id, false);
+    dispatcher.transfer_collection_ownership(collection_id, USER3());
 }
 
 #[test]
-fn test_update_collection_metadata() {
+#[should_panic(expected: ('New owner is zero address',))]
+fn test_transfer_collection_ownership_zero_address() {
     let (dispatcher, ip_address) = deploy_contract();
-    let owner = OWNER();
     let collection_id = setup_collection(dispatcher, ip_address);
 
-    let original_collection = dispatcher.get_collection(collection_id);
-    let original_ip_nft = original_collection.ip_nft;
-
-    cheat_caller_address(ip_address, owner, CheatSpan::TargetCalls(1));
-    dispatcher
-        .update_collection_metadata(
-            collection_id, "New Name", "NN", "ipfs://QmNewBaseUri",
-        );
-
-    let updated = dispatcher.get_collection(collection_id);
-    assert(updated.name == "New Name", 'Name not updated');
-    assert(updated.symbol == "NN", 'Symbol not updated');
-    assert(updated.base_uri == "ipfs://QmNewBaseUri", 'URI not updated');
-    // ip_nft address must not change
-    assert(updated.ip_nft == original_ip_nft, 'ip_nft should not change');
-    assert(updated.owner == owner, 'Owner should not change');
+    cheat_caller_address(ip_address, OWNER(), CheatSpan::TargetCalls(1));
+    dispatcher.transfer_collection_ownership(collection_id, ZERO());
 }
 
 #[test]
-#[should_panic(expected: ('Not collection owner',))]
-fn test_update_collection_metadata_not_owner() {
+#[should_panic(expected: ('New owner is current owner',))]
+fn test_transfer_collection_ownership_same_owner() {
     let (dispatcher, ip_address) = deploy_contract();
     let collection_id = setup_collection(dispatcher, ip_address);
-    cheat_caller_address(ip_address, USER2(), CheatSpan::TargetCalls(1));
-    dispatcher.update_collection_metadata(collection_id, "Hacked", "XX", "ipfs://evil");
+
+    cheat_caller_address(ip_address, OWNER(), CheatSpan::TargetCalls(1));
+    dispatcher.transfer_collection_ownership(collection_id, OWNER());
+}
+
+#[test]
+#[should_panic(expected: ('Invalid collection',))]
+fn test_transfer_collection_ownership_invalid_collection() {
+    let (dispatcher, ip_address) = deploy_contract();
+
+    cheat_caller_address(ip_address, OWNER(), CheatSpan::TargetCalls(1));
+    dispatcher.transfer_collection_ownership(99, USER2());
 }
 
 #[test]
@@ -755,7 +818,7 @@ fn test_get_collection_count() {
 // ─── get_token validation ───────────────────────────────────────────────────────
 
 #[test]
-#[should_panic(expected: ('Collection is not active',))]
+#[should_panic(expected: ('Invalid collection',))]
 fn test_get_token_invalid_collection_reverts() {
     let (dispatcher, _) = deploy_contract();
     // collection_id 99 was never created

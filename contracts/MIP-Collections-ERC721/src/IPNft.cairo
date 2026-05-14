@@ -1,6 +1,5 @@
 #[starknet::contract]
 pub mod IPNft {
-    use openzeppelin::access::accesscontrol::{AccessControlComponent, DEFAULT_ADMIN_ROLE};
     use openzeppelin::introspection::src5::SRC5Component;
     use openzeppelin::token::erc721::ERC721Component;
     use openzeppelin::token::erc721::extensions::ERC721EnumerableComponent;
@@ -10,13 +9,12 @@ pub mod IPNft {
         StoragePointerWriteAccess,
     };
     use core::num::traits::Zero;
-    use starknet::{ContractAddress, get_block_timestamp};
+    use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
     use crate::interfaces::IIPNFT::IIPNft;
     use crate::types::bytearray_starts_with;
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
-    component!(path: AccessControlComponent, storage: accesscontrol, event: AccessControlEvent);
     component!(
         path: ERC721EnumerableComponent, storage: erc721_enumerable, event: ERC721EnumerableEvent,
     );
@@ -26,8 +24,8 @@ pub mod IPNft {
     // and timestamp constitute the legal IP registration record under the Berne Convention.
     // Upgradeability of this contract would allow altering that record, which is prohibited.
 
-    // R-04: OwnableComponent removed — all access control is unified under AccessControlComponent.
-    // The collection creator's identity is recorded immutably as `original_creator` per token.
+    // No owner or role admin exists. Mint/archive authority is the immutable
+    // collection_manager address written once in the constructor.
 
     #[abi(embed_v0)]
     impl ERC721Impl = ERC721Component::ERC721Impl<ContractState>;
@@ -37,17 +35,10 @@ pub mod IPNft {
     impl ERC721EnumerableImpl =
         ERC721EnumerableComponent::ERC721EnumerableImpl<ContractState>;
     #[abi(embed_v0)]
-    impl AccessControlImpl =
-        AccessControlComponent::AccessControlImpl<ContractState>;
-    #[abi(embed_v0)]
-    impl AccessControlCamelImpl =
-        AccessControlComponent::AccessControlCamelImpl<ContractState>;
-    #[abi(embed_v0)]
     impl SRC5Impl = SRC5Component::SRC5Impl<ContractState>;
 
     impl ERC721InternalImpl = ERC721Component::InternalImpl<ContractState>;
     impl ERC721EnumerableInternalImpl = ERC721EnumerableComponent::InternalImpl<ContractState>;
-    impl AccessControlInternalImpl = AccessControlComponent::InternalImpl<ContractState>;
     impl SRC5ComponentInternalImpl = SRC5Component::InternalImpl<ContractState>;
 
     #[storage]
@@ -67,8 +58,6 @@ pub mod IPNft {
         #[substorage(v0)]
         src5: SRC5Component::Storage,
         #[substorage(v0)]
-        accesscontrol: AccessControlComponent::Storage,
-        #[substorage(v0)]
         erc721_enumerable: ERC721EnumerableComponent::Storage,
     }
 
@@ -80,15 +69,13 @@ pub mod IPNft {
         #[flat]
         SRC5Event: SRC5Component::Event,
         #[flat]
-        AccessControlEvent: AccessControlComponent::Event,
-        #[flat]
         ERC721EnumerableEvent: ERC721EnumerableComponent::Event,
     }
 
     /// Constructor.
     /// R-04: `owner` parameter removed — OwnableComponent is gone.
-    /// The `collection_manager` (IPCollection factory address) receives DEFAULT_ADMIN_ROLE,
-    /// granting it exclusive control over mint and archive operations.
+    /// The `collection_manager` (IPCollection factory address) is immutable and is the
+    /// only address allowed to mint or archive.
     #[constructor]
     fn constructor(
         ref self: ContractState,
@@ -99,8 +86,6 @@ pub mod IPNft {
         collection_manager: ContractAddress,
     ) {
         self.erc721.initializer(name, symbol, base_uri);
-        self.accesscontrol.initializer();
-        self.accesscontrol._grant_role(DEFAULT_ADMIN_ROLE, collection_manager);
         self.erc721_enumerable.initializer();
         self.collection_id.write(collection_id);
         self.collection_manager.write(collection_manager);
@@ -118,6 +103,10 @@ pub mod IPNft {
             // Archived tokens are permanently immobile — their record is preserved as-is.
             // This fires on both mint and transfer; Map defaults to false so mints pass cleanly.
             assert(!contract_state.token_archived.read(token_id), 'Token is archived');
+
+            // All ownership changes must flow through the immutable collection manager.
+            // This keeps registry stats/events/policy aligned with ERC721 ownership.
+            assert(get_caller_address() == contract_state.collection_manager.read(), 'Only manager');
             contract_state.erc721_enumerable.before_update(to, token_id);
         }
     }
@@ -149,7 +138,7 @@ pub mod IPNft {
     #[abi(embed_v0)]
     impl IPNftImpl of IIPNft<ContractState> {
         /// Mints a new ERC-721 token to the specified recipient.
-        /// Only callable by DEFAULT_ADMIN_ROLE (the IPCollection factory).
+        /// Only callable by the immutable IPCollection factory.
         ///
         /// COMP-04: token_uri must begin with "ipfs://" or "ar://" to guarantee
         /// permanent, content-addressed metadata storage.
@@ -161,7 +150,7 @@ pub mod IPNft {
             token_id: u256,
             token_uri: ByteArray,
         ) {
-            self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
+            assert(get_caller_address() == self.collection_manager.read(), 'Only manager');
 
             // R-05: token IDs must be > 0 (IPCollection assigns IDs starting at 1)
             assert(token_id != 0, 'Token ID cannot be zero');
@@ -184,9 +173,9 @@ pub mod IPNft {
         /// Archives a token permanently.
         /// The on-chain record (URI, creator, timestamp, ownership) is preserved forever.
         /// Archived tokens cannot be transferred or re-archived.
-        /// Only callable by DEFAULT_ADMIN_ROLE (the IPCollection factory).
+        /// Only callable by the immutable IPCollection factory.
         fn archive(ref self: ContractState, token_id: u256) {
-            self.accesscontrol.assert_only_role(DEFAULT_ADMIN_ROLE);
+            assert(get_caller_address() == self.collection_manager.read(), 'Only manager');
             self.erc721._require_owned(token_id);
             assert(!self.token_archived.read(token_id), 'Already archived');
             // Write the archived flag — the ERC721 state is intentionally preserved

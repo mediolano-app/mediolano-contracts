@@ -1,5 +1,5 @@
 /// Interface for IP Collection contract, defining core collection and token management operations.
-use starknet::{ClassHash, ContractAddress};
+use starknet::ContractAddress;
 use crate::types::{Collection, CollectionStats, TokenData};
 
 #[starknet::interface]
@@ -55,6 +55,16 @@ pub trait IIPCollection<ContractState> {
         token_uris: Array<ByteArray>,
     ) -> Span<u256>;
 
+    /// Transfers collection ownership atomically.
+    /// This changes future mint authority only. Existing token legal records are untouched.
+    ///
+    /// # Arguments
+    /// * `collection_id` - The identifier of the collection to transfer.
+    /// * `new_owner` - The address that will become the collection owner.
+    fn transfer_collection_ownership(
+        ref self: ContractState, collection_id: u256, new_owner: ContractAddress,
+    );
+
     /// Archives a token, preserving the on-chain provenance record permanently.
     /// Archived tokens cannot be transferred or re-archived.
     /// Only the token owner can archive their token.
@@ -99,32 +109,6 @@ pub trait IIPCollection<ContractState> {
         tokens: Array<ByteArray>,
     );
 
-    /// Updates the mutable metadata fields (name, symbol, base_uri) for a collection.
-    /// Only the collection owner can update metadata.
-    /// Emits a CollectionUpdated event.
-    ///
-    /// # Arguments
-    /// * `collection_id` - The identifier of the collection to update.
-    /// * `name` - New name (must be non-empty).
-    /// * `symbol` - New symbol (must be non-empty).
-    /// * `base_uri` - New base URI.
-    fn update_collection_metadata(
-        ref self: ContractState,
-        collection_id: u256,
-        name: ByteArray,
-        symbol: ByteArray,
-        base_uri: ByteArray,
-    );
-
-    /// Toggles the active state of a collection.
-    /// Inactive collections reject all mint, archive, and transfer operations.
-    /// Only the collection owner can toggle this.
-    ///
-    /// # Arguments
-    /// * `collection_id` - The identifier of the collection.
-    /// * `is_active` - The desired active state.
-    fn set_collection_active(ref self: ContractState, collection_id: u256, is_active: bool);
-
     /// Lists all token IDs owned by `user` in a specific `collection_id`.
     ///
     /// # Arguments
@@ -161,13 +145,13 @@ pub trait IIPCollection<ContractState> {
     /// * `u256` - Total collection count.
     fn get_collection_count(self: @ContractState) -> u256;
 
-    /// Checks if a `collection_id` is valid and active.
+    /// Checks if a `collection_id` exists.
     ///
     /// # Arguments
     /// * `collection_id` - The identifier of the collection.
     ///
     /// # Returns
-    /// `true` if valid and active, `false` otherwise.
+    /// `true` if valid, `false` otherwise.
     fn is_valid_collection(self: @ContractState, collection_id: u256) -> bool;
 
     /// Retrieves statistics for a collection by its `collection_id`.
@@ -192,7 +176,7 @@ pub trait IIPCollection<ContractState> {
     ) -> bool;
 
     /// Retrieves the full token data including immutable legal record fields.
-    /// Reverts if the collection is inactive or the token does not exist.
+    /// Reverts if the collection is invalid or the token does not exist.
     ///
     /// # Arguments
     /// * `token` - The identifier of the token (format: "collection_id:token_id").
@@ -201,7 +185,7 @@ pub trait IIPCollection<ContractState> {
     /// A `TokenData` struct including `original_creator` and `registered_at`.
     fn get_token(self: @ContractState, token: ByteArray) -> TokenData;
 
-    /// Checks if a `token` identifier is valid (exists in an active collection).
+    /// Checks if a `token` identifier is valid (exists in a valid collection).
     ///
     /// # Arguments
     /// * `token` - The identifier of the token.
@@ -210,11 +194,4 @@ pub trait IIPCollection<ContractState> {
     /// `true` if valid, `false` otherwise.
     fn is_valid_token(self: @ContractState, token: ByteArray) -> bool;
 
-    /// Upgrades the IPNft class hash used for future collection deployments.
-    /// Only affects new collections — already-deployed IPNft contracts are permanently immutable.
-    /// Only callable by the IPCollection contract owner.
-    ///
-    /// # Arguments
-    /// * `new_nft_class_hash` - Class hash of the new IP NFT contract.
-    fn upgrade_ip_nft_class_hash(ref self: ContractState, new_nft_class_hash: ClassHash);
 }

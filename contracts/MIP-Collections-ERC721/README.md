@@ -1,6 +1,6 @@
 # MIP-Collections-ERC721
 
-Registry and factory contract for ERC-721 IP collections on Starknet. Each collection deploys its own standalone `IPNft` contract, keeping provenance records permanently immutable while the registry itself remains upgradeable.
+Immutable registry and factory contract for ERC-721 IP collections on Starknet. Each collection deploys its own standalone `IPNft` contract, keeping provenance records permanently immutable.
 
 ## Overview
 
@@ -10,21 +10,22 @@ The two-contract architecture is intentional:
 
 | Contract | Upgradeable | Role |
 |---|---|---|
-| `IPCollection` | Yes (owner only) | Registry, factory, index of all collections and stats |
+| `IPCollection` | No | Registry, factory, index of all collections and stats |
 | `IPNft` | No | Standalone ERC-721 — holds the immutable IP provenance record |
 
-`IPNft` contracts are deployed once and never upgraded, preserving the legal authorship record. `IPCollection` can be upgraded to add features without touching the legal records.
+Both contracts are deployed once and never upgraded. There is no owner-only upgrade path, no mutable NFT class hash, and no collection pause switch.
 
 ## Architecture
 
 ```
-IPCollection (upgradeable registry)
+IPCollection (immutable registry)
   ├── create_collection(name, symbol, base_uri)
   │     └── deploy_syscall → IPNft (standalone ERC-721, immutable)
   │                           ├── token_creators: Map<u256, ContractAddress>
   │                           └── token_registered_at: Map<u256, u64>
   ├── mint(collection_id, recipient, token_uri) → token_id
   ├── batch_mint(collection_id, recipients[], token_uris[]) → token_ids[]
+  ├── transfer_collection_ownership(collection_id, new_owner)
   ├── archive(token) / batch_archive(tokens[])
   └── transfer_token(from, to, token) / batch_transfer(from, to, tokens[])
 ```
@@ -43,6 +44,7 @@ Tokens are identified by a `ByteArray` string in the format `"collection_id:toke
 | `ip_nft_class_hash` | `ClassHash` | Class hash used to deploy new `IPNft` contracts |
 | `user_collections` | `Map<(ContractAddress, u256), u256>` | Enumerable list of collection IDs per owner |
 | `user_collection_index` | `Map<ContractAddress, u256>` | Count of collections per owner |
+| `collection_owner_index` | `Map<u256, u256>` | Position of each collection in its owner's enumerable list |
 
 ## Key Types
 
@@ -53,7 +55,6 @@ struct Collection {
     base_uri: ByteArray,
     owner: ContractAddress,
     ip_nft: ContractAddress,   // address of the deployed IPNft contract
-    is_active: bool,
 }
 
 struct CollectionStats {
@@ -80,8 +81,7 @@ struct TokenData {
 ### Collection management
 ```cairo
 fn create_collection(name, symbol, base_uri) -> u256
-fn update_collection_metadata(collection_id, name, symbol, base_uri)
-fn set_collection_active(collection_id, is_active)
+fn transfer_collection_ownership(collection_id, new_owner)
 fn get_collection(collection_id) -> Collection
 fn get_collection_count() -> u256
 fn get_collection_stats(collection_id) -> CollectionStats
@@ -103,18 +103,14 @@ fn is_valid_token(token: ByteArray) -> bool
 fn list_user_tokens_per_collection(collection_id, user) -> Span<u256>
 ```
 
-### Admin
-```cairo
-fn upgrade(new_class_hash)               // IPCollection owner only
-fn upgrade_ip_nft_class_hash(new_class_hash)  // updates future IPNft deploys only
-```
+There are no admin or upgrade entrypoints.
 
 ## Events
 
 | Event | Key fields |
 |---|---|
 | `CollectionCreated` | collection_id, owner, name, symbol, base_uri |
-| `CollectionUpdated` | collection_id, owner, name, symbol, base_uri, timestamp |
+| `CollectionOwnershipTransferred` | collection_id, previous_owner, new_owner, timestamp |
 | `TokenMinted` | collection_id, token_id, owner, metadata_uri |
 | `TokenMintedBatch` | collection_id, token_ids, owners, operator, timestamp |
 | `TokenArchived` | collection_id, token_id, operator, timestamp |
@@ -126,16 +122,38 @@ fn upgrade_ip_nft_class_hash(new_class_hash)  // updates future IPNft deploys on
 
 This contract uses **archive** instead of ERC-721 burn. Archiving marks a token as inactive while preserving the on-chain provenance record — the original creator address and registration timestamp in the `IPNft` contract are never deleted. This satisfies the Berne Convention requirement that IP authorship records be permanent.
 
+## Collection Ownership
+
+Collection ownership can be transferred atomically by the current collection owner. This moves future mint authority and owner collection listings to the new wallet in one transaction. It does not modify any existing token legal record: `metadata_uri`, `original_creator`, and `registered_at` remain immutable.
+
 ## Transfer Flow
 
-Transfers go through `IPCollection` (not directly through the `IPNft`). Before calling `transfer_token` or `batch_transfer`, the caller must have approved `IPCollection`'s contract address on the `IPNft`. The caller must also be the token owner or an approved operator.
+Transfers go through `IPCollection` (not directly through the `IPNft`). Before calling `transfer_token` or `batch_transfer`, the caller must have approved `IPCollection`'s contract address on the `IPNft`. The caller must also be the token owner or an approved operator. The `IPNft` transfer hook rejects direct ERC-721 transfers unless the caller is the immutable collection manager.
 
 ## Deployments
 
 | Network | Contract | Address |
 |---|---|---|
-| Mainnet | `IPCollection` (registry) | `0x05c49ee5d3208a2c2e150fdd0c247d1195ed9ab54fa2d5dea7a633f39e4b205b` |
-| Mainnet | `IPNft` (class) | `0x02e24999206d088a7fc311d05a791c865b1283251c7f15f7c097b84a90feee56` |
+| TBD | `IPCollection` (immutable registry) | TBD |
+| TBD | `IPNft` (immutable class) | TBD |
+
+Mainnet declaration/deployment flow:
+
+```bash
+cd contracts/MIP-Collections-ERC721
+
+# Build Sierra/CASM artifacts
+scarb build
+
+# Declare IPNft first
+starkli declare target/dev/ip_collection_erc_721_IPNft.contract_class.json --network mainnet
+
+# Declare IPCollection
+starkli declare target/dev/ip_collection_erc_721_IPCollection.contract_class.json --network mainnet
+
+# Deploy IPCollection with the declared IPNft class hash as constructor calldata
+starkli deploy <IPCollection_CLASS_HASH> <IPNFT_CLASS_HASH> --network mainnet
+```
 
 ## Development
 

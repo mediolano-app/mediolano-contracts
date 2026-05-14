@@ -52,6 +52,58 @@ The platform also introduces advanced monetization, enabling diverse approaches 
 
 - [X] Security Audit and Review: IP Collections erc-721 Protocol +  IP Collections erc-1155 Protocol **26.04**
 
+- [X] Immutable Architecture Refactor: MIP Collections ERC-721 Protocol **26.05**
+
+
+## MIP Collections ERC-721
+
+`contracts/MIP-Collections-ERC721` contains the immutable ERC-721 collection registry for Mediolano IP. The design separates permanent provenance from operational stewardship:
+
+- `IPCollection` is an immutable registry and factory.
+- Each collection deploys its own immutable `IPNft` ERC-721 contract.
+- There is no global admin owner, upgrade function, mutable NFT class hash, or collection pause switch.
+- Collection ownership can be transferred atomically by the current collection owner.
+- Ownership transfer only changes future mint authority; already minted token records remain unchanged.
+- Token legal records store immutable `metadata_uri`, `original_creator`, and `registered_at` fields.
+- Token archive preserves the on-chain legal record instead of burning it.
+- ERC-721 transfers flow through `IPCollection` so protocol stats, events, and transfer policy stay coherent.
+
+This architecture is designed for creator sovereignty and social-login wallet handoff flows. For example, a creator can initialize a collection through an embedded wallet and later transfer collection stewardship to a regular wallet without changing historical authorship records.
+
+Build the contract:
+
+```bash
+cd contracts/MIP-Collections-ERC721
+scarb build
+```
+
+Run tests:
+
+```bash
+cd contracts/MIP-Collections-ERC721
+scarb test
+```
+
+Mainnet deployment flow:
+
+```bash
+cd contracts/MIP-Collections-ERC721
+
+# Build Sierra/CASM artifacts
+scarb build
+
+# Declare IPNft first
+starkli declare target/dev/ip_collection_erc_721_IPNft.contract_class.json --network mainnet
+
+# Declare IPCollection
+starkli declare target/dev/ip_collection_erc_721_IPCollection.contract_class.json --network mainnet
+
+# Deploy IPCollection with the declared IPNft class hash as constructor calldata
+starkli deploy <IPCollection_CLASS_HASH> <IPNFT_CLASS_HASH> --network mainnet
+```
+
+See `contracts/MIP-Collections-ERC721/README.md` for the full contract-specific interface, storage, events, and deployment notes.
+
 
 ## 🚀 Getting Started
 
@@ -97,7 +149,7 @@ curl -L https://raw.githubusercontent.com/foundry-rs/starknet-foundry/master/scr
 scarb build
 
 # Or build specific contract
-cd contracts/IP-Club
+cd contracts/MIP-Collections-ERC721
 scarb build
 ```
 
@@ -108,7 +160,7 @@ scarb build
 scarb test
 
 # Run tests for specific contract
-cd contracts/User-Achievements
+cd contracts/MIP-Collections-ERC721
 scarb test
 ```
 
@@ -122,6 +174,7 @@ mediolano-contracts/
 │   ├── Medialane-Protocol/         # Core marketplace
 │   ├── User-Achievements/          # Gamification system
 │   ├── IP-Club/                    # Community management
+│   ├── MIP-Collections-ERC721/      # Immutable ERC-721 IP collections
 │   ├── IP-Revenue-Share/           # Revenue distribution
 │   ├── IP-License-Agreement/       # Licensing contracts
 │   ├── IP-Collective-Agreement/    # Multi-party agreements
@@ -137,7 +190,7 @@ Each contract directory contains its own `Scarb.toml` configuration file. You ca
 
 ```bash
 # Navigate to specific contract
-cd contracts/IP-Club
+cd contracts/MIP-Collections-ERC721
 
 # Build the contract
 scarb build
@@ -169,11 +222,14 @@ starkli deploy ./target/dev/contract_name.contract_class.json \
 
 ### Security Measures
 
-- **Access Control**: Role-based permissions using OpenZeppelin components
+- **Contract-Specific Authorization**: Permissions are scoped per contract; MIP Collections ERC-721 uses immutable manager and collection-owner checks instead of a global admin.
+- **Immutable IP Collections**: MIP Collections ERC-721 has no global admin owner, no upgrade entrypoint, no mutable class hash, and no pause switch.
+- **Permanent Provenance**: IP collection tokens preserve immutable metadata URI, original creator, and registration timestamp.
+- **Transferable Stewardship**: Collection ownership can move atomically to another wallet for future mint authority without changing historical token records.
+- **Controlled ERC-721 Transfer Path**: MIP collection token transfers route through the registry to keep protocol events and stats consistent.
 - **Reentrancy Protection**: Guards against reentrancy attacks
 - **Input Validation**: Comprehensive validation of all user inputs
 - **Overflow Protection**: Safe math operations throughout
-- **Pause Functionality**: Emergency pause capabilities for critical contracts
 
 ## 🤝 Contributing
 
