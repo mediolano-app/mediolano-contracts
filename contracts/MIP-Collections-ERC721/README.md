@@ -40,7 +40,7 @@ Tokens are identified by a `ByteArray` string in the format `"collection_id:toke
 |---|---|---|
 | `collections` | `Map<u256, Collection>` | Collection metadata by ID |
 | `collection_count` | `u256` | Total collections ever created (IDs start at 1) |
-| `collection_stats` | `Map<u256, CollectionStats>` | Mint/archive/transfer counters per collection |
+| `collection_stats` | `Map<u256, CollectionStats>` | Mint/archive counters and protocol-path transfer counters per collection |
 | `ip_nft_class_hash` | `ClassHash` | Class hash used to deploy new `IPNft` contracts |
 | `user_collections` | `Map<(ContractAddress, u256), u256>` | Enumerable list of collection IDs per owner |
 | `user_collection_index` | `Map<ContractAddress, u256>` | Count of collections per owner |
@@ -60,10 +60,10 @@ struct Collection {
 struct CollectionStats {
     total_minted: u256,
     total_archived: u256,
-    total_transfers: u256,
+    total_transfers: u256,       // transfers routed through IPCollection only
     last_mint_time: u64,
     last_archive_time: u64,
-    last_transfer_time: u64,
+    last_transfer_time: u64,     // last IPCollection-routed transfer
 }
 
 struct TokenData {
@@ -132,6 +132,12 @@ Collection ownership can be transferred atomically by the current collection own
 Active tokens support standard ERC-721 direct transfers on `IPNft`, preserving marketplace and wallet compatibility. Archived tokens cannot be transferred.
 
 The `IPCollection.transfer_token` and `batch_transfer` methods are optional protocol-aware transfer paths. They update collection transfer stats and emit protocol transfer events. Before using them, the token owner must approve `IPCollection` either with per-token approval or `set_approval_for_all`. The caller must be the token owner, token-approved address, or an approved operator.
+
+Indexers that need complete transfer history should subscribe to both native `IPNft` ERC-721 `Transfer` events and `IPCollection` protocol transfer events. `CollectionStats.total_transfers` counts only transfers routed through `IPCollection`.
+
+## Metadata URI Semantics
+
+Each minted token stores an immutable per-token `metadata_uri` and `token_uri()` / `tokenURI()` return that value directly. The collection `base_uri` is informational collection metadata; it is not concatenated with token IDs.
 
 ## Deployments
 

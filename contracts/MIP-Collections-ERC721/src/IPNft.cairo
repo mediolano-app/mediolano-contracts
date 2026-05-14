@@ -11,12 +11,9 @@ pub mod IPNft {
     use core::num::traits::Zero;
     use starknet::{ContractAddress, get_block_timestamp, get_caller_address};
     use crate::interfaces::IIPNFT::IIPNft;
-    use crate::types::bytearray_starts_with;
-
-    const MAX_NAME_LEN: u32 = 256;
-    const MAX_SYMBOL_LEN: u32 = 64;
-    const MAX_BASE_URI_LEN: u32 = 2048;
-    const MAX_TOKEN_URI_LEN: u32 = 2048;
+    use crate::types::{
+        bytearray_starts_with, MAX_BASE_URI_LEN, MAX_NAME_LEN, MAX_SYMBOL_LEN, MAX_TOKEN_URI_LEN,
+    };
 
     component!(path: ERC721Component, storage: erc721, event: ERC721Event);
     component!(path: SRC5Component, storage: src5, event: SRC5Event);
@@ -129,6 +126,8 @@ pub mod IPNft {
 
         fn token_uri(self: @ContractState, token_id: u256) -> ByteArray {
             self.erc721._require_owned(token_id);
+            // Return the immutable per-token URI directly. Collection base_uri is
+            // informational and is not concatenated with token IDs.
             self.uris.read(token_id)
         }
     }
@@ -137,6 +136,8 @@ pub mod IPNft {
     impl ERC721MetadataCamelOnly of IERC721MetadataCamelOnly<ContractState> {
         fn tokenURI(self: @ContractState, tokenId: u256) -> ByteArray {
             self.erc721._require_owned(tokenId);
+            // Return the immutable per-token URI directly. Collection base_uri is
+            // informational and is not concatenated with token IDs.
             self.uris.read(tokenId)
         }
     }
@@ -206,7 +207,7 @@ pub mod IPNft {
             self.registry.read()
         }
 
-        /// Returns the base URI of the collection.
+        /// Returns the informational base URI of the collection.
         fn base_uri(self: @ContractState) -> ByteArray {
             self.erc721._base_uri()
         }

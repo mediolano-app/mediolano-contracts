@@ -1,5 +1,10 @@
 use starknet::ContractAddress;
 
+pub const MAX_NAME_LEN: u32 = 256;
+pub const MAX_SYMBOL_LEN: u32 = 64;
+pub const MAX_BASE_URI_LEN: u32 = 2048;
+pub const MAX_TOKEN_URI_LEN: u32 = 2048;
+
 /// Represents a unique identifier for a token within a collection.
 /// The format is `<collection_id:token_id>`, where:
 /// - `collection_id`: The unique identifier of the collection.
@@ -64,7 +69,7 @@ pub struct Collection {
     pub name: ByteArray,
     /// Symbol representing the collection.
     pub symbol: ByteArray,
-    /// Base URI for token metadata.
+    /// Informational collection-level URI. Token metadata uses immutable per-token URIs.
     pub base_uri: ByteArray,
     /// Owner of the collection.
     pub owner: ContractAddress,
@@ -96,13 +101,13 @@ pub struct CollectionStats {
     pub total_minted: u256,
     /// Total number of tokens archived in the collection.
     pub total_archived: u256,
-    /// Total number of token transfers in the collection.
+    /// Transfers routed through IPCollection. Direct ERC-721 transfers are emitted by IPNft only.
     pub total_transfers: u256,
     /// Timestamp of the last mint operation.
     pub last_mint_time: u64,
     /// Timestamp of the last archive operation.
     pub last_archive_time: u64,
-    /// Timestamp of the last transfer operation.
+    /// Timestamp of the last transfer routed through IPCollection.
     pub last_transfer_time: u64,
 }
 

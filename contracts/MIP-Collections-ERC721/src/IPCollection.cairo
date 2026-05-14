@@ -19,11 +19,10 @@ pub mod IPCollection {
     };
     use crate::interfaces::IIPCollection::IIPCollection;
     use crate::interfaces::IIPNFT::{IIPNftDispatcher, IIPNftDispatcherTrait};
-    use crate::types::{Collection, CollectionStats, TokenData, TokenTrait};
-
-    const MAX_NAME_LEN: u32 = 256;
-    const MAX_SYMBOL_LEN: u32 = 64;
-    const MAX_BASE_URI_LEN: u32 = 2048;
+    use crate::types::{
+        Collection, CollectionStats, TokenData, TokenTrait, MAX_BASE_URI_LEN, MAX_NAME_LEN,
+        MAX_SYMBOL_LEN,
+    };
 
     // IPCollection is intentionally immutable. It deploys immutable IPNft
     // contracts and provides a permanent registry view over their records.

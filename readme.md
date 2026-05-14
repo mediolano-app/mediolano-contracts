@@ -68,6 +68,8 @@ The platform also introduces advanced monetization, enabling diverse approaches 
 - Token archive preserves the on-chain legal record instead of burning it.
 - Active ERC-721 tokens keep standard direct transfer behavior for wallet and marketplace composability.
 - Transfers routed through `IPCollection` additionally update protocol transfer stats and emit protocol transfer events.
+- `CollectionStats.total_transfers` counts only transfers routed through `IPCollection`; indexers should also read native `IPNft` ERC-721 `Transfer` events for complete transfer history.
+- Token metadata uses immutable per-token `ipfs://` or `ar://` URIs. Collection `base_uri` is informational and is not concatenated with token IDs.
 
 This architecture is designed for creator sovereignty and social-login wallet handoff flows. For example, a creator can initialize a collection through an embedded wallet and later transfer collection stewardship to a regular wallet without changing historical authorship records.
 
@@ -106,22 +108,24 @@ starkli deploy <IPCollection_CLASS_HASH> <IPNFT_CLASS_HASH> --network mainnet
 See `contracts/MIP-Collections-ERC721/README.md` for the full contract-specific interface, storage, events, and deployment notes.
 
 
-## 🚀 Getting Started
+## Getting Started
 
 ### Prerequisites
 
 Before you begin, ensure you have the following requirements:
 
-* **Node.js** (version 18 or later) and npm installed. Download them from the official Node [website](https://nodejs.org/en/download/).
-* **Basic understanding** of Starknet Foundry to deploy your own contract instance
-* **Cairo** and **Scarb** for smart contract development
+* **Git** for cloning and contributing.
+* **Scarb** for Cairo package management and builds.
+* **Starknet Foundry** for local Cairo/Starknet testing.
+* **Starkli** for declaration and deployment.
+* **Node.js** only for contracts or utilities that include JavaScript/TypeScript tooling.
 
 ### System Requirements
 
-- **Npm + Git**
-- **ASDF + Scarb**
-- **Starknet CLI**
+- **Git**
+- **Scarb**
 - **Starknet Foundry**
+- **Starkli**
 - **Operating System**: macOS, Windows (including WSL), and Linux are supported
 
 ### Installation
@@ -146,10 +150,7 @@ curl -L https://raw.githubusercontent.com/foundry-rs/starknet-foundry/master/scr
 3. **Build contracts**:
 
 ```bash
-# Build all contracts
-scarb build
-
-# Or build specific contract
+# Build a specific contract package
 cd contracts/MIP-Collections-ERC721
 scarb build
 ```
@@ -157,32 +158,31 @@ scarb build
 4. **Run tests**:
 
 ```bash
-# Run all tests
-scarb test
-
-# Run tests for specific contract
+# Run tests for a specific contract package
 cd contracts/MIP-Collections-ERC721
 scarb test
 ```
 
-## 🔧 Development
+## Development
 
 ### Project Structure
 
 ```
 mediolano-contracts/
 ├── contracts/
-│   ├── Medialane-Protocol/         # Core marketplace
-│   ├── User-Achievements/          # Gamification system
-│   ├── IP-Club/                    # Community management
 │   ├── MIP-Collections-ERC721/      # Immutable ERC-721 IP collections
+│   ├── IP-Programmable-ERC1155-Collections/
+│   ├── IP-Marketplace/             # Marketplace contracts
+│   ├── IP-Marketplace-Auction/      # Auction marketplace
+│   ├── IP-Club/                    # Community management
 │   ├── IP-Revenue-Share/           # Revenue distribution
 │   ├── IP-License-Agreement/       # Licensing contracts
 │   ├── IP-Collective-Agreement/    # Multi-party agreements
+│   ├── User-Achievements/          # Gamification system
 │   └── ...                         # Additional contracts
-├── scripts/                        # Deployment scripts
-├── tests/                          # Integration tests
-└── docs/                          # Documentation
+├── readme.md
+├── LICENSE
+└── CLAUDE.md
 ```
 
 ### Building and Testing
@@ -205,21 +205,21 @@ scarb fmt
 
 ### Deployment
 
-Deploy contracts to Starknet networks:
+Each contract package has its own constructor and declaration order. Always check the contract-specific README before mainnet deployment.
+
+Generic Starkli flow:
 
 ```bash
-# Deploy to Sepolia testnet
-starkli deploy ./target/dev/contract_name.contract_class.json \
-  --network sepolia \
-  --keystore ./keystore.json
+# Declare a compiled contract class
+starkli declare ./target/dev/<contract_class>.contract_class.json --network mainnet
 
-# Deploy to mainnet
-starkli deploy ./target/dev/contract_name.contract_class.json \
-  --network mainnet \
-  --keystore ./keystore.json
+# Deploy with constructor calldata
+starkli deploy <CLASS_HASH> <CONSTRUCTOR_ARGS...> --network mainnet
 ```
 
-## 🛡️ Security
+For the current MIP Collections ERC-721 mainnet flow, see `contracts/MIP-Collections-ERC721/README.md`.
+
+## Security
 
 ### Security Measures
 
