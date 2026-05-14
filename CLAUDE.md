@@ -57,9 +57,9 @@ Specialized contracts in `IP-*/` directories each address a specific IP use case
 
 **Component composition**: All contracts use OpenZeppelin Cairo components (`OwnableComponent`, `ERC721Component`, `UpgradeableComponent`, `AccessControlComponent`, etc.) embedded via `component!()` macro. Internal implementations are separated from exposed `#[abi(embed_v0)]` implementations.
 
-**Factory pattern** (`MIP-Collections-ERC721`): `IPCollection` deploys individual `IPNft` ERC-721 contracts per collection using `deploy_syscall`. It stores `ip_nft_class_hash` and maps `user_collections: Map<(ContractAddress, u256), u256>`.
+**Factory pattern** (`MIP-Collections-ERC721`): `IPCollection` deploys individual immutable `IPNft` ERC-721 contracts per collection using `deploy_syscall`. It stores the constructor-set `ip_nft_class_hash` and maps `user_collections: Map<(ContractAddress, u256), u256>`.
 
-**Upgradeability**: Core contracts (`IPCollection`, `Medialane`) embed `UpgradeableComponent` and expose an upgrade endpoint restricted to the owner.
+**Upgradeability**: Check each contract before assuming upgradeability. `MIP-Collections-ERC721` is intentionally immutable: no `UpgradeableComponent`, no global admin owner, no mutable NFT class hash, and no pause switch.
 
 **Module layout** within a contract follows this convention:
 ```
@@ -76,12 +76,17 @@ src/
 ### Dependency Versions
 
 Different contracts use different OpenZeppelin and `snforge_std` versions. Check the specific contract's `Scarb.toml`:
-- Newer contracts (MIP-Collections-ERC721, Medialane-Protocol): `openzeppelin = { git = ..., tag = "v0.20.0" }`, `snforge_std = "0.48.0"`, `starknet = "2.12.0"`
+- MIP-Collections-ERC721: `openzeppelin = { git = ..., tag = "v0.20.0" }`, `snforge_std = "0.59.0"`, `starknet = "2.12.0"`
 - Older contracts (IP-Programmable-ERC-721): `openzeppelin tag = "v0.17.0"`, `snforge_std` via git tag
 
 ### Deployment
 
-`snfoundry.toml` in each contract configures `sncast` with the Sepolia RPC endpoint and `account_braavos` account profile. Deploy flow: `scarb build` → `sncast declare` → `sncast deploy`.
+`snfoundry.toml` in each contract configures `sncast` profiles. Deploy flow: `scarb build` → `sncast --profile <profile> --wait declare` → `sncast --profile <profile> --wait deploy`.
+
+Current `MIP-Collections-ERC721` Starknet mainnet deployment:
+- `IPNft` class hash: `0x02d50b7e6d1a14f17a8fdc2df24d6e493bae6fae579656d81959b8c92de4b13f`
+- `IPCollection` class hash: `0x00203f0e03a472cb6e058327ca22147c75e574cc2876f4981e99bcbcbe716a29`
+- `IPCollection` registry address: `0x07c2207d200a1dce1cc82a117d8ba91dabfe3d1cc5072d9e4cdd9654fbb0ff10`
 
 ## Cairo Coding Conventions
 

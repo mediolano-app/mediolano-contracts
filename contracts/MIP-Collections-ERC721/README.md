@@ -141,10 +141,24 @@ Each minted token stores an immutable per-token `metadata_uri` and `token_uri()`
 
 ## Deployments
 
-| Network | Contract | Address |
+### Starknet Mainnet
+
+| Component | Class hash | Address |
 |---|---|---|
-| TBD | `IPCollection` (immutable registry) | TBD |
-| TBD | `IPNft` (immutable class) | TBD |
+| `IPNft` immutable ERC-721 class | `0x02d50b7e6d1a14f17a8fdc2df24d6e493bae6fae579656d81959b8c92de4b13f` | Collection instances are deployed by `IPCollection` |
+| `IPCollection` immutable registry/factory class | `0x00203f0e03a472cb6e058327ca22147c75e574cc2876f4981e99bcbcbe716a29` | `0x07c2207d200a1dce1cc82a117d8ba91dabfe3d1cc5072d9e4cdd9654fbb0ff10` |
+
+| Action | Transaction | Actual fee |
+|---|---|---|
+| Declare `IPNft` | `0x0602f832d8bf6590780bb592c18e98aae9a0df9ad86245f94a92e1467ddbe2b8` | `24.308705 STRK` |
+| Declare `IPCollection` | `0x04c89525842cf5e9f95e23942017bbd7caac40ab1f193a4603a52799ddf59194` | `29.224179 STRK` |
+| Deploy `IPCollection` | `0x0543d8fe9e00c8981f6dd7d4148ad94cba8b9e6dfed69f1d4583c6034f71435f` | `0.036002 STRK` |
+
+Deployment verification:
+
+- The deployed registry class hash is `0x00203f0e03a472cb6e058327ca22147c75e574cc2876f4981e99bcbcbe716a29`.
+- The registry constructor received `0x02d50b7e6d1a14f17a8fdc2df24d6e493bae6fae579656d81959b8c92de4b13f` as its immutable `IPNft` class hash.
+- `get_collection_count()` returns `0` immediately after deployment.
 
 Mainnet declaration/deployment flow:
 
@@ -155,13 +169,15 @@ cd contracts/MIP-Collections-ERC721
 scarb build
 
 # Declare IPNft first
-starkli declare target/dev/ip_collection_erc_721_IPNft.contract_class.json --network mainnet
+sncast --profile medialane-mainnet --wait declare --contract-name IPNft
 
 # Declare IPCollection
-starkli declare target/dev/ip_collection_erc_721_IPCollection.contract_class.json --network mainnet
+sncast --profile medialane-mainnet --wait declare --contract-name IPCollection
 
 # Deploy IPCollection with the declared IPNft class hash as constructor calldata
-starkli deploy <IPCollection_CLASS_HASH> <IPNFT_CLASS_HASH> --network mainnet
+sncast --profile medialane-mainnet --wait deploy \
+  --class-hash <IPCollection_CLASS_HASH> \
+  --constructor-calldata <IPNFT_CLASS_HASH>
 ```
 
 ## Development

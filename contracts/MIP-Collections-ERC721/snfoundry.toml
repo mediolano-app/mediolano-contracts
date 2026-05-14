@@ -7,3 +7,11 @@ account = "mediolano-deployer"
 wait-params = { timeout = 300, retry-interval = 10 }
 block-explorer = "Voyager"
 show-explorer-links = true
+
+[sncast.medialane-mainnet]
+account = "medialane-mainnet-deployer"
+accounts-file = "~/.starknet_accounts/starknet_open_zeppelin_accounts.json"
+url = "https://starknet-mainnet.g.alchemy.com/starknet/version/rpc/v0_10/5Kaw8bJUF3QFKknr4N6Uo"
+wait-params = { timeout = 300, retry-interval = 10 }
+block-explorer = "Voyager"
+show-explorer-links = true

@@ -54,6 +54,8 @@ The platform also introduces advanced monetization, enabling diverse approaches 
 
 - [X] Immutable Architecture Refactor: MIP Collections ERC-721 Protocol **26.05**
 
+- [X] Immutable MIP Collections ERC-721 Deployment @ Starknet Mainnet **26.05**
+
 
 ## MIP Collections ERC-721
 
@@ -72,6 +74,19 @@ The platform also introduces advanced monetization, enabling diverse approaches 
 - Token metadata uses immutable per-token `ipfs://` or `ar://` URIs. Collection `base_uri` is informational and is not concatenated with token IDs.
 
 This architecture is designed for creator sovereignty and social-login wallet handoff flows. For example, a creator can initialize a collection through an embedded wallet and later transfer collection stewardship to a regular wallet without changing historical authorship records.
+
+### Mainnet Deployment
+
+| Component | Class hash | Address |
+|---|---|---|
+| `IPNft` immutable ERC-721 class | `0x02d50b7e6d1a14f17a8fdc2df24d6e493bae6fae579656d81959b8c92de4b13f` | Collection instances are deployed by `IPCollection` |
+| `IPCollection` immutable registry/factory class | `0x00203f0e03a472cb6e058327ca22147c75e574cc2876f4981e99bcbcbe716a29` | `0x07c2207d200a1dce1cc82a117d8ba91dabfe3d1cc5072d9e4cdd9654fbb0ff10` |
+
+| Action | Transaction | Actual fee |
+|---|---|---|
+| Declare `IPNft` | `0x0602f832d8bf6590780bb592c18e98aae9a0df9ad86245f94a92e1467ddbe2b8` | `24.308705 STRK` |
+| Declare `IPCollection` | `0x04c89525842cf5e9f95e23942017bbd7caac40ab1f193a4603a52799ddf59194` | `29.224179 STRK` |
+| Deploy `IPCollection` | `0x0543d8fe9e00c8981f6dd7d4148ad94cba8b9e6dfed69f1d4583c6034f71435f` | `0.036002 STRK` |
 
 Build the contract:
 
@@ -96,13 +111,15 @@ cd contracts/MIP-Collections-ERC721
 scarb build
 
 # Declare IPNft first
-starkli declare target/dev/ip_collection_erc_721_IPNft.contract_class.json --network mainnet
+sncast --profile medialane-mainnet --wait declare --contract-name IPNft
 
 # Declare IPCollection
-starkli declare target/dev/ip_collection_erc_721_IPCollection.contract_class.json --network mainnet
+sncast --profile medialane-mainnet --wait declare --contract-name IPCollection
 
 # Deploy IPCollection with the declared IPNft class hash as constructor calldata
-starkli deploy <IPCollection_CLASS_HASH> <IPNFT_CLASS_HASH> --network mainnet
+sncast --profile medialane-mainnet --wait deploy \
+  --class-hash <IPCollection_CLASS_HASH> \
+  --constructor-calldata <IPNFT_CLASS_HASH>
 ```
 
 See `contracts/MIP-Collections-ERC721/README.md` for the full contract-specific interface, storage, events, and deployment notes.
@@ -116,8 +133,7 @@ Before you begin, ensure you have the following requirements:
 
 * **Git** for cloning and contributing.
 * **Scarb** for Cairo package management and builds.
-* **Starknet Foundry** for local Cairo/Starknet testing.
-* **Starkli** for declaration and deployment.
+* **Starknet Foundry** for local Cairo/Starknet testing, declaration, deployment, and calls through `snforge` and `sncast`.
 * **Node.js** only for contracts or utilities that include JavaScript/TypeScript tooling.
 
 ### System Requirements
@@ -125,7 +141,6 @@ Before you begin, ensure you have the following requirements:
 - **Git**
 - **Scarb**
 - **Starknet Foundry**
-- **Starkli**
 - **Operating System**: macOS, Windows (including WSL), and Linux are supported
 
 ### Installation
@@ -207,14 +222,16 @@ scarb fmt
 
 Each contract package has its own constructor and declaration order. Always check the contract-specific README before mainnet deployment.
 
-Generic Starkli flow:
+Generic `sncast` flow:
 
 ```bash
 # Declare a compiled contract class
-starkli declare ./target/dev/<contract_class>.contract_class.json --network mainnet
+sncast --profile <profile> --wait declare --contract-name <CONTRACT_NAME>
 
 # Deploy with constructor calldata
-starkli deploy <CLASS_HASH> <CONSTRUCTOR_ARGS...> --network mainnet
+sncast --profile <profile> --wait deploy \
+  --class-hash <CLASS_HASH> \
+  --constructor-calldata <CONSTRUCTOR_ARGS...>
 ```
 
 For the current MIP Collections ERC-721 mainnet flow, see `contracts/MIP-Collections-ERC721/README.md`.
